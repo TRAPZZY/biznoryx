@@ -1,0 +1,50 @@
+name: Phase 1 Acceptance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: biznoryx
+          POSTGRES_USER: biznoryx_admin
+          POSTGRES_PASSWORD: biznoryx_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U biznoryx_admin -d biznoryx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify local gates
+        run: npm run verify
+
+      - name: Verify PostgreSQL RLS acceptance
+        run: npm run db:acceptance
+        env:
+          DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/biznoryx
+          BIZNORYX_APP_DB_PASSWORD: biznoryx_runtime_ci_password
+
+      - name: Verify durable runtime behavior
+        run: node --test tests/postgres-runtime.test.mjs
+        env:
+          TEST_DATABASE_URL: postgresql://biznoryx_app:biznoryx_runtime_ci_password@localhost:5432/biznoryx

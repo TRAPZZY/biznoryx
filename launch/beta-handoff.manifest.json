@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "launchStage": "private_beta",
+  "launchOwner": "founder",
+  "handoffItems": [
+    {
+      "id": "operator_runbooks",
+      "status": "ready",
+      "owner": "operations",
+      "evidence": [
+        "docs/runbooks/phase14-release-readiness.md",
+        "docs/runbooks/phase15-production-operations.md",
+        "docs/runbooks/phase16-security-compliance.md"
+      ]
+    },
+    {
+      "id": "customer_onboarding",
+      "status": "ready",
+      "owner": "customer_success",
+      "evidence": [
+        "docs/runbooks/phase17-launch-handoff.md"
+      ]
+    },
+    {
+      "id": "support_ownership",
+      "status": "ready",
+      "owner": "customer_success",
+      "evidence": [
+        "docs/runbooks/phase17-launch-handoff.md"
+      ]
+    },
+    {
+      "id": "incident_contacts",
+      "status": "ready",
+      "owner": "operations",
+      "evidence": [
+        "docs/runbooks/phase16-security-compliance.md"
+      ]
+    },
+    {
+      "id": "rollback_owner",
+      "status": "ready",
+      "owner": "operations",
+      "evidence": [
+        "docs/runbooks/phase15-production-operations.md"
+      ]
+    },
+    {
+      "id": "data_handling_notice",
+      "status": "ready",
+      "owner": "security",
+      "evidence": [
+        "compliance/security-controls.manifest.json"
+      ]
+    },
+    {
+      "id": "known_limitations",
+      "status": "ready",
+      "owner": "product",
+      "evidence": [
+        "docs/runbooks/phase17-launch-handoff.md"
+      ]
+    },
+    {
+      "id": "beta_success_criteria",
+      "status": "ready",
+      "owner": "product",
+      "evidence": [
+        "docs/runbooks/phase17-launch-handoff.md"
+      ]
+    }
+  ],
+  "beta": {
+    "allowedCustomerTypes": [
+      "friendly_design_partner",
+      "internal_pilot"
+    ],
+    "maxOrganizations": 5,
+    "excludedData": [
+      "regulated_health_data",
+      "payment_card_numbers",
+      "government_identifiers"
+    ]
+  },
+  "goNoGo": {
+    "requiredGates": [
+      "release",
+      "deployment",
+      "compliance"
+    ],
+    "finalApproverRequired": true
+  }
+}

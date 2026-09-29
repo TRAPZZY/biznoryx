@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "environment": "production",
+  "services": [
+    {
+      "name": "web",
+      "replicas": 2,
+      "healthCheck": {
+        "path": "/healthz",
+        "timeoutSeconds": 5
+      },
+      "resources": {
+        "cpu": "500m",
+        "memory": "1024Mi"
+      }
+    },
+    {
+      "name": "worker",
+      "replicas": 2,
+      "resources": {
+        "cpu": "500m",
+        "memory": "1024Mi"
+      }
+    },
+    {
+      "name": "postgres",
+      "publicNetworkAccess": false,
+      "backups": {
+        "enabled": true,
+        "retentionDays": 30
+      }
+    },
+    {
+      "name": "object_storage",
+      "publicAccess": false
+    },
+    {
+      "name": "secrets",
+      "managedProvider": "vault"
+    }
+  ],
+  "release": {
+    "strategy": "blue_green",
+    "preflightCommands": [
+      "verify",
+      "db:acceptance",
+      "release:check",
+      "deploy:check"
+    ],
+    "rollback": {
+      "enabled": true,
+      "runbook": "docs/runbooks/phase15-production-operations.md"
+    }
+  }
+}

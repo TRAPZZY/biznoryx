@@ -1,0 +1,73 @@
+services:
+  object-storage:
+    image: minio/minio:RELEASE.2025-07-18T21-56-31Z
+    container_name: biznoryx-object-storage
+
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+
+    environment:
+      MINIO_ROOT_USER: ${BIZNORYX_OBJECT_STORAGE_ACCESS_KEY_ID:?BIZNORYX_OBJECT_STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${BIZNORYX_OBJECT_STORAGE_SECRET_ACCESS_KEY:?BIZNORYX_OBJECT_STORAGE_SECRET_ACCESS_KEY is required}
+
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+    volumes:
+      - biznoryx_object_storage_data:/data
+
+    restart: unless-stopped
+
+  object-storage-init:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    container_name: biznoryx-object-storage-init
+
+    depends_on:
+      - object-storage
+
+    environment:
+      MINIO_ROOT_USER: ${BIZNORYX_OBJECT_STORAGE_ACCESS_KEY_ID:?BIZNORYX_OBJECT_STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${BIZNORYX_OBJECT_STORAGE_SECRET_ACCESS_KEY:?BIZNORYX_OBJECT_STORAGE_SECRET_ACCESS_KEY is required}
+      BIZNORYX_BUCKET: ${BIZNORYX_OBJECT_STORAGE_BUCKET:?BIZNORYX_OBJECT_STORAGE_BUCKET is required}
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+
+        echo "Waiting for BIZNORYX object storage..."
+
+        until mc alias set \
+          biznoryx-local \
+          http://object-storage:9000 \
+          "$$MINIO_ROOT_USER" \
+          "$$MINIO_ROOT_PASSWORD"
+        do
+          echo "Object storage is not ready yet. Retrying..."
+          sleep 2
+        done
+
+        echo "Object storage connection established."
+
+        mc mb \
+          --ignore-existing \
+          "biznoryx-local/$$BIZNORYX_BUCKET"
+
+        mc anonymous set \
+          none \
+          "biznoryx-local/$$BIZNORYX_BUCKET"
+
+        mc stat \
+          "biznoryx-local/$$BIZNORYX_BUCKET"
+
+        echo "BIZNORYX object-storage bucket is ready."
+
+    restart: "no"
+
+volumes:
+  biznoryx_object_storage_data:

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "frameworks": [
+    "SOC2-readiness",
+    "ISO27001-readiness"
+  ],
+  "controls": [
+    {
+      "id": "tenant_isolation",
+      "status": "implemented",
+      "owner": "engineering",
+      "evidence": [
+        "db/migrations",
+        "db/acceptance"
+      ]
+    },
+    {
+      "id": "authentication_sessions",
+      "status": "implemented",
+      "owner": "engineering",
+      "evidence": [
+        "src/auth/core.mjs",
+        "tests/phase1-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "authorization_capabilities",
+      "status": "implemented",
+      "owner": "engineering",
+      "evidence": [
+        "src/auth/core.mjs",
+        "tests"
+      ]
+    },
+    {
+      "id": "audit_logging",
+      "status": "implemented",
+      "owner": "engineering",
+      "evidence": [
+        "src/auth/core.mjs",
+        "BUILD_STATUS.md"
+      ]
+    },
+    {
+      "id": "rls_database_enforcement",
+      "status": "implemented",
+      "owner": "data",
+      "evidence": [
+        "db/migrations",
+        "db/acceptance"
+      ]
+    },
+    {
+      "id": "secret_management",
+      "status": "implemented",
+      "owner": "security",
+      "evidence": [
+        "src/release/readiness.mjs",
+        "deploy/production.manifest.json"
+      ]
+    },
+    {
+      "id": "data_retention",
+      "status": "implemented",
+      "owner": "data",
+      "evidence": [
+        "compliance/security-controls.manifest.json"
+      ]
+    },
+    {
+      "id": "incident_response",
+      "status": "implemented",
+      "owner": "security",
+      "evidence": [
+        "docs/runbooks/phase16-security-compliance.md"
+      ]
+    },
+    {
+      "id": "backup_recovery",
+      "status": "implemented",
+      "owner": "operations",
+      "evidence": [
+        "deploy/production.manifest.json",
+        "docs/runbooks/phase15-production-operations.md"
+      ]
+    },
+    {
+      "id": "release_change_management",
+      "status": "implemented",
+      "owner": "operations",
+      "evidence": [
+        "scripts/release-check.mjs",
+        "scripts/deploy-check.mjs"
+      ]
+    }
+  ],
+  "dataProtection": {
+    "classes": [
+      {
+        "name": "business_data",
+        "retention": "customer_contract",
+        "encryptionAtRest": true,
+        "encryptionInTransit": true
+      },
+      {
+        "name": "account_data",
+        "retention": "account_lifetime_plus_90_days",
+        "encryptionAtRest": true,
+        "encryptionInTransit": true
+      },
+      {
+        "name": "audit_data",
+        "retention": "seven_years",
+        "encryptionAtRest": true,
+        "encryptionInTransit": true
+      },
+      {
+        "name": "raw_uploads",
+        "retention": "customer_contract",
+        "encryptionAtRest": true,
+        "encryptionInTransit": true
+      }
+    ]
+  },
+  "incidentResponse": {
+    "runbook": "docs/runbooks/phase16-security-compliance.md"
+  },
+  "auditReadiness": {
+    "evidenceReviewRequired": true
+  }
+}

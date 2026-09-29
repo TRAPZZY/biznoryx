@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BIZNORYX Preview</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Workspace">
+        <div class="wordmark">BIZNORYX</div>
+        <nav>
+          <a class="active" href="#pulse">Business Pulse</a>
+          <a href="#metrics">KPI Scoreboard</a>
+          <a href="#findings">Findings</a>
+          <a href="#launch">Launch Gates</a>
+        </nav>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Controlled beta preview</p>
+            <h1 id="business-name">Loading business...</h1>
+          </div>
+          <div class="truth-badge" id="release-state">Checking state</div>
+        </header>
+
+        <section class="notice" id="production-truth"></section>
+
+        <section id="pulse" class="panel hero-panel">
+          <div>
+            <p class="eyebrow">Business Pulse</p>
+            <h2 id="pulse-text">Loading...</h2>
+            <p id="period-text"></p>
+          </div>
+          <div class="module-list" id="module-list"></div>
+        </section>
+
+        <section id="metrics" class="grid metrics-grid"></section>
+
+        <section class="grid two-column">
+          <div class="panel" id="findings">
+            <div class="section-heading">
+              <p class="eyebrow">Signals</p>
+              <h2>Findings and focus</h2>
+            </div>
+            <div id="findings-list" class="stack"></div>
+          </div>
+          <div class="panel">
+            <div class="section-heading">
+              <p class="eyebrow">Execution</p>
+              <h2>Actions and forecasts</h2>
+            </div>
+            <div id="actions-list" class="stack"></div>
+            <div id="forecast-list" class="stack compact"></div>
+          </div>
+        </section>
+
+        <section id="launch" class="panel">
+          <div class="section-heading">
+            <p class="eyebrow">Launch Readiness</p>
+            <h2>Gate evidence</h2>
+          </div>
+          <div class="gate-table" id="gate-table"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <p class="eyebrow">Still Required</p>
+            <h2>Before real public production</h2>
+          </div>
+          <ul id="next-work" class="next-list"></ul>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
