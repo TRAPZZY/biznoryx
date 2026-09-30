@@ -303,7 +303,11 @@ function bindForm(id, action) {
       const output = form.querySelector(".form-message");
 
       button.disabled = true;
-      output.textContent = "Working...";
+
+      if (output) {
+        output.textContent = "Working...";
+        output.classList.remove("error-text");
+      }
 
       try {
         await action(
@@ -311,8 +315,10 @@ function bindForm(id, action) {
           form,
         );
       } catch (error) {
-        output.textContent = error.message;
-        output.classList.add("error-text");
+        if (output) {
+          output.textContent = error.message;
+          output.classList.add("error-text");
+        }
       } finally {
         button.disabled = false;
       }
@@ -1761,27 +1767,32 @@ function shell(content, active) {
         };
     });
 
-  document.querySelector(
-    "#org-switch",
-  ).onchange =
-    async (event) => {
-      try {
-        await api(
-          "organizations/switch",
-          {
-            organizationId:
-              event.target.value,
-          },
-        );
+  const orgSwitch =
+    document.querySelector(
+      "#org-switch",
+    );
 
-        validation = null;
-        activeSeriesKey = null;
+  if (orgSwitch) {
+    orgSwitch.onchange =
+      async (event) => {
+        try {
+          await api(
+            "organizations/switch",
+            {
+              organizationId:
+                event.target.value,
+            },
+          );
 
-        await route();
-      } catch (error) {
-        showError(error);
-      }
-    };
+          validation = null;
+          activeSeriesKey = null;
+
+          await route();
+        } catch (error) {
+          showError(error);
+        }
+      };
+  }
 }
 
 function subscriptionBanner(
@@ -2101,7 +2112,11 @@ function business() {
 
 function dataPage() {
   const uploads =
-    dashboard.uploads;
+    Array.isArray(
+      dashboard?.uploads,
+    )
+      ? dashboard.uploads
+      : [];
 
   shell(
     `
@@ -2335,7 +2350,9 @@ function dataPage() {
 
                             <td>
                               ${esc(
-                                u.period,
+                                u.period ||
+                                  u.periodLabel ||
+                                  "—",
                               )}
                             </td>
 
@@ -2366,14 +2383,23 @@ function dataPage() {
                             <td>
                               <span
                                 class="status ${
-                                  u.status ===
-                                  "confirmed"
+                                  [
+                                    "confirmed",
+                                    "validated",
+                                    "processed",
+                                    "ready",
+                                  ].includes(
+                                    u.status,
+                                  )
                                     ? "success"
                                     : ""
                                 }"
                               >
                                 ${esc(
-                                  u.status.replaceAll(
+                                  String(
+                                    u.status ||
+                                      "unknown",
+                                  ).replaceAll(
                                     "_",
                                     " ",
                                   ),
@@ -2387,6 +2413,7 @@ function dataPage() {
                                 data-id="${
                                   u.id
                                 }"
+                                type="button"
                               >
                                 Review
                                 ${icon(
@@ -2419,53 +2446,69 @@ function dataPage() {
       '[name="file"]',
     );
 
-  fileInput.onchange = () => {
-    const files = [
-      ...fileInput.files,
-    ];
+  if (fileInput) {
+    fileInput.onchange = () => {
+      const files = [
+        ...fileInput.files,
+      ];
 
-    document.querySelector(
-      "#file-label",
-    ).textContent =
-      files.length
-        ? `${files.length} file${
-            files.length === 1
-              ? ""
-              : "s"
-          } selected`
-        : "Choose business files";
-  };
+      const fileLabel =
+        document.querySelector(
+          "#file-label",
+        );
+
+      if (fileLabel) {
+        fileLabel.textContent =
+          files.length
+            ? `${files.length} file${
+                files.length === 1
+                  ? ""
+                  : "s"
+              } selected`
+            : "Choose business files";
+      }
+    };
+  }
 
   const drop =
     document.querySelector(
       "#dropzone",
     );
 
-  drop.ondragover = (e) => {
-    e.preventDefault();
+  if (
+    drop &&
+    fileInput
+  ) {
+    drop.ondragover = (e) => {
+      e.preventDefault();
 
-    drop.classList.add(
-      "dragging",
-    );
-  };
+      drop.classList.add(
+        "dragging",
+      );
+    };
 
-  drop.ondragleave = () =>
-    drop.classList.remove(
-      "dragging",
-    );
+    drop.ondragleave = () =>
+      drop.classList.remove(
+        "dragging",
+      );
 
-  drop.ondrop = (e) => {
-    e.preventDefault();
+    drop.ondrop = (e) => {
+      e.preventDefault();
 
-    drop.classList.remove(
-      "dragging",
-    );
+      drop.classList.remove(
+        "dragging",
+      );
 
-    fileInput.files =
-      e.dataTransfer.files;
+      try {
+        fileInput.files =
+          e.dataTransfer.files;
+      } catch {
+        return;
+      }
 
-    fileInput.onchange();
-  };
+      fileInput.onchange();
+    };
+  }
 
   bindForm(
     "#upload-form",
@@ -2522,7 +2565,15 @@ function dataPage() {
         );
 
       validation =
-        result.upload;
+        result?.upload ||
+        (
+          Array.isArray(
+            result?.uploads,
+          )
+            ? result.uploads[0] ||
+              null
+            : null
+        );
 
       dashboard =
         await api(
@@ -2535,7 +2586,7 @@ function dataPage() {
         .querySelector(
           "#validation-result",
         )
-        .scrollIntoView({
+        ?.scrollIntoView({
           behavior: "smooth",
           block: "start",
         });
@@ -2547,14 +2598,15 @@ function dataPage() {
       ".review-upload",
     )
     .forEach(
-      (b) =>
-        (b.onclick = () => {
+      (button) => {
+        button.onclick = () => {
           validation =
             uploads.find(
-              (u) =>
-                u.id ===
-                b.dataset.id,
-            );
+              (upload) =>
+                upload.id ===
+                button.dataset.id,
+            ) ||
+            null;
 
           dataPage();
 
@@ -2562,16 +2614,25 @@ function dataPage() {
             .querySelector(
               "#validation-result",
             )
-            .scrollIntoView({
+            ?.scrollIntoView({
               behavior:
                 "smooth",
             });
-        }),
+        };
+      },
     );
 
   bindForm(
     "#confirm-form",
     async () => {
+      if (
+        !validation?.id
+      ) {
+        throw new Error(
+          "No upload is selected for confirmation.",
+        );
+      }
+
       await api(
         "ingestion/confirm",
         {
@@ -2656,6 +2717,48 @@ async function fileToBase64(
 }
 
 function validationHtml(u) {
+  if (!u) {
+    return "";
+  }
+
+  const issues =
+    Array.isArray(u.issues)
+      ? u.issues
+      : [];
+
+  const columns =
+    Array.isArray(u.columns)
+      ? u.columns
+      : [];
+
+  const preview =
+    Array.isArray(u.preview)
+      ? u.preview
+      : [];
+
+  const rowCount =
+    Number.isFinite(
+      Number(
+        u.rowCount ??
+          u.sourceRowCount,
+      ),
+    )
+      ? Number(
+          u.rowCount ??
+            u.sourceRowCount,
+        )
+      : 0;
+
+  const isConfirmed =
+    [
+      "confirmed",
+      "validated",
+      "processed",
+      "ready",
+    ].includes(
+      u.status,
+    );
+
   return `
     <section class="validation">
       <div class="section-heading">
@@ -2666,25 +2769,27 @@ function validationHtml(u) {
 
           <h2>
             ${
-              u.issues.length
+              issues.length
                 ? "A few things need attention."
-                : u.status ===
-                    "confirmed"
-                  ? "This period is confirmed."
+                : isConfirmed
+                  ? "This source has passed validation."
                   : "Your data is ready to review."
             }
           </h2>
         </div>
 
         ${icon(
-          u.issues.length
+          issues.length
             ? "circle-alert"
             : "circle-check",
         )}
       </div>
 
       <p>
-        ${esc(u.fileName)}
+        ${esc(
+          u.fileName ||
+            "Business file",
+        )}
         &middot;
         ${esc(
           u.sourceFormat ||
@@ -2692,27 +2797,34 @@ function validationHtml(u) {
             "Business file",
         )}
         &middot;
-        ${u.rowCount} rows
+        ${rowCount} rows
         &middot;
-        ${esc(u.period)}
+        ${esc(
+          u.period ||
+            u.periodLabel ||
+            "Reporting period",
+        )}
       </p>
 
       ${
-        u.issues.length
+        issues.length
           ? `
             <ul class="validation-errors">
-              ${u.issues
+              ${issues
                 .map(
-                  (i) => `
+                  (issue) => `
                     <li>
                       ${
-                        i.row
-                          ? `Row ${i.row}: `
+                        issue?.row
+                          ? `Row ${esc(
+                              issue.row,
+                            )}: `
                           : ""
                       }
 
                       ${esc(
-                        i.message,
+                        issue?.message ||
+                          "Validation issue",
                       )}
                     </li>
                   `,
@@ -2727,6 +2839,7 @@ function validationHtml(u) {
                 <strong>
                   ${esc(
                     u.dataKind ||
+                      u.sourceFormat ||
                       "Business dataset",
                   )}
                 </strong>
@@ -2736,7 +2849,9 @@ function validationHtml(u) {
                 Metric column
                 <strong>
                   ${esc(
-                    u.metricColumn,
+                    u.metricColumn ||
+                      u.sourceColumn ||
+                      "Auto-detected",
                   )}
                 </strong>
               </span>
@@ -2760,104 +2875,117 @@ function validationHtml(u) {
               <span>
                 Rows checked
                 <strong>
-                  ${u.rowCount}
+                  ${rowCount}
                 </strong>
               </span>
             </div>
 
-            <div class="evidence-preview">
-              <h3>
-                Evidence captured
-              </h3>
+            ${
+              rowCount ||
+              columns.length ||
+              u.checksum
+                ? `
+                  <div class="evidence-preview">
+                    <h3>
+                      Evidence captured
+                    </h3>
 
-              <ul>
-                <li>
-                  <strong>
-                    VERIFIED FACT
-                  </strong>
+                    <ul>
+                      <li>
+                        <strong>
+                          VERIFIED FACT
+                        </strong>
 
-                  <span>
-                    ${u.rowCount}
-                    row(s),
-                    ${u.columns.length}
-                    column(s),
-                    checksum
-                    ${esc(
-                      String(
-                        u.checksum,
-                      ).slice(
-                        0,
-                        12,
-                      ),
-                    )}
-                  </span>
-                </li>
+                        <span>
+                          ${rowCount}
+                          row(s),
+                          ${columns.length}
+                          column(s)${
+                            u.checksum
+                              ? `, checksum ${esc(
+                                  String(
+                                    u.checksum,
+                                  ).slice(
+                                    0,
+                                    12,
+                                  ),
+                                )}`
+                              : ""
+                          }
+                        </span>
+                      </li>
 
-                <li>
-                  <strong>
-                    VERIFIED FACT
-                  </strong>
+                      <li>
+                        <strong>
+                          VERIFIED FACT
+                        </strong>
 
-                  <span>
-                    Source processed as
-                    ${esc(
-                      u.sourceFormat ||
-                        "business file",
-                    )}.
-                  </span>
-                </li>
+                        <span>
+                          Source processed as
+                          ${esc(
+                            u.sourceFormat ||
+                              "business file",
+                          )}.
+                        </span>
+                      </li>
 
-                <li>
-                  <strong>
-                    VERIFIED FACT
-                  </strong>
+                      ${
+                        u.metricColumn ||
+                        u.sourceColumn
+                          ? `
+                            <li>
+                              <strong>
+                                VERIFIED FACT
+                              </strong>
 
-                  <span>
-                    Calculation uses
-                    sum(${esc(
-                      u.metricColumn,
-                    )})
-                    for
-                    ${esc(
-                      u.dataSeries ||
-                        "Primary performance",
-                    )}.
-                  </span>
-                </li>
+                              <span>
+                                Metric source:
+                                ${esc(
+                                  u.metricColumn ||
+                                    u.sourceColumn,
+                                )}.
+                              </span>
+                            </li>
+                          `
+                          : ""
+                      }
 
-                <li>
-                  <strong>
-                    REPORT READY
-                  </strong>
+                      <li>
+                        <strong>
+                          REPORT READY
+                        </strong>
 
-                  <span>
-                    Confirm this file to generate the
-                    evidence report and compare it with
-                    prior periods.
-                  </span>
-                </li>
-              </ul>
-            </div>
+                        <span>
+                          Verified processing adds this source
+                          to the business evidence history.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
 
-            ${profileSummaryHtml(
-              u,
-            )}
+                  ${profileSummaryHtml(
+                    u,
+                  )}
+                `
+                : ""
+            }
           `
       }
 
       ${
-        u.columns?.length
+        columns.length &&
+        preview.length
           ? `
             <div class="table-scroll">
               <table>
                 <thead>
                   <tr>
-                    ${u.columns
+                    ${columns
                       .map(
-                        (c) =>
+                        (column) =>
                           `<th>
                             ${esc(
-                              c,
+                              column,
                             )}
                           </th>`,
                       )
@@ -2866,16 +2994,18 @@ function validationHtml(u) {
                 </thead>
 
                 <tbody>
-                  ${u.preview
+                  ${preview
                     .map(
-                      (r) => `
+                      (row) => `
                         <tr>
-                          ${u.columns
+                          ${columns
                             .map(
-                              (c) =>
+                              (column) =>
                                 `<td>
                                   ${esc(
-                                    r[c],
+                                    row?.[
+                                      column
+                                    ],
                                   )}
                                 </td>`,
                             )
@@ -2890,39 +3020,45 @@ function validationHtml(u) {
 
             <p class="input-help">
               First
-              ${u.preview.length}
+              ${preview.length}
               rows of
-              ${u.rowCount}.
+              ${rowCount}.
               Original content is retained with the
               import.
             </p>
           `
           : `
             <p class="input-help">
-              This source is retained for review, but no
-              table rows were extracted for confirmation.
+              This source is retained for review. A table
+              preview is shown when structured rows are
+              available.
             </p>
           `
       }
 
-      <form id="confirm-form">
-        <button
-          class="primary"
-          type="submit"
-          ${
-            u.issues.length ||
-            u.status ===
-              "confirmed"
-              ? "disabled"
-              : ""
-          }
-        >
-          Confirm and add to dashboard
-          ${icon("check")}
-        </button>
+      ${
+        u.status ===
+          "awaiting_confirmation"
+          ? `
+            <form id="confirm-form">
+              <button
+                class="primary"
+                type="submit"
+                ${
+                  issues.length
+                    ? "disabled"
+                    : ""
+                }
+              >
+                Confirm and add to dashboard
+                ${icon("check")}
+              </button>
 
-        ${message()}
-      </form>
+              ${message()}
+            </form>
+          `
+          : ""
+      }
     </section>
   `;
 }
@@ -4864,12 +5000,17 @@ async function reports() {
       "/reports",
     );
 
-    document.querySelector(
-      "#report-retry",
-    ).onclick = () => {
-      reportOptions = {};
-      reports();
-    };
+    const retry =
+      document.querySelector(
+        "#report-retry",
+      );
+
+    if (retry) {
+      retry.onclick = () => {
+        reportOptions = {};
+        reports();
+      };
+    }
   }
 }
 
@@ -5032,40 +5173,50 @@ function bindReportControls() {
       },
     );
 
-  document.querySelector(
-    "[data-report-refresh]",
-  ).onclick = () =>
-    reports();
-
-  document.querySelector(
-    "[data-report-print]",
-  ).onclick = () => {
-    const closed = [
-      ...document.querySelectorAll(
-        ".evidence-report details:not([open])",
-      ),
-    ];
-
-    closed.forEach(
-      (details) =>
-        (details.open = true),
+  const refresh =
+    document.querySelector(
+      "[data-report-refresh]",
     );
 
-    window.addEventListener(
-      "afterprint",
-      () =>
-        closed.forEach(
-          (details) =>
-            (details.open =
-              false),
+  if (refresh) {
+    refresh.onclick = () =>
+      reports();
+  }
+
+  const print =
+    document.querySelector(
+      "[data-report-print]",
+    );
+
+  if (print) {
+    print.onclick = () => {
+      const closed = [
+        ...document.querySelectorAll(
+          ".evidence-report details:not([open])",
         ),
-      {
-        once: true,
-      },
-    );
+      ];
 
-    window.print();
-  };
+      closed.forEach(
+        (details) =>
+          (details.open = true),
+      );
+
+      window.addEventListener(
+        "afterprint",
+        () =>
+          closed.forEach(
+            (details) =>
+              (details.open =
+                false),
+          ),
+        {
+          once: true,
+        },
+      );
+
+      window.print();
+    };
+  }
 
   document
     .querySelectorAll(
@@ -5126,14 +5277,19 @@ function bindReportControls() {
               .querySelector(
                 "#definition-dialog",
               )
-              .close();
+              ?.close();
 
             await reports();
 
-            document.querySelector(
-              ".er-status",
-            ).textContent =
-              "Metric definition approved. The report has been recalculated.";
+            const status =
+              document.querySelector(
+                ".er-status",
+              );
+
+            if (status) {
+              status.textContent =
+                "Metric definition approved. The report has been recalculated.";
+            }
           },
         );
       };
@@ -5154,8 +5310,10 @@ function bindReportControls() {
               ".er-status",
             );
 
-          status.textContent =
-            "Preparing the report...";
+          if (status) {
+            status.textContent =
+              "Preparing the report...";
+          }
 
           try {
             const format =
@@ -5180,10 +5338,17 @@ function bindReportControls() {
             if (
               !response.ok
             ) {
+              let payload = {};
+
+              try {
+                payload =
+                  await response.json();
+              } catch {
+                payload = {};
+              }
+
               throw new Error(
-                (
-                  await response.json()
-                ).message ||
+                payload.message ||
                   "Export failed. Try again.",
               );
             }
@@ -5220,11 +5385,15 @@ function bindReportControls() {
               30000,
             );
 
-            status.textContent =
-              "Report downloaded.";
+            if (status) {
+              status.textContent =
+                "Report downloaded.";
+            }
           } catch (error) {
-            status.textContent =
-              error.message;
+            if (status) {
+              status.textContent =
+                error.message;
+            }
           } finally {
             button.disabled =
               false;
@@ -5257,10 +5426,19 @@ function openReportDialog(
       ".er-dialog",
     );
 
-  dialog.querySelector(
-    "[data-close-dialog]",
-  ).onclick = () =>
-    dialog.close();
+  if (!dialog) {
+    return;
+  }
+
+  const close =
+    dialog.querySelector(
+      "[data-close-dialog]",
+    );
+
+  if (close) {
+    close.onclick = () =>
+      dialog.close();
+  }
 
   dialog.addEventListener(
     "close",
@@ -5278,146 +5456,598 @@ function openReportDialog(
 
 function billingPage() {
   const subscription =
-    dashboard.subscription;
+    dashboard?.subscription ?? null;
+
+  const uploads =
+    Array.isArray(dashboard?.uploads)
+      ? dashboard.uploads
+      : [];
+
+  const evidenceReports =
+    Array.isArray(
+      dashboard?.evidenceReports,
+    )
+      ? dashboard.evidenceReports
+      : [];
+
+  const status =
+    subscription?.status ||
+    "not_started";
+
+  const isActive =
+    status === "active";
+
+  const isPending =
+    status === "pending_checkout";
+
+  const providerConfigured =
+    Boolean(
+      subscription?.providerConfigured,
+    );
+
+  const isLocalReviewHost =
+    [
+      "localhost",
+      "127.0.0.1",
+      "::1",
+    ].includes(
+      location.hostname,
+    );
+
+  const canStartCheckout =
+    providerConfigured ||
+    isLocalReviewHost;
+
+  const priceLabel =
+    subscription?.priceLabel ||
+    "$20.00/mo";
+
+  const planName =
+    subscription?.planName ||
+    "BIZNORYX Monthly";
+
+  const statusDetails =
+    {
+      active: {
+        label: "Active",
+        tone: "active",
+        description:
+          "Your BIZNORYX subscription is active and your paid workspace is enabled.",
+      },
+
+      pending_checkout: {
+        label: "Payment pending",
+        tone: "pending",
+        description:
+          "Your checkout has started. Complete payment to activate the subscription.",
+      },
+
+      trialing: {
+        label: "Trial",
+        tone: "trial",
+        description:
+          "Your workspace is currently using trial access.",
+      },
+
+      past_due: {
+        label: "Past due",
+        tone: "danger",
+        description:
+          "A subscription payment needs attention before paid access can continue.",
+      },
+
+      non_renewing: {
+        label: "Non-renewing",
+        tone: "warning",
+        description:
+          "Your subscription remains available until the current billing period ends.",
+      },
+
+      canceled: {
+        label: "Canceled",
+        tone: "neutral",
+        description:
+          "This subscription is no longer renewing.",
+      },
+
+      not_started: {
+        label: "Not active",
+        tone: "neutral",
+        description:
+          "Activate BIZNORYX when billing is available for this workspace.",
+      },
+    }[status] || {
+      label:
+        String(status).replaceAll(
+          "_",
+          " ",
+        ),
+
+      tone: "neutral",
+
+      description:
+        "Review the current subscription status.",
+    };
+
+  const renewalLabel =
+    subscription?.currentPeriodEnd
+      ? new Date(
+          subscription.currentPeriodEnd,
+        ).toLocaleDateString(
+          undefined,
+          {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          },
+        )
+      : isActive
+        ? "Current period active"
+        : "After activation";
+
+  const retainedBytes =
+    uploads.reduce(
+      (total, upload) => {
+        const size =
+          Number(
+            upload?.sourceSizeBytes ??
+              upload?.sizeBytes ??
+              0,
+          );
+
+        return Number.isFinite(
+          size,
+        ) &&
+          size > 0
+          ? total + size
+          : total;
+      },
+      0,
+    );
+
+  const formatBytes =
+    (bytes) => {
+      if (
+        !Number.isFinite(
+          bytes,
+        ) ||
+        bytes <= 0
+      ) {
+        return "—";
+      }
+
+      const units = [
+        "B",
+        "KB",
+        "MB",
+        "GB",
+        "TB",
+      ];
+
+      let value = bytes;
+      let index = 0;
+
+      while (
+        value >= 1024 &&
+        index <
+          units.length - 1
+      ) {
+        value /= 1024;
+        index += 1;
+      }
+
+      return `${
+        value >= 10 ||
+        index === 0
+          ? value.toFixed(0)
+          : value.toFixed(1)
+      } ${units[index]}`;
+    };
+
+  const featureRows = [
+    [
+      "database",
+      "Recurring business-data processing",
+    ],
+
+    [
+      "line-chart",
+      "Verified metrics and historical comparisons",
+    ],
+
+    [
+      "file-check-2",
+      "Evidence reports backed by source data",
+    ],
+
+    [
+      "download",
+      "Professional report exports",
+    ],
+
+    [
+      "history",
+      "Persistent business performance history",
+    ],
+  ];
 
   shell(
     `
-      ${heading(
-        "BILLING",
-        "Subscription and checkout",
-        "BIZNORYX is priced at one clear monthly subscription.",
-        subscription?.status ===
-          "active"
-          ? ""
-          : `
-            <button
-              id="start-checkout"
-              class="primary"
-              type="button"
-            >
-              ${icon(
-                "credit-card",
-              )}
-              Start
-              ${esc(
-                subscription
-                  ?.priceLabel ||
-                  "$20.00/mo",
-              )}
-              checkout
-            </button>
-          `,
-      )}
+      <section class="billing-v2">
+        <header class="billing-v2-hero">
+          <div>
+            <p class="overline">
+              BILLING & SUBSCRIPTION
+            </p>
 
-      <section class="billing-layout">
-        <article class="billing-plan">
-          <p class="overline">
-            Current plan
-          </p>
+            <h1>
+              Manage your BIZNORYX plan.
+            </h1>
 
-          <h2>
+            <p>
+              Keep your workspace, verified analytics,
+              reports and business history connected
+              under one subscription.
+            </p>
+          </div>
+
+          <span
+            class="billing-status ${esc(
+              statusDetails.tone,
+            )}"
+          >
+            <span
+              aria-hidden="true"
+            ></span>
+
             ${esc(
-              subscription
-                ?.planName ||
-                "BIZNORYX Monthly",
+              statusDetails.label,
             )}
-          </h2>
+          </span>
+        </header>
 
-          <strong>
-            ${esc(
-              subscription
-                ?.priceLabel ||
-                "$20.00/mo",
-            )}
-          </strong>
+        <div class="billing-v2-grid">
+          <article class="billing-plan-card">
+            <div class="billing-plan-top">
+              <div>
+                <p class="overline">
+                  CURRENT PLAN
+                </p>
 
-          <p>
-            ${esc(
-              subscription
-                ?.nextStep ||
-                "Review billing status",
-            )}
-          </p>
+                <h2>
+                  ${esc(
+                    planName,
+                  )}
+                </h2>
+              </div>
 
-          <dl>
-            <div>
-              <dt>
-                Status
-              </dt>
+              <span class="billing-plan-chip">
+                Monthly
+              </span>
+            </div>
 
-              <dd>
+            <div class="billing-price-row">
+              <strong>
                 ${esc(
-                  subscription
-                    ?.status
-                    ?.replaceAll(
-                      "_",
-                      " ",
-                    ) ||
-                    "not started",
+                  priceLabel.replace(
+                    /\/mo$/i,
+                    "",
+                  ),
                 )}
-              </dd>
+              </strong>
+
+              <span>
+                / month
+              </span>
             </div>
 
-            <div>
-              <dt>
-                Payment provider
-              </dt>
+            <p class="billing-plan-description">
+              One workspace for turning recurring business
+              data into verified performance evidence,
+              historical context and decision-ready reports.
+            </p>
 
-              <dd>
+            <div class="billing-feature-list">
+              ${featureRows
+                .map(
+                  ([
+                    featureIcon,
+                    label,
+                  ]) => `
+                    <div class="billing-feature-row">
+                      <span>
+                        ${icon(
+                          featureIcon,
+                        )}
+                      </span>
+
+                      <p>
+                        ${esc(
+                          label,
+                        )}
+                      </p>
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>
+
+            <div class="billing-plan-actions">
+              ${
+                isActive
+                  ? `
+                    <div class="billing-active-confirmation">
+                      ${icon(
+                        "circle-check",
+                      )}
+
+                      <div>
+                        <strong>
+                          Subscription active
+                        </strong>
+
+                        <span>
+                          Your paid workspace is currently enabled.
+                        </span>
+                      </div>
+                    </div>
+                  `
+                  : subscription &&
+                      canStartCheckout
+                    ? `
+                      <button
+                        id="open-billing-checkout"
+                        class="primary billing-primary-action"
+                        type="button"
+                      >
+                        ${icon(
+                          "credit-card",
+                        )}
+
+                        ${
+                          isPending
+                            ? "Continue payment"
+                            : "Activate subscription"
+                        }
+                      </button>
+                    `
+                    : `
+                      <button
+                        class="primary billing-primary-action"
+                        type="button"
+                        disabled
+                      >
+                        ${icon(
+                          "lock",
+                        )}
+
+                        ${
+                          subscription
+                            ? "Payments unavailable"
+                            : "Billing setup in progress"
+                        }
+                      </button>
+                    `
+              }
+
+              <p class="billing-security-note">
+                ${icon(
+                  "shield-check",
+                )}
+
+                Secure checkout powered by Paystack.
+                BIZNORYX does not store your card details.
+              </p>
+            </div>
+          </article>
+
+          <div class="billing-side-stack">
+            <article class="billing-summary-card">
+              <div class="billing-card-heading">
+                <div>
+                  <p class="overline">
+                    SUBSCRIPTION
+                  </p>
+
+                  <h2>
+                    Account status
+                  </h2>
+                </div>
+
+                ${icon(
+                  "credit-card",
+                )}
+              </div>
+
+              <p class="billing-status-description">
                 ${esc(
-                  subscription
-                    ?.providerConfigured
-                    ? "Paystack configured"
-                    : "Local review mode",
+                  statusDetails.description,
                 )}
-              </dd>
+              </p>
+
+              <dl class="billing-summary-list">
+                <div>
+                  <dt>
+                    Status
+                  </dt>
+
+                  <dd>
+                    ${esc(
+                      statusDetails.label,
+                    )}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>
+                    Payment provider
+                  </dt>
+
+                  <dd>
+                    ${esc(
+                      providerConfigured
+                        ? "Paystack"
+                        : isLocalReviewHost
+                          ? "Development review"
+                          : "Unavailable",
+                    )}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>
+                    Next renewal
+                  </dt>
+
+                  <dd>
+                    ${esc(
+                      renewalLabel,
+                    )}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>
+                    Billing interval
+                  </dt>
+
+                  <dd>
+                    ${esc(
+                      subscription?.interval ||
+                        "monthly",
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="billing-summary-card">
+              <div class="billing-card-heading">
+                <div>
+                  <p class="overline">
+                    WORKSPACE
+                  </p>
+
+                  <h2>
+                    Current usage
+                  </h2>
+                </div>
+
+                ${icon(
+                  "bar-chart-3",
+                )}
+              </div>
+
+              <div class="billing-usage-grid">
+                <div class="billing-usage-item">
+                  <span>
+                    Uploads
+                  </span>
+
+                  <strong>
+                    ${uploads.length}
+                  </strong>
+
+                  <small>
+                    Data sources retained
+                  </small>
+                </div>
+
+                <div class="billing-usage-item">
+                  <span>
+                    Evidence reports
+                  </span>
+
+                  <strong>
+                    ${evidenceReports.length}
+                  </strong>
+
+                  <small>
+                    Report sources available
+                  </small>
+                </div>
+
+                <div class="billing-usage-item">
+                  <span>
+                    Source data
+                  </span>
+
+                  <strong>
+                    ${esc(
+                      formatBytes(
+                        retainedBytes,
+                      ),
+                    )}
+                  </strong>
+
+                  <small>
+                    Tracked file storage
+                  </small>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <section class="billing-history-card">
+          <div class="billing-card-heading">
+            <div>
+              <p class="overline">
+                PAYMENTS
+              </p>
+
+              <h2>
+                Billing history
+              </h2>
             </div>
+
+            ${icon(
+              "receipt",
+            )}
+          </div>
+
+          <div class="billing-empty-history">
+            ${icon(
+              "receipt",
+            )}
 
             <div>
-              <dt>
-                Next renewal
-              </dt>
+              <strong>
+                No payment history to show yet
+              </strong>
 
-              <dd>
-                ${
-                  subscription
-                    ?.currentPeriodEnd
-                    ? esc(
-                        new Date(
-                          subscription.currentPeriodEnd,
-                        ).toLocaleDateString(),
-                      )
-                    : "After activation"
-                }
-              </dd>
+              <p>
+                Successful subscription payments and
+                receipts will appear here.
+              </p>
             </div>
-          </dl>
-        </article>
+          </div>
+        </section>
 
-        <article class="billing-plan muted-plan">
-          <p class="overline">
-            Launch configuration
-          </p>
+        ${
+          isLocalReviewHost &&
+          !providerConfigured &&
+          subscription
+            ?.checkoutReference &&
+          !isActive
+            ? `
+              <section class="billing-test-panel">
+                <div>
+                  <p class="overline">
+                    TEST ENVIRONMENT
+                  </p>
 
-          <h2>
-            Connect your Paystack account before public
-            launch.
-          </h2>
+                  <strong>
+                    Local checkout completion is available
+                    for development.
+                  </strong>
 
-          <p>
-            The checkout API is ready for
-            PAYSTACK_SECRET_KEY, PAYSTACK_PLAN_CODE,
-            PAYSTACK_CURRENCY, and PUBLIC_APP_URL.
-            Local review uses a simulated completion button
-            so the product flow can be tested safely.
-          </p>
+                  <p>
+                    This control disappears when Paystack
+                    is configured for the workspace.
+                  </p>
+                </div>
 
-          ${
-            subscription
-              ?.checkoutReference &&
-            subscription.status !==
-              "active"
-              ? `
                 <button
                   id="complete-review-checkout"
                   class="secondary"
@@ -5426,32 +6056,240 @@ function billingPage() {
                   ${icon(
                     "check",
                   )}
-                  Complete local review checkout
-                </button>
-              `
-              : ""
-          }
 
-          <p
-            class="form-message"
-            role="status"
-            aria-live="polite"
-          ></p>
-        </article>
+                  Complete test checkout
+                </button>
+              </section>
+            `
+            : ""
+        }
+
+        <p
+          id="billing-page-message"
+          class="form-message billing-page-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+
+        <dialog
+          id="billing-checkout-dialog"
+          class="billing-dialog"
+          aria-labelledby="billing-dialog-title"
+        >
+          <div class="billing-dialog-card">
+            <div class="billing-dialog-head">
+              <div>
+                <p class="overline">
+                  CONFIRM SUBSCRIPTION
+                </p>
+
+                <h2
+                  id="billing-dialog-title"
+                >
+                  Activate ${esc(
+                    planName,
+                  )}
+                </h2>
+              </div>
+
+              <button
+                class="billing-dialog-close"
+                type="button"
+                data-billing-dialog-close
+                aria-label="Close billing confirmation"
+              >
+                ${icon(
+                  "x",
+                )}
+              </button>
+            </div>
+
+            <div class="billing-dialog-plan">
+              <div>
+                <span>
+                  Monthly subscription
+                </span>
+
+                <strong>
+                  ${esc(
+                    priceLabel,
+                  )}
+                </strong>
+              </div>
+
+              ${icon(
+                "shield-check",
+              )}
+            </div>
+
+            <div class="billing-dialog-features">
+              ${featureRows
+                .map(
+                  ([
+                    ,
+                    label,
+                  ]) => `
+                    <div>
+                      ${icon(
+                        "check",
+                      )}
+
+                      <span>
+                        ${esc(
+                          label,
+                        )}
+                      </span>
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>
+
+            <p class="billing-dialog-note">
+              You will continue to Paystack to complete
+              payment securely. Subscription access is
+              activated only after BIZNORYX confirms the
+              payment with the billing provider.
+            </p>
+
+            <p
+              id="billing-checkout-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <div class="billing-dialog-actions">
+              <button
+                class="secondary"
+                type="button"
+                data-billing-dialog-close
+              >
+                Cancel
+              </button>
+
+              <button
+                id="confirm-billing-checkout"
+                class="primary"
+                type="button"
+              >
+                ${icon(
+                  "lock",
+                )}
+
+                Continue to payment
+              </button>
+            </div>
+          </div>
+        </dialog>
       </section>
     `,
     "/billing",
   );
 
-  const start =
+  const dialog =
     document.querySelector(
-      "#start-checkout",
+      "#billing-checkout-dialog",
     );
 
-  if (start) {
-    start.onclick =
+  const openCheckout =
+    document.querySelector(
+      "#open-billing-checkout",
+    );
+
+  const confirmCheckout =
+    document.querySelector(
+      "#confirm-billing-checkout",
+    );
+
+  const pageMessage =
+    document.querySelector(
+      "#billing-page-message",
+    );
+
+  const checkoutMessage =
+    () =>
+      document.querySelector(
+        "#billing-checkout-message",
+      );
+
+  const closeDialog =
+    () => {
+      if (
+        dialog?.open
+      ) {
+        dialog.close();
+      }
+    };
+
+  document
+    .querySelectorAll(
+      "[data-billing-dialog-close]",
+    )
+    .forEach(
+      (button) => {
+        button.onclick =
+          closeDialog;
+      },
+    );
+
+  if (dialog) {
+    dialog.addEventListener(
+      "click",
+      (event) => {
+        if (
+          event.target ===
+          dialog
+        ) {
+          closeDialog();
+        }
+      },
+    );
+  }
+
+  if (
+    openCheckout &&
+    dialog
+  ) {
+    openCheckout.onclick =
+      () => {
+        const output =
+          checkoutMessage();
+
+        if (output) {
+          output.textContent =
+            "";
+
+          output.classList.remove(
+            "error-text",
+          );
+        }
+
+        if (
+          !dialog.open
+        ) {
+          dialog.showModal();
+        }
+      };
+  }
+
+  if (confirmCheckout) {
+    confirmCheckout.onclick =
       async () => {
-        start.disabled = true;
+        const output =
+          checkoutMessage();
+
+        confirmCheckout.disabled =
+          true;
+
+        if (output) {
+          output.textContent =
+            "Preparing secure checkout...";
+
+          output.classList.remove(
+            "error-text",
+          );
+        }
 
         try {
           const result =
@@ -5459,6 +6297,15 @@ function billingPage() {
               "billing/checkout",
               {},
             );
+
+          if (
+            !result?.checkout
+              ?.reference
+          ) {
+            throw new Error(
+              "Billing checkout did not return a valid reference.",
+            );
+          }
 
           billingCheckoutReference =
             result.checkout.reference;
@@ -5468,12 +6315,28 @@ function billingPage() {
               .provider ===
             "paystack"
           ) {
+            if (
+              !result.checkout
+                .authorizationUrl
+            ) {
+              throw new Error(
+                "Paystack checkout did not return a payment URL.",
+              );
+            }
+
+            if (output) {
+              output.textContent =
+                "Redirecting to secure payment...";
+            }
+
             location.href =
               result.checkout
                 .authorizationUrl;
 
             return;
           }
+
+          closeDialog();
 
           dashboard =
             await api(
@@ -5482,12 +6345,17 @@ function billingPage() {
 
           billingPage();
         } catch (error) {
-          document.querySelector(
-            ".form-message",
-          ).textContent =
-            error.message;
+          if (output) {
+            output.textContent =
+              error?.message ||
+              "Checkout could not be started.";
+
+            output.classList.add(
+              "error-text",
+            );
+          }
         } finally {
-          start.disabled =
+          confirmCheckout.disabled =
             false;
         }
       };
@@ -5504,15 +6372,32 @@ function billingPage() {
         complete.disabled =
           true;
 
+        if (pageMessage) {
+          pageMessage.textContent =
+            "Completing test checkout...";
+
+          pageMessage.classList.remove(
+            "error-text",
+          );
+        }
+
         try {
+          const reference =
+            billingCheckoutReference ||
+            dashboard
+              ?.subscription
+              ?.checkoutReference;
+
+          if (!reference) {
+            throw new Error(
+              "No checkout reference is available.",
+            );
+          }
+
           await api(
             "billing/review-complete",
             {
-              reference:
-                billingCheckoutReference ||
-                dashboard
-                  .subscription
-                  .checkoutReference,
+              reference,
             },
           );
 
@@ -5523,10 +6408,15 @@ function billingPage() {
 
           billingPage();
         } catch (error) {
-          document.querySelector(
-            ".form-message",
-          ).textContent =
-            error.message;
+          if (pageMessage) {
+            pageMessage.textContent =
+              error?.message ||
+              "Test checkout could not be completed.";
+
+            pageMessage.classList.add(
+              "error-text",
+            );
+          }
         } finally {
           complete.disabled =
             false;
@@ -5536,6 +6426,13 @@ function billingPage() {
 }
 
 function activity() {
+  const auditTrail =
+    Array.isArray(
+      dashboard?.auditTrail,
+    )
+      ? dashboard.auditTrail
+      : [];
+
   shell(
     `
       ${heading(
@@ -5545,8 +6442,7 @@ function activity() {
       )}
 
       ${
-        dashboard.auditTrail
-          .length
+        auditTrail.length
           ? `
             <div class="table-scroll">
               <table>
@@ -5567,7 +6463,7 @@ function activity() {
                 </thead>
 
                 <tbody>
-                  ${dashboard.auditTrail
+                  ${auditTrail
                     .map(
                       (a) => `
                         <tr>
@@ -5629,12 +6525,16 @@ function showError(error) {
       </h1>
 
       <p>
-        ${esc(error.message)}
+        ${esc(
+          error?.message ||
+            "An unexpected error occurred.",
+        )}
       </p>
 
       <button
         id="retry"
         class="primary"
+        type="button"
       >
         Try again
       </button>
@@ -5647,10 +6547,15 @@ function showError(error) {
     </main>
   `);
 
-  document.querySelector(
-    "#retry",
-  ).onclick = () =>
-    route();
+  const retry =
+    document.querySelector(
+      "#retry",
+    );
+
+  if (retry) {
+    retry.onclick = () =>
+      route();
+  }
 }
 
 async function route() {
