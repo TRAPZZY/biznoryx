@@ -14,6 +14,7 @@ const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
 
 function isSidebarCollapsed() {
   if (!window.matchMedia(SIDEBAR_DESKTOP_QUERY).matches) return false;
+
   try {
     return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
   } catch {
@@ -23,7 +24,10 @@ function isSidebarCollapsed() {
 
 function setSidebarCollapsed(collapsed) {
   try {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
+    window.localStorage.setItem(
+      SIDEBAR_STORAGE_KEY,
+      collapsed ? "1" : "0",
+    );
   } catch {
     // The workspace still works when storage is unavailable.
   }
@@ -51,7 +55,11 @@ const link = (href, text, cls = "") =>
   `<a href="#${href}" class="${cls}">${text}</a>`;
 
 const wordmark = () =>
-  link("/", 'BIZNORYX<span class="wordmark-dot">.</span>', "wordmark");
+  link(
+    "/",
+    'BIZNORYX<span class="wordmark-dot">.</span>',
+    "wordmark",
+  );
 
 const money = (
   cents,
@@ -3306,467 +3314,1379 @@ function bindSeriesPicker() {
 }
 
 function overview() {
-  const groups =
-    dashboard.seriesGroups ||
-    [];
+  const profile =
+    dashboard?.profile ||
+    {};
 
-  const activeGroup =
-    groups.find(
-      (group) =>
-        group.key ===
+  const uploads =
+    Array.isArray(
+      dashboard?.uploads,
+    )
+      ? dashboard.uploads
+      : [];
+
+  const reports =
+    Array.isArray(
+      dashboard?.evidenceReports,
+    )
+      ? dashboard.evidenceReports
+      : [];
+
+  const metricSeries =
+    Array.isArray(
+      dashboard?.series,
+    )
+      ? dashboard.series
+          .filter(
+            (item) =>
+              item &&
+              Array.isArray(
+                item.points,
+              ) &&
+              item.points.length,
+          )
+          .map(
+            (item) => ({
+              ...item,
+              points: [
+                ...item.points,
+              ].sort(
+                (left, right) => {
+                  const leftTime =
+                    new Date(
+                      left?.periodStart ||
+                        left?.createdAt ||
+                        0,
+                    ).getTime();
+
+                  const rightTime =
+                    new Date(
+                      right?.periodStart ||
+                        right?.createdAt ||
+                        0,
+                    ).getTime();
+
+                  return (
+                    leftTime -
+                    rightTime
+                  );
+                },
+              ),
+            }),
+          )
+      : [];
+
+  const organization =
+    dashboard?.shell
+      ?.activeOrganization ||
+    session?.shell
+      ?.activeOrganization ||
+    null;
+
+  const businessName =
+    organization?.name ||
+    profile.legalName ||
+    "Your business";
+
+  const currency =
+    profile.primaryCurrency ||
+    "USD";
+
+  const preferredMetricColumns = [
+    "net_revenue",
+    "revenue",
+    "sales",
+    "gross_sales",
+    "gross_profit",
+    "profit",
+    "total_amount",
+    "amount",
+    "quantity",
+  ];
+
+  const metricPriority = (
+    item,
+  ) => {
+    const sourceColumn =
+      String(
+        item?.sourceColumn ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+
+    const index =
+      preferredMetricColumns.indexOf(
+        sourceColumn,
+      );
+
+    return index === -1
+      ? preferredMetricColumns.length
+      : index;
+  };
+
+  const orderedSeries = [
+    ...metricSeries,
+  ].sort(
+    (left, right) =>
+      metricPriority(left) -
+        metricPriority(right) ||
+      String(
+        left?.dataStream
+          ?.displayName ||
+          "",
+      ).localeCompare(
+        String(
+          right?.dataStream
+            ?.displayName ||
+            "",
+        ),
+      ) ||
+      String(
+        left?.label ||
+          "",
+      ).localeCompare(
+        String(
+          right?.label ||
+            "",
+        ),
+      ),
+  );
+
+  const activeMetric =
+    orderedSeries.find(
+      (item) =>
+        item.id ===
         activeSeriesKey,
     ) ||
-    groups.find(
-      (group) =>
-        group.points.length,
-    ) ||
+    orderedSeries[0] ||
     null;
 
   activeSeriesKey =
-    activeGroup?.key ??
+    activeMetric?.id ||
     null;
 
-  const series =
-    activeGroup?.points ||
+  const points =
+    activeMetric?.points ||
     [];
 
   const latest =
-    series.at(-1);
+    points.at(-1) ||
+    null;
 
   const previous =
-    series.at(-2);
+    points.at(-2) ||
+    null;
 
-  const change =
-    metricChangePercent(
-      latest,
-      previous,
+  const numericValue = (
+    value,
+  ) => {
+    const parsed =
+      Number(value);
+
+    return Number.isFinite(
+      parsed,
+    )
+      ? parsed
+      : null;
+  };
+
+  const isCurrencyMetric = (
+    item,
+  ) =>
+    /\b(revenue|sales|income|profit|cost|amount|price|refund|spend|expense|value)\b/i.test(
+      String(
+        item?.sourceColumn ||
+          item?.label ||
+          "",
+      ).replaceAll(
+        "_",
+        " ",
+      ),
+    );
+
+  const formatMetricValue = (
+    value,
+    item = activeMetric,
+  ) => {
+    const parsed =
+      numericValue(value);
+
+    if (parsed === null) {
+      return "—";
+    }
+
+    if (
+      item?.unit ===
+      "percent"
+    ) {
+      return `${numberValue(
+        parsed,
+      )}%`;
+    }
+
+    if (
+      item?.unit ===
+        "count" ||
+      !isCurrencyMetric(
+        item,
+      )
+    ) {
+      return numberValue(
+        parsed,
+      );
+    }
+
+    try {
+      return new Intl.NumberFormat(
+        undefined,
+        {
+          style:
+            "currency",
+          currency,
+          maximumFractionDigits:
+            2,
+        },
+      ).format(
+        parsed,
+      );
+    } catch {
+      return `${currency} ${numberValue(
+        parsed,
+      )}`;
+    }
+  };
+
+  const formatPeriod = (
+    point,
+  ) => {
+    if (
+      point?.periodLabel
+    ) {
+      return String(
+        point.periodLabel,
+      );
+    }
+
+    const raw =
+      String(
+        point?.periodStart ||
+          "",
+      );
+
+    if (!raw) {
+      return "Period";
+    }
+
+    const monthlyMatch =
+      raw.match(
+        /^(\d{4})-(\d{2})/,
+      );
+
+    if (
+      monthlyMatch
+    ) {
+      const year =
+        Number(
+          monthlyMatch[1],
+        );
+
+      const month =
+        Number(
+          monthlyMatch[2],
+        );
+
+      if (
+        Number.isInteger(
+          year,
+        ) &&
+        month >= 1 &&
+        month <= 12
+      ) {
+        return new Intl.DateTimeFormat(
+          undefined,
+          {
+            month:
+              "short",
+            year:
+              "numeric",
+            timeZone:
+              "UTC",
+          },
+        ).format(
+          new Date(
+            Date.UTC(
+              year,
+              month - 1,
+              1,
+            ),
+          ),
+        );
+      }
+    }
+
+    return raw.slice(
+      0,
+      10,
+    );
+  };
+
+  const latestValue =
+    numericValue(
+      latest?.value,
+    );
+
+  const previousValue =
+    numericValue(
+      previous?.value,
+    );
+
+  const changePercent =
+    latestValue !==
+      null &&
+    previousValue !==
+      null &&
+    previousValue !==
+      0
+      ? ((latestValue -
+          previousValue) /
+          Math.abs(
+            previousValue,
+          )) *
+        100
+      : null;
+
+  const acceptedUploadStatuses =
+    new Set([
+      "validated",
+      "confirmed",
+      "processed",
+      "ready",
+    ]);
+
+  const validatedUploads =
+    uploads.filter(
+      (upload) =>
+        acceptedUploadStatuses.has(
+          upload?.status,
+        ),
+    ).length;
+
+  const rejectedUploads =
+    uploads.filter(
+      (upload) =>
+        upload?.status ===
+        "rejected",
+    ).length;
+
+  const schemaWarnings =
+    uploads.filter(
+      (upload) =>
+        Boolean(
+          upload?.schemaDrift,
+        ),
+    ).length;
+
+  const verifiedPeriods =
+    new Set(
+      metricSeries.flatMap(
+        (item) =>
+          item.points.map(
+            (point) =>
+              String(
+                point?.reportingPeriodId ||
+                  point?.periodStart ||
+                  point?.periodLabel ||
+                  "",
+              ),
+          ),
+      ),
+    ).size;
+
+  const latestSourceRows =
+    Number.isFinite(
+      Number(
+        latest?.sourceRowCount,
+      ),
+    )
+      ? Number(
+          latest
+            .sourceRowCount,
+        )
+      : null;
+
+  const findingCollections = [
+    [
+      "Focus",
+      "focus",
+      dashboard?.focusAreas,
+    ],
+    [
+      "Opportunity",
+      "opportunity",
+      dashboard?.opportunities,
+    ],
+    [
+      "Signal",
+      "signal",
+      dashboard?.signals,
+    ],
+    [
+      "Risk",
+      "risk",
+      dashboard?.risks,
+    ],
+  ];
+
+  const findings =
+    findingCollections
+      .flatMap(
+        ([
+          label,
+          kind,
+          items,
+        ]) =>
+          Array.isArray(
+            items,
+          )
+            ? items.map(
+                (item) => ({
+                  label,
+                  kind,
+                  item,
+                }),
+              )
+            : [],
+      )
+      .filter(
+        (entry) =>
+          entry.item &&
+          (entry.item.title ||
+            entry.item
+              .summary),
+      );
+
+  const primaryFinding =
+    findings[0] ||
+    null;
+
+  const trendChartHtml =
+    points.length
+      ? (() => {
+          const width =
+            820;
+          const height =
+            270;
+          const padX =
+            44;
+          const padTop =
+            24;
+          const padBottom =
+            54;
+
+          const chartPoints =
+            points
+              .map(
+                (
+                  point,
+                  index,
+                ) => ({
+                  point,
+                  value:
+                    numericValue(
+                      point?.value,
+                    ),
+                  index,
+                }),
+              )
+              .filter(
+                (item) =>
+                  item.value !==
+                  null,
+              );
+
+          if (
+            !chartPoints.length
+          ) {
+            return "";
+          }
+
+          const values =
+            chartPoints.map(
+              (item) =>
+                item.value,
+            );
+
+          const min =
+            Math.min(
+              ...values,
+            );
+
+          const max =
+            Math.max(
+              ...values,
+            );
+
+          const span =
+            max - min ||
+            Math.abs(max) ||
+            1;
+
+          const plotted =
+            chartPoints.map(
+              (
+                item,
+                index,
+              ) => {
+                const x =
+                  chartPoints.length ===
+                  1
+                    ? width /
+                      2
+                    : padX +
+                      (index *
+                        (width -
+                          padX *
+                            2)) /
+                        (chartPoints.length -
+                          1);
+
+                const y =
+                  padTop +
+                  ((max -
+                    item.value) /
+                    span) *
+                    (height -
+                      padTop -
+                      padBottom);
+
+                return {
+                  ...item,
+                  x,
+                  y,
+                };
+              },
+            );
+
+          const linePath =
+            plotted
+              .map(
+                (
+                  point,
+                  index,
+                ) =>
+                  `${
+                    index ===
+                    0
+                      ? "M"
+                      : "L"
+                  } ${point.x.toFixed(
+                    2,
+                  )} ${point.y.toFixed(
+                    2,
+                  )}`,
+              )
+              .join(
+                " ",
+              );
+
+          const areaPath =
+            `${linePath} ` +
+            `L ${plotted
+              .at(-1)
+              .x.toFixed(
+                2,
+              )} ${(
+              height -
+              padBottom
+            ).toFixed(
+              2,
+            )} ` +
+            `L ${plotted[0].x.toFixed(
+              2,
+            )} ${(
+              height -
+              padBottom
+            ).toFixed(
+              2,
+            )} Z`;
+
+          return `
+            <div
+              class="overview-trend-chart"
+              role="img"
+              aria-label="${esc(
+                activeMetric?.label ||
+                  "Business metric",
+              )} over ${
+                plotted.length
+              } verified period${
+                plotted.length ===
+                1
+                  ? ""
+                  : "s"
+              }"
+            >
+              <svg
+                viewBox="0 0 ${width} ${height}"
+                preserveAspectRatio="none"
+              >
+                <path
+                  class="overview-trend-area"
+                  d="${areaPath}"
+                ></path>
+
+                <path
+                  class="overview-trend-line"
+                  d="${linePath}"
+                ></path>
+
+                ${plotted
+                  .map(
+                    (point) => `
+                      <circle
+                        cx="${point.x.toFixed(
+                          2,
+                        )}"
+                        cy="${point.y.toFixed(
+                          2,
+                        )}"
+                        r="5"
+                      ></circle>
+                    `,
+                  )
+                  .join(
+                    "",
+                  )}
+              </svg>
+
+              <div
+                class="overview-trend-labels"
+              >
+                ${plotted
+                  .map(
+                    (point) => `
+                      <div>
+                        <span>
+                          ${esc(
+                            formatPeriod(
+                              point.point,
+                            ),
+                          )}
+                        </span>
+
+                        <strong>
+                          ${esc(
+                            formatMetricValue(
+                              point.value,
+                            ),
+                          )}
+                        </strong>
+                      </div>
+                    `,
+                  )
+                  .join(
+                    "",
+                  )}
+              </div>
+            </div>
+          `;
+        })()
+      : "";
+
+  const businessContext = [
+    profile.industry
+      ? [
+          "Industry",
+          profile.industry,
+        ]
+      : null,
+
+    profile.businessModel
+      ? [
+          "Business model",
+          profile.businessModel,
+        ]
+      : null,
+
+    [
+      "Currency",
+      currency,
+    ],
+
+    [
+      "Verified periods",
+      String(
+        verifiedPeriods,
+      ),
+    ],
+  ].filter(
+    Boolean,
+  );
+
+  const heroSummary =
+    primaryFinding
+      ?.item?.summary ||
+    (
+      latest
+        ? `${activeMetric?.label || "Performance"} is ${formatMetricValue(
+            latest.value,
+          )} for ${formatPeriod(
+            latest,
+          )}${
+            changePercent ===
+            null
+              ? "."
+              : `, ${
+                  changePercent >=
+                  0
+                    ? "up"
+                    : "down"
+                } ${Math.abs(
+                  changePercent,
+                ).toFixed(
+                  1,
+                )}% from the previous verified period.`
+          }`
+        : "No verified performance history is available yet. Add comparable business data to establish the first baseline."
     );
 
   shell(
     `
-      ${heading(
-        "BUSINESS PULSE",
-        "Your business, in perspective.",
-        latest
-          ? `Latest confirmed period: ${esc(
-              latest.period,
-            )} · ${esc(
-              activeGroup?.name ||
-                latest.dataSeries ||
-                "Primary performance",
-            )}`
-          : "A fresh start for your performance history.",
-        link(
-          "/data",
-          `${icon(
-            "plus",
-          )} Add data`,
-          "button primary",
-        ),
-      )}
-
-      ${
-        !dashboard.profile
-          ? `
-            <div class="notice">
-              ${icon(
-                "building-2",
-              )}
-
-              <div>
-                <strong>
-                  Let us get to know your business.
-                </strong>
-
-                <p>
-                  Set your business context and currency
-                  before uploading data.
-                </p>
-              </div>
-
-              ${link(
-                "/business",
-                "Complete profile",
-                "button secondary",
-              )}
-            </div>
-          `
-          : ""
-      }
-
-      ${dashboardGuideHtml()}
-
-      ${seriesPickerHtml(
-        groups,
-        activeGroup,
-      )}
-
-      <div class="metrics-grid">
-        <article>
-          <p>
-            ${esc(
-              latest?.metricLabel ||
-                "Primary metric",
-            )}
-
-            ${icon("activity")}
-          </p>
-
-          <strong>
-            ${
-              latest
-                ? metricAmount(
-                    latest,
-                  )
-                : "&mdash;"
-            }
-          </strong>
-
-          <span>
-            ${
-              change === null
-                ? "A confirmed period establishes your baseline"
-                : `${
-                    Number(
-                      change,
-                    ) >= 0
-                      ? "+"
-                      : ""
-                  }${change}% vs ${esc(
-                    previous.period,
-                  )}`
-            }
-          </span>
-        </article>
-
-        <article>
-          <p>
-            Source rows
-            ${icon("rows-3")}
-          </p>
-
-          <strong>
-            ${
-              latest?.rowCount ??
-              "&mdash;"
-            }
-          </strong>
-
-          <span>
-            ${
-              latest
-                ? `Rows from ${esc(
-                    latest.sourceFormat ||
-                      "confirmed source",
-                  )}`
-                : "No confirmed data yet"
-            }
-          </span>
-        </article>
-
-        <article>
-          <p>
-            Evidence reports
-            ${icon(
-              "file-check-2",
-            )}
-          </p>
-
-          <strong>
-            ${
-              dashboard
-                .evidenceReports
-                ?.length ?? 0
-            }
-
-            <small>
-              reports
-            </small>
-          </strong>
-
-          <span>
-            ${
-              dashboard
-                .evidenceReports
-                ?.length
-                ? "Every confirmed file has a source trail"
-                : "Reports generate after confirmation"
-            }
-          </span>
-        </article>
-      </div>
-
-      <section class="trend-section">
-        <div class="section-heading">
+      <section
+        class="overview-v2"
+      >
+        <header
+          class="overview-v2-hero"
+        >
           <div>
-            <h2>
-              ${esc(
-                activeGroup?.name ||
-                  "Primary performance",
-              )}
-              over time
-            </h2>
+            <p class="overline">
+              BUSINESS OVERVIEW
+            </p>
 
-            <p class="muted">
+            <h1>
               ${esc(
-                latest?.metricLabel ||
-                  "Confirmed metric",
+                businessName,
               )}
-              ·
+            </h1>
+
+            <p
+              class="overview-v2-summary"
+            >
               ${esc(
-                activeGroup
-                  ?.dataKind ||
-                  "Business data",
+                heroSummary,
               )}
             </p>
           </div>
 
-          <span class="legend">
-            <i></i>
-
-            ${esc(
-              latest?.metricLabel ||
-                "Metric",
+          <div
+            class="overview-v2-actions"
+          >
+            ${link(
+              "/data",
+              `${icon(
+                "plus",
+              )} Add data`,
+              "button primary",
             )}
-          </span>
-        </div>
+
+            ${
+              reports.length
+                ? link(
+                    "/reports",
+                    `Evidence ${icon(
+                      "arrow-right",
+                    )}`,
+                    "button secondary",
+                  )
+                : ""
+            }
+          </div>
+        </header>
 
         ${
-          series.length
-            ? performanceLineChart(
-                series,
-              )
-            : `
-              <div class="empty-state">
+          !profile ||
+          !Object.keys(
+            profile,
+          ).length
+            ? `
+              <div
+                class="notice"
+              >
                 ${icon(
-                  "chart-no-axes-combined",
+                  "building-2",
                 )}
 
-                <h3>
-                  Your story starts with the first period.
-                </h3>
+                <div>
+                  <strong>
+                    Complete the business profile.
+                  </strong>
+
+                  <p>
+                    Add industry, business model and currency
+                    so BIZNORYX can present the workspace in
+                    the right context.
+                  </p>
+                </div>
+
+                ${link(
+                  "/business",
+                  "Complete profile",
+                  "button secondary",
+                )}
+              </div>
+            `
+            : ""
+        }
+
+        <section
+          class="overview-v2-stats"
+          aria-label="Business performance summary"
+        >
+          <article
+            class="overview-v2-stat primary-stat"
+          >
+            <div>
+              <span>
+                ${esc(
+                  activeMetric?.label ||
+                    "Primary metric",
+                )}
+              </span>
+
+              ${icon(
+                "activity",
+              )}
+            </div>
+
+            <strong>
+              ${
+                latest
+                  ? esc(
+                      formatMetricValue(
+                        latest.value,
+                      ),
+                    )
+                  : "—"
+              }
+            </strong>
+
+            <small>
+              ${
+                latest
+                  ? esc(
+                      formatPeriod(
+                        latest,
+                      ),
+                    )
+                  : "No verified period"
+              }
+            </small>
+          </article>
+
+          <article
+            class="overview-v2-stat"
+          >
+            <div>
+              <span>
+                Period change
+              </span>
+
+              ${icon(
+                changePercent !==
+                    null &&
+                  changePercent <
+                    0
+                  ? "trending-down"
+                  : "trending-up",
+              )}
+            </div>
+
+            <strong
+              class="${
+                changePercent ===
+                null
+                  ? ""
+                  : changePercent <
+                      0
+                    ? "negative"
+                    : "positive"
+              }"
+            >
+              ${
+                changePercent ===
+                null
+                  ? "—"
+                  : `${
+                      changePercent >
+                      0
+                        ? "+"
+                        : ""
+                    }${changePercent.toFixed(
+                      1,
+                    )}%`
+              }
+            </strong>
+
+            <small>
+              ${
+                previous
+                  ? `vs ${esc(
+                      formatPeriod(
+                        previous,
+                      ),
+                    )}`
+                  : "Needs two periods"
+              }
+            </small>
+          </article>
+
+          <article
+            class="overview-v2-stat"
+          >
+            <div>
+              <span>
+                Evidence reports
+              </span>
+
+              ${icon(
+                "file-check-2",
+              )}
+            </div>
+
+            <strong>
+              ${reports.length}
+            </strong>
+
+            <small>
+              ${
+                reports.length
+                  ? "Source-backed reports ready"
+                  : "No report ready yet"
+              }
+            </small>
+          </article>
+
+          <article
+            class="overview-v2-stat"
+          >
+            <div>
+              <span>
+                Source rows
+              </span>
+
+              ${icon(
+                "rows-3",
+              )}
+            </div>
+
+            <strong>
+              ${
+                latestSourceRows ===
+                null
+                  ? "—"
+                  : numberValue(
+                      latestSourceRows,
+                    )
+              }
+            </strong>
+
+            <small>
+              ${validatedUploads}
+              validated upload${
+                validatedUploads ===
+                1
+                  ? ""
+                  : "s"
+              }
+            </small>
+          </article>
+        </section>
+
+        <section
+          class="overview-v2-main"
+        >
+          <article
+            class="overview-v2-panel overview-v2-performance"
+          >
+            <div
+              class="overview-v2-panel-head"
+            >
+              <div>
+                <p class="overline">
+                  PERFORMANCE
+                </p>
+
+                <h2>
+                  ${esc(
+                    activeMetric?.label ||
+                      "Verified performance",
+                  )}
+                </h2>
 
                 <p>
-                  Upload and confirm business data to see a
-                  verified baseline.<br>
-                  Each comparable period adds to the same
-                  history.
-                </p>
-
-                ${link(
-                  "/data",
-                  `Upload your first file ${icon(
-                    "arrow-right",
-                  )}`,
-                  "button dark",
-                )}
-              </div>
-            `
-        }
-      </section>
-
-      <section class="series-section">
-        <div class="section-heading">
-          <h2>
-            Business data series
-          </h2>
-
-          ${icon("database")}
-        </div>
-
-        ${
-          groups.length
-            ? `
-              <div class="series-grid">
-                ${groups
-                  .map(
-                    (group) => `
-                      <article>
-                        <p>
-                          ${esc(
-                            group.dataKind,
-                          )}
-                        </p>
-
-                        <h3>
-                          ${esc(
-                            group.name,
-                          )}
-                        </h3>
-
-                        <strong>
-                          ${
-                            group.points
-                              .length
-                          }
-                          period(s)
-                        </strong>
-
-                        <span>
-                          ${esc(
-                            group.metricLabel,
-                          )}
-                        </span>
-                      </article>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            `
-            : `
-              <p class="muted">
-                No confirmed series yet.
-              </p>
-            `
-        }
-      </section>
-
-      <section class="overview-bottom">
-        <div>
-          <div class="section-heading">
-            <h2>
-              Data health
-            </h2>
-
-            ${icon("activity")}
-          </div>
-
-          <dl>
-            <div>
-              <dt>
-                Confirmed files
-              </dt>
-
-              <dd>
-                ${
-                  dashboard.uploads.filter(
-                    (u) =>
-                      u.status ===
-                      "confirmed",
-                  ).length
-                }
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Awaiting review
-              </dt>
-
-              <dd>
-                ${
-                  dashboard.uploads.filter(
-                    (u) =>
-                      u.status ===
-                      "awaiting_confirmation",
-                  ).length
-                }
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                Needs attention
-              </dt>
-
-              <dd>
-                ${
-                  dashboard.uploads.filter(
-                    (u) =>
-                      u.status ===
-                      "rejected",
-                  ).length
-                }
-              </dd>
-            </div>
-
-            <div>
-              <dt>
-                File types seen
-              </dt>
-
-              <dd>
-                ${
-                  new Set(
-                    dashboard.uploads.map(
-                      (u) =>
-                        u.sourceFormat ||
-                        u.fileExtension ||
-                        "File",
-                    ),
-                  ).size
-                }
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        <div>
-          <div class="section-heading">
-            <h2>
-              Latest evidence
-            </h2>
-
-            ${icon(
-              "file-check-2",
-            )}
-          </div>
-
-          ${
-            latest
-              ? `
-                <p class="evidence-name">
                   ${esc(
-                    latest.fileName,
+                    activeMetric
+                      ?.dataStream
+                      ?.displayName ||
+                      activeMetric
+                        ?.dataStream
+                        ?.name ||
+                      "Primary performance",
                   )}
                 </p>
+              </div>
 
-                <p class="muted">
+              <span
+                class="overview-v2-period-count"
+              >
+                ${points.length}
+                period${
+                  points.length ===
+                  1
+                    ? ""
+                    : "s"
+                }
+              </span>
+            </div>
+
+            ${
+              orderedSeries.length >
+              1
+                ? `
+                  <div
+                    class="overview-v2-metric-tabs"
+                    aria-label="Choose metric"
+                  >
+                    ${orderedSeries
+                      .slice(
+                        0,
+                        8,
+                      )
+                      .map(
+                        (item) => `
+                          <button
+                            type="button"
+                            data-overview-series="${esc(
+                              item.id,
+                            )}"
+                            class="${
+                              item.id ===
+                              activeMetric?.id
+                                ? "active"
+                                : ""
+                            }"
+                          >
+                            ${esc(
+                              item.label ||
+                                item.sourceColumn ||
+                                "Metric",
+                            )}
+                          </button>
+                        `,
+                      )
+                      .join(
+                        "",
+                      )}
+                  </div>
+                `
+                : ""
+            }
+
+            ${
+              trendChartHtml ||
+              `
+                <div
+                  class="overview-v2-empty"
+                >
+                  ${icon(
+                    "chart-no-axes-combined",
+                  )}
+
+                  <h3>
+                    No verified trend yet.
+                  </h3>
+
+                  <p>
+                    Once the production worker has processed
+                    validated data, verified metric history
+                    will appear here.
+                  </p>
+
+                  ${link(
+                    "/data",
+                    "Open data workspace",
+                    "inline-link",
+                  )}
+                </div>
+              `
+            }
+          </article>
+
+          <aside
+            class="overview-v2-panel overview-v2-reading"
+          >
+            <div
+              class="overview-v2-panel-head"
+            >
+              <div>
+                <p class="overline">
+                  BUSINESS READING
+                </p>
+
+                <h2>
                   ${
-                    latest.rowCount
+                    primaryFinding
+                      ? esc(
+                          primaryFinding
+                            .item
+                            .title ||
+                            "What deserves attention",
+                        )
+                      : "What deserves attention"
                   }
-                  source rows
-                  &middot;
-                  ${esc(
-                    latest.period,
-                  )}
-                  &middot;
-                  ${esc(
-                    latest.sourceFormat ||
-                      latest.dataKind,
-                  )}
+                </h2>
+              </div>
+
+              ${icon(
+                "scan-search",
+              )}
+            </div>
+
+            <p
+              class="overview-v2-reading-copy"
+            >
+              ${esc(
+                primaryFinding
+                  ?.item
+                  ?.summary ||
+                  (
+                    latest
+                      ? `BIZNORYX has verified ${points.length} period${
+                          points.length ===
+                          1
+                            ? ""
+                            : "s"
+                        } for ${activeMetric?.label || "this metric"}. Add more comparable periods to strengthen the business reading.`
+                      : "There is not enough verified history to identify a movement yet."
+                  ),
+              )}
+            </p>
+
+            ${
+              findings.length
+                ? `
+                  <div
+                    class="overview-v2-findings"
+                  >
+                    ${findings
+                      .slice(
+                        0,
+                        3,
+                      )
+                      .map(
+                        ({
+                          label,
+                          kind,
+                          item,
+                        }) => `
+                          <article
+                            class="overview-v2-finding ${kind}"
+                          >
+                            <span>
+                              ${esc(
+                                label,
+                              )}
+                            </span>
+
+                            <strong>
+                              ${esc(
+                                item.title ||
+                                  label,
+                              )}
+                            </strong>
+
+                            <p>
+                              ${esc(
+                                item.summary ||
+                                  "Evidence-backed finding available.",
+                              )}
+                            </p>
+                          </article>
+                        `,
+                      )
+                      .join(
+                        "",
+                      )}
+                  </div>
+                `
+                : `
+                  <div
+                    class="overview-v2-no-findings"
+                  >
+                    ${icon(
+                      "shield-check",
+                    )}
+
+                    <p>
+                      No evidence-backed signal, risk or
+                      opportunity is available yet.
+                    </p>
+                  </div>
+                `
+            }
+          </aside>
+        </section>
+
+        <section
+          class="overview-v2-bottom"
+        >
+          <article
+            class="overview-v2-panel"
+          >
+            <div
+              class="overview-v2-panel-head"
+            >
+              <div>
+                <p class="overline">
+                  BUSINESS CONTEXT
                 </p>
 
-                <span class="verified">
-                  ${icon("check")}
-                  VERIFIED FACT
-                  &middot;
-                  sum(${esc(
-                    latest.metricColumn,
-                  )})
-                </span>
+                <h2>
+                  Workspace profile
+                </h2>
+              </div>
 
-                ${link(
-                  "/reports",
-                  "Open evidence reports",
-                  "inline-link",
+              ${icon(
+                "building-2",
+              )}
+            </div>
+
+            <dl
+              class="overview-v2-context"
+            >
+              ${businessContext
+                .map(
+                  ([
+                    label,
+                    value,
+                  ]) => `
+                    <div>
+                      <dt>
+                        ${esc(
+                          label,
+                        )}
+                      </dt>
+
+                      <dd>
+                        ${esc(
+                          value,
+                        )}
+                      </dd>
+                    </div>
+                  `,
+                )
+                .join(
+                  "",
                 )}
-              `
-              : `
-                <p class="muted">
-                  No confirmed sources yet. Figures appear
-                  only after you review and confirm your
-                  data.
+            </dl>
+          </article>
+
+          <article
+            class="overview-v2-panel"
+          >
+            <div
+              class="overview-v2-panel-head"
+            >
+              <div>
+                <p class="overline">
+                  DATA HEALTH
                 </p>
-              `
-          }
-        </div>
+
+                <h2>
+                  ${
+                    rejectedUploads ||
+                    schemaWarnings
+                      ? "Review needed"
+                      : "Sources in good standing"
+                  }
+                </h2>
+              </div>
+
+              ${icon(
+                rejectedUploads ||
+                  schemaWarnings
+                  ? "circle-alert"
+                  : "circle-check",
+              )}
+            </div>
+
+            <div
+              class="overview-v2-health"
+            >
+              <div>
+                <strong>
+                  ${uploads.length}
+                </strong>
+
+                <span>
+                  Uploads
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  ${validatedUploads}
+                </strong>
+
+                <span>
+                  Validated
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  ${rejectedUploads}
+                </strong>
+
+                <span>
+                  Rejected
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  ${schemaWarnings}
+                </strong>
+
+                <span>
+                  Schema warnings
+                </span>
+              </div>
+            </div>
+          </article>
+        </section>
       </section>
     `,
     "/dashboard",
   );
 
-  bindSeriesPicker();
+  document
+    .querySelectorAll(
+      "[data-overview-series]",
+    )
+    .forEach(
+      (button) => {
+        button.onclick =
+          () => {
+            activeSeriesKey =
+              button.dataset
+                .overviewSeries;
+
+            overview();
+          };
+      },
+    );
 }
 
 let reportOptions = {};
