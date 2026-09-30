@@ -1,4 +1,9 @@
 import {
+  createHash,
+  randomBytes,
+} from "node:crypto";
+
+import {
   createServer,
 } from "node:http";
 
@@ -60,6 +65,19 @@ import {
 } from "../database/business-outcomes-repository.mjs";
 
 import {
+  PostgresBillingRepository,
+  withBillingTenant,
+} from "../database/billing-repository.mjs";
+
+import {
+  initializePaystackTransaction,
+  monthlyPlanFromEnv,
+  planLabel,
+  verifyPaystackTransaction,
+  verifyPaystackWebhookSignature,
+} from "../billing/paystack.mjs";
+
+import {
   ResendEmailSender,
 } from "../email/resend-email-sender.mjs";
 
@@ -83,10 +101,22 @@ import {
 import {
   createWorkerHealthProbe,
 } from "../server/worker-health-probe.mjs";
-import { PostgresEvidenceReportRepository } from "../database/evidence-report-repository.mjs";
-import { buildBusinessReport } from "../reports/evidence-engine.mjs";
-import { reportSourcesFromSeries } from "../reports/production-sources.mjs";
-import { sendEvidenceExport } from "../reports/export.mjs";
+
+import {
+  PostgresEvidenceReportRepository,
+} from "../database/evidence-report-repository.mjs";
+
+import {
+  buildBusinessReport,
+} from "../reports/evidence-engine.mjs";
+
+import {
+  reportSourcesFromSeries,
+} from "../reports/production-sources.mjs";
+
+import {
+  sendEvidenceExport,
+} from "../reports/export.mjs";
 
 const CONTENT_TYPES =
   new Map([
@@ -166,6 +196,7 @@ export function createProductionApp({
   businessActionsRepository,
   businessOutcomesRepository,
   evidenceReportRepository,
+  billingRepository,
   objectStorage,
   ingestionService,
   healthChecks,
@@ -282,13 +313,31 @@ export function createProductionApp({
         : null
     );
 
-  const evidenceReports = evidenceReportRepository ?? (pool ? new PostgresEvidenceReportRepository(pool) : null);
+  const evidenceReports =
+    evidenceReportRepository ??
+    (
+      pool
+        ? new PostgresEvidenceReportRepository(
+            pool,
+          )
+        : null
+    );
 
   const businessOutcomes =
     businessOutcomesRepository ??
     (
       pool
         ? new PostgresBusinessOutcomesRepository(
+            pool,
+          )
+        : null
+    );
+
+  const billing =
+    billingRepository ??
+    (
+      pool
+        ? new PostgresBillingRepository(
             pool,
           )
         : null
@@ -373,6 +422,7 @@ export function createProductionApp({
     processingJobs,
 
     verifiedMetrics,
+
     evidenceReports,
 
     metricComparisons,
@@ -382,6 +432,8 @@ export function createProductionApp({
     businessActions,
 
     businessOutcomes,
+
+    billing,
 
     objectStorage:
       storage,
@@ -487,6 +539,189 @@ async function routeRequest({
           health.checks,
       },
     );
+
+    return;
+  }
+
+  /*
+   * ==================================================
+   * BILLING — PAYSTACK WEBHOOK
+   * ==================================================
+   *
+   * Webhooks are authenticated with Paystack's
+   * HMAC signature instead of the browser session.
+   */
+
+  if (
+    url.pathname ===
+      "/api/billing/paystack/webhook" &&
+    request.method ===
+      "POST"
+  ) {
+    if (
+      !runtime.billing
+    ) {
+      throw new AuthError(
+        "Production billing is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const rawBody =
+      await readRawBody(
+        request,
+        2 * 1024 * 1024,
+      );
+
+    const signature =
+      request.headers[
+        "x-paystack-signature"
+      ];
+
+    if (
+      !verifyPaystackWebhookSignature({
+        payload:
+          rawBody,
+
+        signature,
+
+        secret:
+          process.env
+            .PAYSTACK_SECRET_KEY,
+      })
+    ) {
+      throw new AuthError(
+        "Paystack webhook signature is invalid.",
+        "PAYSTACK_SIGNATURE_INVALID",
+      );
+    }
+
+    let event;
+
+    try {
+      event =
+        JSON.parse(
+          rawBody.toString(
+            "utf8",
+          ),
+        );
+    } catch {
+      throw new AuthError(
+        "Webhook body must be valid JSON.",
+        "INVALID_JSON",
+      );
+    }
+
+    if (
+      !event ||
+      typeof event !==
+        "object" ||
+      Array.isArray(
+        event,
+      )
+    ) {
+      throw new AuthError(
+        "Webhook body must be a JSON object.",
+        "INVALID_JSON",
+      );
+    }
+
+    const result =
+      await applyProductionPaystackWebhook({
+        runtime,
+        event,
+        rawBody,
+      });
+
+    sendJson(
+      response,
+      200,
+      result,
+    );
+
+    return;
+  }
+
+  /*
+   * ==================================================
+   * BILLING — PAYSTACK CALLBACK
+   * ==================================================
+   *
+   * A callback visit is never trusted by itself.
+   * The transaction is re-verified server-side before
+   * the subscription is activated.
+   */
+
+  if (
+    url.pathname ===
+      "/billing/paystack/callback" &&
+    request.method ===
+      "GET"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          false,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select or create an organization before completing billing.",
+      );
+
+    const reference =
+      assertText(
+        url.searchParams.get(
+          "reference",
+        ) ??
+          url.searchParams.get(
+            "trxref",
+          ),
+        "Billing reference is required.",
+        160,
+      );
+
+    const subscription =
+      await verifyAndActivateBillingCheckout({
+        runtime,
+        organizationId,
+
+        actorUserId:
+          context.user.id,
+
+        reference,
+      });
+
+    const publicUrl =
+      billingPublicUrl(
+        request,
+      );
+
+    const redirectUrl =
+      `${publicUrl}/#/billing?checkout=${encodeURIComponent(
+        reference,
+      )}&status=${encodeURIComponent(
+        subscription.status,
+      )}`;
+
+    response.writeHead(
+      302,
+      {
+        Location:
+          redirectUrl,
+
+        "Cache-Control":
+          "no-store",
+      },
+    );
+
+    response.end();
 
     return;
   }
@@ -1194,6 +1429,300 @@ async function routeRequest({
 
   /*
    * ==================================================
+   * BILLING — SUBSCRIPTION
+   * ==================================================
+   */
+
+  if (
+    url.pathname ===
+      "/api/billing/subscription" &&
+    request.method ===
+      "GET"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          false,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select or create an organization before loading billing.",
+      );
+
+    if (
+      !runtime.billing
+    ) {
+      throw new AuthError(
+        "Production billing is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const subscription =
+      await runtime.billing
+        .ensureSubscription({
+          organizationId,
+
+          actorUserId:
+            context.user.id,
+
+          provider:
+            "paystack",
+        });
+
+    sendJson(
+      response,
+      200,
+      {
+        subscription:
+          publicSubscription(
+            subscription,
+          ),
+      },
+    );
+
+    return;
+  }
+
+  /*
+   * ==================================================
+   * BILLING — CHECKOUT
+   * ==================================================
+   */
+
+  if (
+    url.pathname ===
+      "/api/billing/checkout" &&
+    request.method ===
+      "POST"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          true,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select or create an organization before starting billing.",
+      );
+
+    if (
+      !runtime.billing
+    ) {
+      throw new AuthError(
+        "Production billing is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const plan =
+      monthlyPlanFromEnv();
+
+    if (
+      !isProductionPaystackConfigured(
+        plan,
+      )
+    ) {
+      throw new AuthError(
+        "Paystack subscription billing is not configured for this environment.",
+        "BILLING_PROVIDER_NOT_CONFIGURED",
+      );
+    }
+
+    const currentSubscription =
+      await runtime.billing
+        .ensureSubscription({
+          organizationId,
+
+          actorUserId:
+            context.user.id,
+
+          provider:
+            "paystack",
+        });
+
+    if (
+      currentSubscription.status ===
+        "active"
+    ) {
+      throw new AuthError(
+        "This workspace already has an active subscription.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    const publicUrl =
+      billingPublicUrl(
+        request,
+      );
+
+    const reference =
+      createProductionBillingReference();
+
+    const checkout =
+      await initializePaystackTransaction({
+        customerEmail:
+          context.user.email,
+
+        organizationId,
+
+        callbackUrl:
+          `${publicUrl}/billing/paystack/callback`,
+
+        reference,
+      });
+
+    await runtime.billing
+      .createCheckoutSession({
+        organizationId,
+
+        actorUserId:
+          context.user.id,
+
+        provider:
+          "paystack",
+
+        reference:
+          checkout.reference,
+
+        authorizationUrl:
+          checkout.authorizationUrl,
+
+        accessCode:
+          checkout.accessCode,
+
+        metadata: {
+          source:
+            "production_web",
+
+          customerEmail:
+            context.user.email,
+        },
+      });
+
+    const subscription =
+      await runtime.billing
+        .ensureSubscription({
+          organizationId,
+
+          actorUserId:
+            context.user.id,
+
+          provider:
+            "paystack",
+        });
+
+    sendJson(
+      response,
+      200,
+      {
+        checkout: {
+          provider:
+            "paystack",
+
+          reference:
+            checkout.reference,
+
+          authorizationUrl:
+            checkout.authorizationUrl,
+        },
+
+        subscription:
+          publicSubscription(
+            subscription,
+          ),
+      },
+    );
+
+    return;
+  }
+
+  /*
+   * ==================================================
+   * BILLING — VERIFY CHECKOUT
+   * ==================================================
+   *
+   * This endpoint is a recovery path for the client
+   * after Paystack redirects back to BIZNORYX.
+   * The webhook remains independently supported.
+   */
+
+  if (
+    url.pathname ===
+      "/api/billing/verify" &&
+    request.method ===
+      "POST"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          true,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select or create an organization before verifying billing.",
+      );
+
+    const body =
+      await readJson(
+        request,
+      );
+
+    const reference =
+      assertText(
+        body.reference,
+        "Billing reference is required.",
+        160,
+      );
+
+    const subscription =
+      await verifyAndActivateBillingCheckout({
+        runtime,
+        organizationId,
+
+        actorUserId:
+          context.user.id,
+
+        reference,
+      });
+
+    sendJson(
+      response,
+      200,
+      {
+        subscription:
+          publicSubscription(
+            subscription,
+          ),
+      },
+    );
+
+    return;
+  }
+
+  /*
+   * ==================================================
    * ONBOARDING — WRITE
    * ==================================================
    */
@@ -1366,6 +1895,7 @@ async function routeRequest({
      * Freeze tenant identity before reading the
      * potentially large request body.
      */
+
     const organizationId =
       requireActiveOrganization(
         context,
@@ -1843,6 +2373,7 @@ async function routeRequest({
       findingModules,
       actions,
       outcomes,
+      subscription,
     ] =
       await Promise.all([
         postgresAppShellState({
@@ -1945,6 +2476,20 @@ async function routeRequest({
           : Promise.resolve(
               [],
             ),
+
+        runtime.billing
+          ? runtime.billing
+              .ensureSubscription({
+                organizationId,
+
+                actorUserId,
+
+                provider:
+                  "paystack",
+              })
+          : Promise.resolve(
+              null,
+            ),
       ]);
 
     const seriesGroups =
@@ -1994,55 +2539,288 @@ async function routeRequest({
         /*
          * Durable decision memory.
          */
+
         actions,
 
         outcomes:
           outcomes,
 
         evidenceReports:
-          reportSourcesFromSeries(series).map((source) => ({
-            id: `evidence_${source.id}`, sourceId: source.id,
-            title: `${source.dataSeries} evidence report`, period: source.period,
-          })),
+          reportSourcesFromSeries(
+            series,
+          ).map(
+            (
+              source,
+            ) => ({
+              id:
+                `evidence_${source.id}`,
+
+              sourceId:
+                source.id,
+
+              title:
+                `${source.dataSeries} evidence report`,
+
+              period:
+                source.period,
+            }),
+          ),
 
         auditTrail:
           [],
 
         subscription:
-          null,
+          subscription
+            ? publicSubscription(
+                subscription,
+              )
+            : null,
       },
     );
 
     return;
   }
 
-  if (url.pathname === "/api/evidence-report" && request.method === "GET") {
-    const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
-    const organizationId = requireActiveOrganization(context, "Select an organization before reading a report.");
-    if (!runtime.verifiedMetrics || !runtime.businessOnboarding) throw new AuthError("Evidence reports require verified metric storage.", "VALIDATION_FAILED");
-    const tenant = { organizationId, actorUserId: context.user.id };
-    const [series, profile, policies] = await Promise.all([
-      runtime.verifiedMetrics.listSeries(tenant), runtime.businessOnboarding.getProfile(tenant),
-      runtime.evidenceReports ? runtime.evidenceReports.listPolicies(tenant) : Promise.resolve([]),
-    ]);
-    const report = buildBusinessReport({ sources: reportSourcesFromSeries(series), profile, policies, options: Object.fromEntries(url.searchParams) });
-    if (url.searchParams.has("format")) await sendEvidenceExport(response, report, url.searchParams.get("format"));
-    else sendJson(response, 200, { report });
+  /*
+   * ==================================================
+   * EVIDENCE REPORT
+   * ==================================================
+   */
+
+  if (
+    url.pathname ===
+      "/api/evidence-report" &&
+    request.method ===
+      "GET"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          false,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select an organization before reading a report.",
+      );
+
+    if (
+      !runtime.verifiedMetrics ||
+      !runtime.businessOnboarding
+    ) {
+      throw new AuthError(
+        "Evidence reports require verified metric storage.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    const tenant = {
+      organizationId,
+
+      actorUserId:
+        context.user.id,
+    };
+
+    const [
+      series,
+      profile,
+      policies,
+    ] =
+      await Promise.all([
+        runtime
+          .verifiedMetrics
+          .listSeries(
+            tenant,
+          ),
+
+        runtime
+          .businessOnboarding
+          .getProfile(
+            tenant,
+          ),
+
+        runtime.evidenceReports
+          ? runtime
+              .evidenceReports
+              .listPolicies(
+                tenant,
+              )
+          : Promise.resolve(
+              [],
+            ),
+      ]);
+
+    const report =
+      buildBusinessReport({
+        sources:
+          reportSourcesFromSeries(
+            series,
+          ),
+
+        profile,
+
+        policies,
+
+        options:
+          Object.fromEntries(
+            url.searchParams,
+          ),
+      });
+
+    if (
+      url.searchParams.has(
+        "format",
+      )
+    ) {
+      await sendEvidenceExport(
+        response,
+        report,
+        url.searchParams.get(
+          "format",
+        ),
+      );
+    } else {
+      sendJson(
+        response,
+        200,
+        {
+          report,
+        },
+      );
+    }
+
     return;
   }
 
-  if (url.pathname === "/api/evidence-report/definition" && request.method === "POST") {
-    const { context } = await authenticateRequest({ request, runtime, requireCsrf: true });
-    const organizationId = requireActiveOrganization(context, "Select an organization before approving a definition.");
-    if (!runtime.verifiedMetrics) throw new AuthError("Evidence reports require verified metric storage.", "VALIDATION_FAILED");
-    const tenant = { organizationId, actorUserId: context.user.id };
-    const body = await readJson(request);
-    const sources = reportSourcesFromSeries(await runtime.verifiedMetrics.listSeries(tenant));
-    const source = sources.find((s) => s.id === body.source);
-    if (!source || !source.cube.metrics.some((m) => m.column === body.metric)) throw new AuthError("Report source not found.", "NOT_FOUND");
-    if (!runtime.evidenceReports) throw new AuthError("Report definitions are not configured.", "VALIDATION_FAILED");
-    const policy = await runtime.evidenceReports.approvePolicy({ ...tenant, seriesKey: source.seriesKey, column: body.metric, definition: body, expectedVersion: Number(body.expectedVersion ?? 0) });
-    sendJson(response, 200, { policy });
+  /*
+   * ==================================================
+   * EVIDENCE REPORT — METRIC DEFINITION
+   * ==================================================
+   */
+
+  if (
+    url.pathname ===
+      "/api/evidence-report/definition" &&
+    request.method ===
+      "POST"
+  ) {
+    const {
+      context,
+    } =
+      await authenticateRequest({
+        request,
+        runtime,
+
+        requireCsrf:
+          true,
+      });
+
+    const organizationId =
+      requireActiveOrganization(
+        context,
+        "Select an organization before approving a definition.",
+      );
+
+    if (
+      !runtime.verifiedMetrics
+    ) {
+      throw new AuthError(
+        "Evidence reports require verified metric storage.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    const tenant = {
+      organizationId,
+
+      actorUserId:
+        context.user.id,
+    };
+
+    const body =
+      await readJson(
+        request,
+      );
+
+    const sources =
+      reportSourcesFromSeries(
+        await runtime
+          .verifiedMetrics
+          .listSeries(
+            tenant,
+          ),
+      );
+
+    const source =
+      sources.find(
+        (
+          candidate,
+        ) =>
+          candidate.id ===
+          body.source,
+      );
+
+    if (
+      !source ||
+      !source.cube.metrics.some(
+        (
+          metric,
+        ) =>
+          metric.column ===
+          body.metric,
+      )
+    ) {
+      throw new AuthError(
+        "Report source not found.",
+        "NOT_FOUND",
+      );
+    }
+
+    if (
+      !runtime.evidenceReports
+    ) {
+      throw new AuthError(
+        "Report definitions are not configured.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    const policy =
+      await runtime
+        .evidenceReports
+        .approvePolicy({
+          ...tenant,
+
+          seriesKey:
+            source.seriesKey,
+
+          column:
+            body.metric,
+
+          definition:
+            body,
+
+          expectedVersion:
+            Number(
+              body.expectedVersion ??
+                0,
+            ),
+        });
+
+    sendJson(
+      response,
+      200,
+      {
+        policy,
+      },
+    );
+
     return;
   }
 
@@ -2322,6 +3100,903 @@ function isAuthEndpoint(
   );
 }
 
+function createProductionBillingReference() {
+  return `bnx-${Date.now()}-${randomBytes(
+    8,
+  ).toString(
+    "hex",
+  )}`;
+}
+
+function isProductionPaystackConfigured(
+  plan =
+    monthlyPlanFromEnv(),
+) {
+  return Boolean(
+    plan.providerConfigured &&
+    plan.planCode &&
+    process.env
+      .PAYSTACK_SECRET_KEY,
+  );
+}
+
+function publicSubscription(
+  subscription,
+) {
+  if (
+    !subscription
+  ) {
+    return null;
+  }
+
+  const configuredPlan =
+    monthlyPlanFromEnv();
+
+  const price =
+    planLabel({
+      currency:
+        subscription.currency,
+
+      amountMinor:
+        subscription.amountMinor,
+    });
+
+  return {
+    id:
+      subscription.id,
+
+    status:
+      subscription.status,
+
+    planId:
+      subscription.planId,
+
+    planName:
+      subscription.planName,
+
+    priceLabel:
+      `${price}/mo`,
+
+    currency:
+      subscription.currency,
+
+    amountMinor:
+      subscription.amountMinor,
+
+    interval:
+      subscription.interval,
+
+    provider:
+      subscription.provider,
+
+    providerConfigured:
+      isProductionPaystackConfigured(
+        configuredPlan,
+      ),
+
+    checkoutReference:
+      subscription.checkoutReference,
+
+    trialEndsAt:
+      subscription.trialEndsAt,
+
+    activeAt:
+      subscription.activeAt,
+
+    currentPeriodEnd:
+      subscription.currentPeriodEnd,
+
+    nextStep:
+      subscriptionNextStep(
+        subscription,
+        price,
+      ),
+  };
+}
+
+function subscriptionNextStep(
+  subscription,
+  price,
+) {
+  if (
+    subscription.status ===
+    "active"
+  ) {
+    return "Subscription active";
+  }
+
+  if (
+    subscription.status ===
+    "pending_checkout"
+  ) {
+    return "Complete checkout to activate billing";
+  }
+
+  if (
+    subscription.status ===
+    "past_due"
+  ) {
+    return "Payment requires attention";
+  }
+
+  if (
+    subscription.status ===
+    "non_renewing"
+  ) {
+    return "Subscription will not renew";
+  }
+
+  if (
+    subscription.status ===
+    "canceled"
+  ) {
+    return "Subscription canceled";
+  }
+
+  if (
+    subscription.status ===
+    "trialing"
+  ) {
+    return `Activate the ${price}/month plan`;
+  }
+
+  return "Review billing status";
+}
+
+function billingPublicUrl(
+  request,
+) {
+  const configured =
+    cleanEnvironmentValue(
+      process.env
+        .BIZNORYX_PUBLIC_URL,
+    ) ??
+    cleanEnvironmentValue(
+      process.env
+        .PUBLIC_APP_URL,
+    );
+
+  if (
+    configured
+  ) {
+    let parsed;
+
+    try {
+      parsed =
+        new URL(
+          configured,
+        );
+    } catch {
+      throw new AuthError(
+        "The public application URL is not valid.",
+        "BILLING_PROVIDER_NOT_CONFIGURED",
+      );
+    }
+
+    if (
+      ![
+        "https:",
+        "http:",
+      ].includes(
+        parsed.protocol,
+      )
+    ) {
+      throw new AuthError(
+        "The public application URL must use HTTP or HTTPS.",
+        "BILLING_PROVIDER_NOT_CONFIGURED",
+      );
+    }
+
+    return parsed
+      .toString()
+      .replace(
+        /\/$/,
+        "",
+      );
+  }
+
+  if (
+    process.env.NODE_ENV ===
+    "production"
+  ) {
+    throw new AuthError(
+      "BIZNORYX_PUBLIC_URL is required for production billing.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
+  }
+
+  const forwardedProto =
+    String(
+      request.headers[
+        "x-forwarded-proto"
+      ] ??
+        "",
+    )
+      .split(
+        ",",
+      )[0]
+      .trim();
+
+  const protocol =
+    forwardedProto ===
+      "https"
+      ? "https"
+      : "http";
+
+  const host =
+    assertText(
+      request.headers.host,
+      "Request host is required.",
+      255,
+    );
+
+  return `${protocol}://${host}`;
+}
+
+async function readRawBody(
+  request,
+  limitBytes =
+    MAX_JSON_BODY_BYTES,
+) {
+  const chunks =
+    [];
+
+  let size =
+    0;
+
+  for await (
+    const chunk of
+      request
+  ) {
+    size +=
+      chunk.length;
+
+    if (
+      size >
+      limitBytes
+    ) {
+      throw new AuthError(
+        "The request is too large.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    chunks.push(
+      chunk,
+    );
+  }
+
+  return Buffer.concat(
+    chunks,
+  );
+}
+
+async function loadBillingCheckout({
+  runtime,
+  organizationId,
+  actorUserId,
+  reference,
+}) {
+  if (
+    !runtime.pool
+  ) {
+    throw new AuthError(
+      "Production billing storage is not available.",
+      "SERVICE_UNAVAILABLE",
+    );
+  }
+
+  return withBillingTenant(
+    runtime.pool,
+    {
+      organizationId,
+      actorUserId,
+    },
+    async (
+      client,
+    ) => {
+      const result =
+        await client.query(
+          `select id, organization_id, actor_user_id, provider,
+                  reference, status, authorization_url, access_code,
+                  plan_id, plan_name, currency, amount_minor,
+                  billing_interval, metadata, completed_at,
+                  created_at, updated_at
+             from billing_checkout_sessions
+            where organization_id = $1
+              and reference = $2
+            limit 1`,
+          [
+            organizationId,
+            reference,
+          ],
+        );
+
+      return result.rows[0] ??
+        null;
+    },
+  );
+}
+
+async function verifyAndActivateBillingCheckout({
+  runtime,
+  organizationId,
+  actorUserId,
+  reference,
+}) {
+  if (
+    !runtime.billing
+  ) {
+    throw new AuthError(
+      "Production billing is not available.",
+      "SERVICE_UNAVAILABLE",
+    );
+  }
+
+  const checkout =
+    await loadBillingCheckout({
+      runtime,
+      organizationId,
+      actorUserId,
+      reference,
+    });
+
+  if (
+    !checkout
+  ) {
+    throw new AuthError(
+      "Billing checkout was not found.",
+      "NOT_FOUND",
+    );
+  }
+
+  if (
+    checkout.provider !==
+    "paystack"
+  ) {
+    throw new AuthError(
+      "This checkout is not a Paystack checkout.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const verified =
+    await verifyPaystackTransaction({
+      reference,
+    });
+
+  if (
+    verified?.status !==
+    "success"
+  ) {
+    throw new AuthError(
+      "Billing checkout is not complete.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const currentSubscription =
+    await runtime.billing
+      .ensureSubscription({
+        organizationId,
+
+        actorUserId,
+
+        provider:
+          "paystack",
+      });
+
+  validateVerifiedPaystackPayment({
+    verified,
+    reference,
+    organizationId,
+
+    subscription:
+      currentSubscription,
+  });
+
+  if (
+    currentSubscription.status ===
+      "active" &&
+    currentSubscription
+      .checkoutReference ===
+      reference
+  ) {
+    return currentSubscription;
+  }
+
+  if (
+    !runtime.pool ||
+    typeof runtime.billing
+      .applySubscriptionAction !==
+      "function"
+  ) {
+    throw new AuthError(
+      "Production billing activation is not available.",
+      "SERVICE_UNAVAILABLE",
+    );
+  }
+
+  await withBillingTenant(
+    runtime.pool,
+    {
+      organizationId,
+      actorUserId,
+    },
+    async (
+      client,
+    ) => {
+      await runtime.billing
+        .applySubscriptionAction(
+          client,
+          {
+            organizationId,
+            reference,
+
+            action:
+              currentSubscription.status ===
+                "active"
+                ? "subscription_renewed"
+                : "subscription_activated",
+          },
+        );
+    },
+  );
+
+  return runtime.billing
+    .ensureSubscription({
+      organizationId,
+
+      actorUserId,
+
+      provider:
+        "paystack",
+    });
+}
+
+async function applyProductionPaystackWebhook({
+  runtime,
+  event,
+  rawBody,
+}) {
+  const eventName =
+    assertText(
+      event?.event,
+      "Webhook event is required.",
+      120,
+    );
+
+  const data =
+    event?.data &&
+    typeof event.data ===
+      "object" &&
+    !Array.isArray(
+      event.data,
+    )
+      ? event.data
+      : {};
+
+  const reference =
+    data.reference ??
+    data.transaction
+      ?.reference ??
+    null;
+
+  let verified =
+    null;
+
+  if (
+    reference &&
+    (
+      (
+        eventName ===
+          "charge.success" &&
+        data.status ===
+          "success"
+      ) ||
+      (
+        eventName ===
+          "invoice.update" &&
+        data.paid ===
+          true
+      )
+    )
+  ) {
+    verified =
+      await verifyPaystackTransaction({
+        reference,
+      });
+  }
+
+  const organizationId =
+    paystackOrganizationId(
+      data,
+      verified,
+    );
+
+  let action =
+    billingActionForPaystackEvent(
+      eventName,
+      data,
+    );
+
+  if (
+    action ===
+      "ignored" &&
+    !organizationId
+  ) {
+    return {
+      received:
+        true,
+
+      duplicate:
+        false,
+
+      action,
+    };
+  }
+
+  if (
+    !organizationId
+  ) {
+    throw new AuthError(
+      "Paystack event does not include a BIZNORYX organization reference.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const subscription =
+    await runtime.billing
+      .ensureSubscription({
+        organizationId,
+
+        actorUserId:
+          null,
+
+        provider:
+          "paystack",
+      });
+
+  if (
+    action ===
+      "subscription_activated" ||
+    action ===
+      "subscription_renewed"
+  ) {
+    if (
+      !verified ||
+      verified.status !==
+        "success"
+    ) {
+      throw new AuthError(
+        "Paystack payment could not be confirmed.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    validateVerifiedPaystackPayment({
+      verified,
+
+      reference:
+        reference ??
+        verified.reference,
+
+      organizationId,
+
+      subscription,
+    });
+
+    if (
+      eventName ===
+        "charge.success"
+    ) {
+      action =
+        subscription.status ===
+          "active"
+          ? (
+              subscription
+                .checkoutReference ===
+              reference
+                ? "ignored"
+                : "subscription_renewed"
+            )
+          : "subscription_activated";
+    }
+  }
+
+  const eventIdentity =
+    event.id ??
+    data.id ??
+    data.invoice_code ??
+    data.subscription_code ??
+    data.subscription
+      ?.subscription_code ??
+    reference ??
+    createHash(
+      "sha256",
+    )
+      .update(
+        rawBody,
+      )
+      .digest(
+        "hex",
+      )
+      .slice(
+        0,
+        32,
+      );
+
+  const eventKey =
+    `${eventName}:${eventIdentity}`;
+
+  const result =
+    await runtime.billing
+      .applyWebhookEvent({
+        organizationId,
+
+        provider:
+          "paystack",
+
+        eventKey,
+
+        eventName,
+
+        reference,
+
+        payload:
+          rawBody,
+
+        action,
+      });
+
+  return {
+    received:
+      true,
+
+    duplicate:
+      Boolean(
+        result?.duplicate,
+      ),
+
+    action,
+  };
+}
+
+function billingActionForPaystackEvent(
+  eventName,
+  data,
+) {
+  if (
+    eventName ===
+      "charge.success" &&
+    data.status ===
+      "success"
+  ) {
+    return "subscription_activated";
+  }
+
+  if (
+    eventName ===
+      "invoice.update" &&
+    data.paid ===
+      true
+  ) {
+    return "subscription_renewed";
+  }
+
+  if (
+    eventName ===
+    "invoice.payment_failed"
+  ) {
+    return "subscription_past_due";
+  }
+
+  if (
+    eventName ===
+    "subscription.disable"
+  ) {
+    return "subscription_canceled";
+  }
+
+  if (
+    eventName ===
+    "subscription.not_renew"
+  ) {
+    return "subscription_non_renewing";
+  }
+
+  return "ignored";
+}
+
+function paystackOrganizationId(
+  data,
+  verified,
+) {
+  const candidates = [
+    data?.metadata,
+
+    data?.transaction
+      ?.metadata,
+
+    data?.subscription
+      ?.metadata,
+
+    data?.customer
+      ?.metadata,
+
+    verified?.metadata,
+
+    verified?.customer
+      ?.metadata,
+  ];
+
+  for (
+    const candidate of
+      candidates
+  ) {
+    const metadata =
+      normalizePaystackMetadata(
+        candidate,
+      );
+
+    const organizationId =
+      metadata
+        ?.organization_id ??
+      metadata
+        ?.organizationId;
+
+    if (
+      organizationId
+    ) {
+      return String(
+        organizationId,
+      );
+    }
+  }
+
+  return null;
+}
+
+function normalizePaystackMetadata(
+  value,
+) {
+  if (
+    value &&
+    typeof value ===
+      "object" &&
+    !Array.isArray(
+      value,
+    )
+  ) {
+    return value;
+  }
+
+  if (
+    typeof value ===
+      "string" &&
+    value.trim()
+  ) {
+    try {
+      const parsed =
+        JSON.parse(
+          value,
+        );
+
+      if (
+        parsed &&
+        typeof parsed ===
+          "object" &&
+        !Array.isArray(
+          parsed,
+        )
+      ) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function validateVerifiedPaystackPayment({
+  verified,
+  reference,
+  organizationId,
+  subscription,
+}) {
+  if (
+    verified?.status !==
+    "success"
+  ) {
+    throw new AuthError(
+      "Paystack payment is not successful.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  if (
+    String(
+      verified.reference ??
+        "",
+    ) !==
+    String(
+      reference ??
+        "",
+    )
+  ) {
+    throw new AuthError(
+      "Paystack payment reference does not match the checkout.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const expectedAmount =
+    Number(
+      subscription
+        .amountMinor,
+    );
+
+  const actualAmount =
+    Number(
+      verified.amount,
+    );
+
+  if (
+    !Number.isFinite(
+      actualAmount,
+    ) ||
+    actualAmount !==
+      expectedAmount
+  ) {
+    throw new AuthError(
+      "Paystack payment amount does not match the BIZNORYX subscription.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const expectedCurrency =
+    String(
+      subscription
+        .currency ??
+        "",
+    ).toUpperCase();
+
+  const actualCurrency =
+    String(
+      verified.currency ??
+        "",
+    ).toUpperCase();
+
+  if (
+    actualCurrency !==
+    expectedCurrency
+  ) {
+    throw new AuthError(
+      "Paystack payment currency does not match the BIZNORYX subscription.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const paymentOrganizationId =
+    paystackOrganizationId(
+      verified,
+      verified,
+    );
+
+  if (
+    paymentOrganizationId &&
+    paymentOrganizationId !==
+      organizationId
+  ) {
+    throw new AuthError(
+      "Paystack payment does not belong to this organization.",
+      "ORG_ACCESS_DENIED",
+    );
+  }
+}
+
 async function readJson(
   request,
 ) {
@@ -2559,6 +4234,26 @@ function sendError(
         [
           "SERVICE_UNAVAILABLE",
           503,
+        ],
+
+        [
+          "BILLING_PROVIDER_NOT_CONFIGURED",
+          503,
+        ],
+
+        [
+          "BILLING_PROVIDER_FAILED",
+          502,
+        ],
+
+        [
+          "PAYSTACK_SIGNATURE_INVALID",
+          401,
+        ],
+
+        [
+          "TENANT_CONTEXT_REQUIRED",
+          400,
         ],
       ]).get(
         error.code,
