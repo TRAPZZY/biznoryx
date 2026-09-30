@@ -363,7 +363,7 @@ function publicHeader(active = "/") {
 
         ${link(
           "/register",
-          `$20/mo start ${icon("arrow-up-right")}`,
+          `₦40,000/mo start ${icon("arrow-up-right")}`,
           "button primary",
         )}
       </div>
@@ -670,7 +670,7 @@ function landing() {
           </p>
 
           <h2>
-            $20/month for one business workspace.
+            ₦40,000/month for one business workspace.
           </h2>
 
           <p>
@@ -787,28 +787,28 @@ function publicPage(path) {
       kicker: "Pricing",
 
       title:
-        "$20 per month for the BIZNORYX business workspace.",
+        "₦40,000 per month for the BIZNORYX business workspace.",
 
       body:
-        "One simple monthly plan gives a business the workspace, verified sign-up, recurring CSV data intake, evidence reporting, dashboard history and billing foundation.",
+        "One simple monthly plan gives a business the workspace, verified sign-up, recurring business-data intake, evidence reporting, dashboard history and billing access.",
 
       image:
         "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=2000&q=85",
 
       sections: [
         [
-          "$20/month",
-          "A clear subscription price for public launch.",
+          "₦40,000/month",
+          "One clear monthly subscription for your BIZNORYX business workspace.",
         ],
 
         [
-          "Paystack-ready",
-          "The checkout boundary is ready for your Paystack keys and plan code.",
+          "Secure payments",
+          "Monthly subscription payments are processed securely through Paystack.",
         ],
 
         [
           "Evidence included",
-          "Reports and dashboards are generated from confirmed uploads.",
+          "Reports and dashboards are generated from verified business data.",
         ],
       ],
     },
@@ -5500,7 +5500,7 @@ function billingPage() {
 
   const priceLabel =
     subscription?.priceLabel ||
-    "$20.00/mo";
+    "₦40,000/mo";
 
   const planName =
     subscription?.planName ||

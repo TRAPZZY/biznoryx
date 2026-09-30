@@ -1,127 +1,636 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { AuthError } from '../auth/core.mjs';
+import {
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
-const PAYSTACK_INITIALIZE_URL = 'https://api.paystack.co/transaction/initialize';
-const PAYSTACK_VERIFY_URL = 'https://api.paystack.co/transaction/verify';
-export const PAYSTACK_WEBHOOK_IPS = Object.freeze([
-  '52.31.139.75',
-  '52.49.173.169',
-  '52.214.14.220'
-]);
+import {
+  AuthError,
+} from "../auth/core.mjs";
 
-export function monthlyPlanFromEnv(env = process.env) {
-  const amountMinor = Number.parseInt(env.BIZNORYX_MONTHLY_PRICE_MINOR ?? '2000', 10);
+const PAYSTACK_INITIALIZE_URL =
+  "https://api.paystack.co/transaction/initialize";
+
+const PAYSTACK_VERIFY_URL =
+  "https://api.paystack.co/transaction/verify";
+
+const BIZNORYX_MONTHLY_AMOUNT_MINOR =
+  4_000_000;
+
+const BIZNORYX_CURRENCY =
+  "NGN";
+
+export const PAYSTACK_WEBHOOK_IPS =
+  Object.freeze([
+    "52.31.139.75",
+    "52.49.173.169",
+    "52.214.14.220",
+  ]);
+
+export function monthlyPlanFromEnv(
+  env = process.env,
+) {
+  const configuredCurrency =
+    String(
+      env.PAYSTACK_CURRENCY ??
+        BIZNORYX_CURRENCY,
+    )
+      .trim()
+      .toUpperCase();
+
+  if (
+    configuredCurrency !==
+    BIZNORYX_CURRENCY
+  ) {
+    throw new AuthError(
+      "BIZNORYX billing only accepts NGN.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
+  }
+
+  const configuredAmount =
+    env.BIZNORYX_MONTHLY_AMOUNT_MINOR
+      ? Number(
+          env.BIZNORYX_MONTHLY_AMOUNT_MINOR,
+        )
+      : BIZNORYX_MONTHLY_AMOUNT_MINOR;
+
+  if (
+    !Number.isSafeInteger(
+      configuredAmount,
+    ) ||
+    configuredAmount <= 0
+  ) {
+    throw new AuthError(
+      "BIZNORYX monthly billing amount is invalid.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
+  }
+
+  const planCode =
+    String(
+      env.PAYSTACK_PLAN_CODE ??
+        "",
+    ).trim() || null;
+
+  const secretKey =
+    String(
+      env.PAYSTACK_SECRET_KEY ??
+        "",
+    ).trim() || null;
+
   return {
-    id: 'biznoryx_monthly',
-    name: 'BIZNORYX Monthly',
-    currency: env.PAYSTACK_CURRENCY ?? 'USD',
-    amountMinor: Number.isFinite(amountMinor) && amountMinor > 0 ? amountMinor : 2000,
-    interval: 'monthly',
-    planCode: env.PAYSTACK_PLAN_CODE ?? null,
-    providerConfigured: Boolean(env.PAYSTACK_SECRET_KEY)
+    id:
+      "biznoryx_monthly_ngn_40000",
+
+    name:
+      "BIZNORYX Monthly",
+
+    currency:
+      BIZNORYX_CURRENCY,
+
+    amountMinor:
+      configuredAmount,
+
+    interval:
+      "monthly",
+
+    planCode,
+
+    providerConfigured:
+      Boolean(
+        secretKey &&
+          planCode,
+      ),
   };
 }
 
-export function planLabel(plan = monthlyPlanFromEnv()) {
-  return new Intl.NumberFormat('en', {
-    style: 'currency',
-    currency: plan.currency,
-    maximumFractionDigits: 2
-  }).format(plan.amountMinor / 100);
+export function planLabel({
+  currency,
+  amountMinor,
+}) {
+  const normalizedCurrency =
+    String(
+      currency ??
+        BIZNORYX_CURRENCY,
+    )
+      .trim()
+      .toUpperCase();
+
+  const normalizedAmount =
+    Number(
+      amountMinor,
+    );
+
+  if (
+    !Number.isFinite(
+      normalizedAmount,
+    )
+  ) {
+    return "₦40,000";
+  }
+
+  const majorAmount =
+    normalizedAmount /
+    100;
+
+  try {
+    return new Intl.NumberFormat(
+      "en-NG",
+      {
+        style:
+          "currency",
+
+        currency:
+          normalizedCurrency,
+
+        minimumFractionDigits:
+          0,
+
+        maximumFractionDigits:
+          0,
+      },
+    ).format(
+      majorAmount,
+    );
+  } catch {
+    return `₦${new Intl.NumberFormat(
+      "en-NG",
+      {
+        maximumFractionDigits:
+          0,
+      },
+    ).format(
+      majorAmount,
+    )}`;
+  }
 }
 
-export function createBillingReference(prefix = 'bnx') {
-  return `${prefix}_${Date.now()}_${randomBytes(8).toString('hex')}`;
+export function createBillingReference(
+  prefix = "bnx",
+) {
+  return `${prefix}_${Date.now()}_${randomBytes(
+    8,
+  ).toString(
+    "hex",
+  )}`;
 }
 
 export async function initializePaystackTransaction({
-  env = process.env,
-  fetchImpl = globalThis.fetch,
   customerEmail,
   organizationId,
   callbackUrl,
-  reference = createBillingReference()
+  reference =
+    createBillingReference(),
+  env = process.env,
+  fetchImpl = fetch,
 }) {
-  const plan = monthlyPlanFromEnv(env);
-  if (!env.PAYSTACK_SECRET_KEY) {
-    throw new AuthError('Paystack is not configured for this environment.', 'BILLING_PROVIDER_NOT_CONFIGURED');
+  const plan =
+    monthlyPlanFromEnv(
+      env,
+    );
+
+  const secretKey =
+    String(
+      env.PAYSTACK_SECRET_KEY ??
+        "",
+    ).trim();
+
+  if (
+    !secretKey
+  ) {
+    throw new AuthError(
+      "Paystack is not configured for this environment.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
   }
-  const body = {
-    email: customerEmail,
-    amount: plan.amountMinor,
-    currency: plan.currency,
-    reference,
-    callback_url: callbackUrl,
-    metadata: {
-      organization_id: organizationId,
-      product: 'biznoryx',
-      plan: plan.id
-    }
-  };
-  if (plan.planCode) body.plan = plan.planCode;
-  const response = await fetchImpl(PAYSTACK_INITIALIZE_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.status !== true || !payload?.data?.authorization_url) {
-    throw new AuthError('Billing checkout could not be started.', 'BILLING_PROVIDER_FAILED');
+
+  if (
+    !plan.planCode
+  ) {
+    throw new AuthError(
+      "The Paystack subscription plan is not configured.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
   }
+
+  const email =
+    String(
+      customerEmail ??
+        "",
+    ).trim();
+
+  if (
+    !email
+  ) {
+    throw new AuthError(
+      "A customer email is required to start billing.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const organization =
+    String(
+      organizationId ??
+        "",
+    ).trim();
+
+  if (
+    !organization
+  ) {
+    throw new AuthError(
+      "An organization is required to start billing.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const response =
+    await fetchImpl(
+      PAYSTACK_INITIALIZE_URL,
+      {
+        method:
+          "POST",
+
+        headers: {
+          Authorization:
+            `Bearer ${secretKey}`,
+
+          "Content-Type":
+            "application/json",
+        },
+
+        body:
+          JSON.stringify({
+            email,
+
+            amount:
+              plan.amountMinor,
+
+            currency:
+              plan.currency,
+
+            plan:
+              plan.planCode,
+
+            reference,
+
+            callback_url:
+              callbackUrl,
+
+            metadata: {
+              organization_id:
+                organization,
+
+              organizationId:
+                organization,
+
+              billing_plan_id:
+                plan.id,
+
+              billing_plan_name:
+                plan.name,
+
+              billing_currency:
+                plan.currency,
+
+              billing_amount_minor:
+                plan.amountMinor,
+
+              billing_interval:
+                plan.interval,
+
+              product:
+                "BIZNORYX",
+            },
+          }),
+      },
+    );
+
+  let payload;
+
+  try {
+    payload =
+      await response.json();
+  } catch {
+    payload =
+      null;
+  }
+
+  if (
+    !response.ok ||
+    !payload?.status ||
+    !payload?.data
+  ) {
+    throw new AuthError(
+      payload?.message ||
+        "Billing checkout could not be started.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const authorizationUrl =
+    payload.data
+      .authorization_url;
+
+  const accessCode =
+    payload.data
+      .access_code;
+
+  const returnedReference =
+    payload.data.reference ||
+    reference;
+
+  if (
+    !authorizationUrl ||
+    !returnedReference
+  ) {
+    throw new AuthError(
+      "Paystack did not return a valid checkout session.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
   return {
-    provider: 'paystack',
-    reference,
-    authorizationUrl: payload.data.authorization_url,
-    accessCode: payload.data.access_code ?? null,
-    plan
+    provider:
+      "paystack",
+
+    reference:
+      returnedReference,
+
+    authorizationUrl,
+
+    accessCode:
+      accessCode ??
+      null,
+
+    customerEmail:
+      email,
+
+    organizationId:
+      organization,
+
+    callbackUrl,
+
+    plan,
   };
 }
 
 export async function verifyPaystackTransaction({
+  reference,
   env = process.env,
-  fetchImpl = globalThis.fetch,
-  reference
+  fetchImpl = fetch,
 }) {
-  if (!env.PAYSTACK_SECRET_KEY) {
-    throw new AuthError('Paystack is not configured for this environment.', 'BILLING_PROVIDER_NOT_CONFIGURED');
+  const secretKey =
+    String(
+      env.PAYSTACK_SECRET_KEY ??
+        "",
+    ).trim();
+
+  if (
+    !secretKey
+  ) {
+    throw new AuthError(
+      "Paystack is not configured for this environment.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
   }
-  const response = await fetchImpl(`${PAYSTACK_VERIFY_URL}/${encodeURIComponent(reference)}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`
-    }
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.status !== true) {
-    throw new AuthError('Billing checkout could not be verified.', 'BILLING_PROVIDER_FAILED');
+
+  const normalizedReference =
+    String(
+      reference ??
+        "",
+    ).trim();
+
+  if (
+    !normalizedReference
+  ) {
+    throw new AuthError(
+      "Billing reference is required.",
+      "VALIDATION_FAILED",
+    );
   }
-  return payload.data;
+
+  const response =
+    await fetchImpl(
+      `${PAYSTACK_VERIFY_URL}/${encodeURIComponent(
+        normalizedReference,
+      )}`,
+      {
+        method:
+          "GET",
+
+        headers: {
+          Authorization:
+            `Bearer ${secretKey}`,
+
+          Accept:
+            "application/json",
+        },
+      },
+    );
+
+  let payload;
+
+  try {
+    payload =
+      await response.json();
+  } catch {
+    payload =
+      null;
+  }
+
+  if (
+    !response.ok ||
+    !payload?.status ||
+    !payload?.data
+  ) {
+    throw new AuthError(
+      payload?.message ||
+        "Billing checkout could not be verified.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const transaction =
+    payload.data;
+
+  /*
+   * BIZNORYX is NGN-only.
+   *
+   * Reject any successful transaction returned in
+   * another currency before it can activate a
+   * subscription.
+   */
+
+  if (
+    transaction.status ===
+      "success" &&
+    String(
+      transaction.currency ??
+        "",
+    ).toUpperCase() !==
+      BIZNORYX_CURRENCY
+  ) {
+    throw new AuthError(
+      "The billing transaction currency does not match BIZNORYX NGN billing.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  return transaction;
 }
 
-export function localReviewCheckout({ customerEmail, organizationId, callbackUrl, reference = createBillingReference('bnx_review') }) {
+export function localReviewCheckout({
+  customerEmail,
+  organizationId,
+  callbackUrl,
+  reference =
+    createBillingReference(
+      "bnx_review",
+    ),
+}) {
+  const plan =
+    monthlyPlanFromEnv({
+      ...process.env,
+
+      PAYSTACK_CURRENCY:
+        BIZNORYX_CURRENCY,
+    });
+
   return {
-    provider: 'local_review',
+    provider:
+      "local_review",
+
     reference,
-    authorizationUrl: `${callbackUrl}${callbackUrl.includes('?') ? '&' : '?'}checkout=${encodeURIComponent(reference)}`,
-    accessCode: null,
-    plan: monthlyPlanFromEnv(),
+
+    authorizationUrl:
+      `${callbackUrl}${
+        callbackUrl.includes(
+          "?",
+        )
+          ? "&"
+          : "?"
+      }checkout=${encodeURIComponent(
+        reference,
+      )}`,
+
+    accessCode:
+      null,
+
     customerEmail,
-    organizationId
+
+    organizationId,
+
+    callbackUrl,
+
+    plan,
   };
 }
 
-export function paystackWebhookSignature({ payload, secret }) {
-  if (!secret) {
-    throw new AuthError('Paystack webhook secret is not configured.', 'BILLING_PROVIDER_NOT_CONFIGURED');
+export function paystackWebhookSignature({
+  payload,
+  secret,
+}) {
+  const normalizedSecret =
+    String(
+      secret ??
+        "",
+    ).trim();
+
+  if (
+    !normalizedSecret
+  ) {
+    throw new AuthError(
+      "Paystack webhook secret is not configured.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
   }
-  return createHmac('sha512', secret).update(payload).digest('hex');
+
+  const rawPayload =
+    Buffer.isBuffer(
+      payload,
+    )
+      ? payload
+      : Buffer.from(
+          typeof payload ===
+            "string"
+            ? payload
+            : JSON.stringify(
+                payload,
+              ),
+        );
+
+  return createHmac(
+    "sha512",
+    normalizedSecret,
+  )
+    .update(
+      rawPayload,
+    )
+    .digest(
+      "hex",
+    );
 }
 
-export function verifyPaystackWebhookSignature({ payload, signature, secret }) {
-  const expected = Buffer.from(paystackWebhookSignature({ payload, secret }), 'hex');
-  const actual = Buffer.from(String(signature ?? ''), 'hex');
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+export function verifyPaystackWebhookSignature({
+  payload,
+  signature,
+  secret,
+}) {
+  if (
+    !signature
+  ) {
+    return false;
+  }
+
+  let expectedHex;
+
+  try {
+    expectedHex =
+      paystackWebhookSignature({
+        payload,
+        secret,
+      });
+  } catch {
+    return false;
+  }
+
+  const normalizedSignature =
+    String(
+      signature,
+    )
+      .trim()
+      .toLowerCase();
+
+  if (
+    !/^[a-f0-9]{128}$/.test(
+      normalizedSignature,
+    )
+  ) {
+    return false;
+  }
+
+  const expected =
+    Buffer.from(
+      expectedHex,
+      "hex",
+    );
+
+  const actual =
+    Buffer.from(
+      normalizedSignature,
+      "hex",
+    );
+
+  if (
+    expected.length !==
+    actual.length
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    expected,
+    actual,
+  );
 }
