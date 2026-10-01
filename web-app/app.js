@@ -6425,13 +6425,65 @@ function billingPage() {
   }
 }
 
-function activity() {
-  const auditTrail =
-    Array.isArray(
-      dashboard?.auditTrail,
-    )
-      ? dashboard.auditTrail
-      : [];
+async function activity() {
+  shell(
+    `
+      ${heading(
+        "BUSINESS MEMORY",
+        "Workspace activity",
+        "Loading the latest activity for this business.",
+      )}
+
+      <div class="empty-state">
+        <h3>
+          Loading activity...
+        </h3>
+
+        <p>
+          Reading the activity history for this workspace.
+        </p>
+      </div>
+    `,
+    "/activity",
+  );
+
+  let auditTrail =
+    [];
+
+  let loadError =
+    null;
+
+  try {
+    const result =
+      await api(
+        "activity",
+      );
+
+    auditTrail =
+      Array.isArray(
+        result?.events,
+      )
+        ? result.events
+        : [];
+  } catch (error) {
+    loadError =
+      error;
+  }
+
+  const currentPath =
+    (
+      location.hash
+        .slice(1)
+        .split("?")[0] ||
+      "/"
+    );
+
+  if (
+    currentPath !==
+    "/activity"
+  ) {
+    return;
+  }
 
   shell(
     `
@@ -6442,75 +6494,110 @@ function activity() {
       )}
 
       ${
-        auditTrail.length
+        loadError
           ? `
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>
-                      Event
-                    </th>
-
-                    <th>
-                      Record
-                    </th>
-
-                    <th>
-                      When
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${auditTrail
-                    .map(
-                      (a) => `
-                        <tr>
-                          <td>
-                            ${esc(
-                              a.label,
-                            )}
-                          </td>
-
-                          <td>
-                            ${esc(
-                              a.detail,
-                            )}
-                          </td>
-
-                          <td>
-                            ${esc(
-                              new Date(
-                                a.createdAt,
-                              ).toLocaleString(),
-                            )}
-                          </td>
-                        </tr>
-                      `,
-                    )
-                    .join("")}
-                </tbody>
-              </table>
-            </div>
-          `
-          : `
             <div class="empty-state">
               <h3>
-                No customer activity yet.
+                Activity is temporarily unavailable.
               </h3>
 
               <p>
-                Business profile changes, uploads,
-                evidence imports, billing actions and
-                member actions will appear here.
+                ${esc(
+                  loadError.message ||
+                    "The activity history could not be loaded.",
+                )}
               </p>
+
+              <button
+                id="retry-activity"
+                class="secondary"
+                type="button"
+              >
+                Try again
+              </button>
             </div>
           `
+          : auditTrail.length
+            ? `
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>
+                        Event
+                      </th>
+
+                      <th>
+                        Record
+                      </th>
+
+                      <th>
+                        When
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    ${auditTrail
+                      .map(
+                        (item) => `
+                          <tr>
+                            <td>
+                              ${esc(
+                                item.label,
+                              )}
+                            </td>
+
+                            <td>
+                              ${esc(
+                                item.detail,
+                              )}
+                            </td>
+
+                            <td>
+                              ${esc(
+                                new Date(
+                                  item.createdAt,
+                                ).toLocaleString(),
+                              )}
+                            </td>
+                          </tr>
+                        `,
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+            `
+            : `
+              <div class="empty-state">
+                <h3>
+                  No customer activity yet.
+                </h3>
+
+                <p>
+                  Uploads, business changes, evidence
+                  actions and account activity will
+                  appear here.
+                </p>
+              </div>
+            `
       }
     `,
     "/activity",
   );
+
+  const retry =
+    document.querySelector(
+      "#retry-activity",
+    );
+
+  if (retry) {
+    retry.onclick =
+      () => {
+        activity();
+      };
+  }
 }
 
 function showError(error) {
@@ -6686,7 +6773,7 @@ async function route() {
       path ===
       "/activity"
     ) {
-      activity();
+      await activity();
     } else {
       overview();
     }

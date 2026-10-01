@@ -35,6 +35,8 @@ import {
 
 import { PostgresBusinessOutcomesRepository } from "../database/business-outcomes-repository.mjs";
 
+import { PostgresActivityRepository } from "../database/activity-repository.mjs";
+
 import {
   PostgresBillingRepository,
   withBillingTenant,
@@ -117,6 +119,7 @@ export function createProductionApp({
   businessOutcomesRepository,
   evidenceReportRepository,
   billingRepository,
+  activityRepository,
   objectStorage,
   ingestionService,
   healthChecks,
@@ -183,6 +186,9 @@ export function createProductionApp({
 
   const billing =
     billingRepository ?? (pool ? new PostgresBillingRepository(pool) : null);
+
+  const activity =
+    activityRepository ?? (pool ? new PostgresActivityRepository(pool) : null);
   const storage = objectStorage ?? objectStorageFromEnvironment();
 
   const ingestion =
@@ -256,6 +262,8 @@ export function createProductionApp({
     businessOutcomes,
 
     billing,
+
+    activity,
 
     objectStorage: storage,
 
@@ -1614,6 +1622,55 @@ async function routeRequest({ request, response, runtime }) {
    * EVIDENCE REPORT
    * ==================================================
    */
+
+  /*
+   * ==================================================
+   * ACTIVITY — ISOLATED PRODUCTION ENDPOINT
+   * ==================================================
+   */
+
+  if (url.pathname === "/api/activity" && request.method === "GET") {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+
+      requireCsrf: false,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select an organization before loading activity.",
+    );
+
+    await requirePremiumSubscription({
+      billingRepository: runtime.billing,
+
+      organizationId,
+
+      actorUserId: context.user.id,
+    });
+
+    if (!runtime.activity) {
+      throw new AuthError(
+        "Activity history is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const events = await runtime.activity.listActivity({
+      organizationId,
+
+      actorUserId: context.user.id,
+
+      limit: 100,
+    });
+
+    sendJson(response, 200, {
+      events,
+    });
+
+    return;
+  }
 
   if (url.pathname === "/api/evidence-report" && request.method === "GET") {
     const { context } = await authenticateRequest({
