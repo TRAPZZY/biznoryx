@@ -363,7 +363,7 @@ function publicHeader(active = "/") {
 
         ${link(
           "/register",
-          `₦40,000/mo start ${icon("arrow-up-right")}`,
+          `Get started ${icon("arrow-up-right")}`,
           "button primary",
         )}
       </div>

@@ -174,7 +174,7 @@ footer p,footer>a:last-child{font-size:13px;color:var(--muted);}
 
 .auth-layout{min-height:100vh;display:grid;grid-template-columns:44% 56%;}
 
-.auth-visual{background:linear-gradient(0deg,rgba(14,36,24,0.88),rgba(14,36,24,0.35)),url("/hero-dashboard.svg") center/cover;color:white;display:flex;flex-direction:column;justify-content:space-between;padding:44px 11%;}
+.auth-visual{background:linear-gradient(0deg,rgba(14,36,24,0.88),rgba(14,36,24,0.35)),url("https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80") center/cover;color:white;display:flex;flex-direction:column;justify-content:space-between;padding:44px 11%;}
 
 .auth-visual h1{font-size:43px;font-weight:500;line-height:1.3;}
 
