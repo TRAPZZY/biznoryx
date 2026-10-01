@@ -196,3 +196,120 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
   .er-export-document { max-width:none; margin:0; }
   * { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
 }
+
+/* ==========================================================
+   BIZNORYX MOBILE EVIDENCE HARDENING — 2026-09
+   Prevent compressed report columns and broken metric values.
+   ========================================================== */
+
+@media screen and (max-width: 700px) {
+
+  .evidence-report {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .evidence-report *,
+  .evidence-report *::before,
+  .evidence-report *::after {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  /*
+   * Evidence layouts use several independent summary/fact/
+   * comparison grids. On phone widths they must become a
+   * vertical reading flow rather than narrow desktop columns.
+   *
+   * The attribute selectors are deliberately scoped inside
+   * .evidence-report so they cannot alter the rest of BIZNORYX.
+   */
+  .evidence-report [class*="grid"],
+  .evidence-report [class*="summary"],
+  .evidence-report [class*="snapshot"],
+  .evidence-report [class*="comparison"],
+  .evidence-report [class*="metric"],
+  .evidence-report [class*="measure"],
+  .evidence-report [class*="facts"],
+  .evidence-report [class*="fact-"],
+  .evidence-report [class*="stats"],
+  .evidence-report [class*="kpi"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /*
+   * Report values such as:
+   *   NGN 34,725.47
+   * must never break digit-by-digit merely because a desktop
+   * column has become too narrow.
+   */
+  .evidence-report strong,
+  .evidence-report b,
+  .evidence-report dd,
+  .evidence-report [class*="value"],
+  .evidence-report [class*="amount"],
+  .evidence-report [class*="number"] {
+    max-width: 100%;
+
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: none !important;
+  }
+
+  /*
+   * Cards themselves should occupy the available phone width.
+   */
+  .evidence-report article,
+  .evidence-report section,
+  .evidence-report dl,
+  .evidence-report details {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /*
+   * Labels and narrative copy may wrap at normal word
+   * boundaries, never character-by-character.
+   */
+  .evidence-report p,
+  .evidence-report span,
+  .evidence-report small,
+  .evidence-report dt,
+  .evidence-report h1,
+  .evidence-report h2,
+  .evidence-report h3,
+  .evidence-report h4 {
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  /*
+   * Give the report enough internal breathing room while
+   * retaining the existing visual system.
+   */
+  .evidence-report {
+    font-size: 15px;
+  }
+
+  .evidence-report article {
+    overflow: hidden;
+  }
+}
+
+@media screen and (max-width: 380px) {
+
+  .evidence-report {
+    font-size: 14px;
+  }
+
+  .evidence-report [class*="value"],
+  .evidence-report [class*="amount"],
+  .evidence-report [class*="number"] {
+    font-size: clamp(1.35rem, 7vw, 2rem) !important;
+    line-height: 1.12 !important;
+  }
+}

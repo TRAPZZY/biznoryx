@@ -1794,3 +1794,125 @@ footer p{width:100%;order:3;}
     font-size: 20px;
   }
 }
+/* ==========================================================
+   BIZNORYX MOBILE WORKSPACE HARDENING — 2026-09
+   Mobile-only. Desktop workspace behavior remains unchanged.
+   ========================================================== */
+
+@media (max-width: 700px) {
+
+  /*
+   * Six workspace destinations cannot fit safely in one
+   * phone-width row. Use a deliberate 3 x 2 navigation grid.
+   */
+  .sidebar nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .sidebar nav a,
+  .workspace.sidebar-collapsed .sidebar nav a {
+    width: 100%;
+    min-width: 0;
+    min-height: 60px;
+    margin: 0;
+    padding: 9px 6px;
+    gap: 6px;
+
+    justify-content: center;
+    align-items: center;
+
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+
+    border-radius: 6px;
+  }
+
+  .sidebar nav a span,
+  .workspace.sidebar-collapsed .sidebar nav a span {
+    display: block;
+    width: 100%;
+    min-width: 0;
+
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  .sidebar nav a svg,
+  .workspace.sidebar-collapsed .sidebar nav a svg {
+    flex: 0 0 auto;
+    width: 17px;
+    height: 17px;
+  }
+
+  .sidebar nav a.active,
+  .workspace.sidebar-collapsed .sidebar nav a.active {
+    border-radius: 6px;
+  }
+
+  /*
+   * Protect every workspace page from accidental horizontal
+   * expansion by a wide card, table, chart or long value.
+   */
+  .workspace,
+  .workspace-main,
+  .workspace-content {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-main,
+  .workspace-content {
+    overflow-x: clip;
+  }
+
+  /*
+   * Allow reusable cards and grid children to actually shrink.
+   * min-width:auto on grid/flex children is a common source of
+   * mobile overflow.
+   */
+  .workspace-content section,
+  .workspace-content article,
+  .workspace-content > div {
+    min-width: 0;
+  }
+
+  /*
+   * Keep monetary and metric text readable instead of breaking
+   * numbers into a vertical stack.
+   */
+  .metrics-grid strong,
+  .overview-v2-stat > strong,
+  .billing-plan > strong {
+    max-width: 100%;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+}
+
+@media (max-width: 380px) {
+
+  /*
+   * Small phones need slightly tighter navigation typography,
+   * but still retain readable labels and touch targets.
+   */
+  .sidebar nav a,
+  .workspace.sidebar-collapsed .sidebar nav a {
+    min-height: 58px;
+    padding-inline: 4px;
+    font-size: 9.5px;
+  }
+}
