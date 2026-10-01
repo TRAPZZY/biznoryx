@@ -313,3 +313,198 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
     line-height: 1.12 !important;
   }
 }
+/* ==========================================================
+   BIZNORYX EVIDENCE INDICATOR MOBILE FIX V2
+   Revenue / Previous period / Movement / Assessment
+   Mobile only — desktop remains unchanged.
+   ========================================================== */
+
+@media screen and (max-width: 700px) {
+
+  /*
+   * The desktop report has four indicator columns.
+   *
+   * On a phone, forcing four columns leaves each card far too
+   * narrow for currency, period labels and assessment text.
+   *
+   * Mobile uses one readable indicator per row.
+   */
+  .evidence-report .er-indicators {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+
+    width: 100%;
+    min-width: 0;
+
+    gap: 0;
+    padding: 0;
+    margin: 20px 0 4px;
+
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+
+    background: #f5f8f6;
+
+    overflow: hidden;
+  }
+
+
+  /*
+   * styles.css has generic dl > div flex styling.
+   * The evidence indicator cards must not inherit that
+   * horizontal layout on mobile.
+   */
+  .evidence-report .er-indicators > div {
+    display: block !important;
+
+    width: 100%;
+    min-width: 0;
+
+    padding: 18px 17px;
+
+    border-right: 0 !important;
+    border-bottom: 1px solid #dce5df;
+
+    text-align: left;
+  }
+
+  .evidence-report .er-indicators > div:last-child {
+    border-bottom: 0;
+  }
+
+
+  /*
+   * Indicator heading:
+   *
+   * Revenue
+   * Sep 2026
+   */
+  .evidence-report .er-indicators dt {
+    display: block;
+
+    margin: 0;
+
+    color: #33473b;
+
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  .evidence-report .er-indicators dt span {
+    display: block;
+
+    margin-top: 4px;
+
+    color: #6b786f;
+
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+
+  /*
+   * Large values:
+   *
+   * NGN 34,725.47
+   * NGN 27,607.90
+   * +25.8%
+   *
+   * They may wrap at normal spaces if absolutely required,
+   * but must never break digit-by-digit.
+   */
+  .evidence-report .er-indicators dd {
+    display: block;
+
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+
+    margin: 10px 0 7px;
+
+    color: #25372d;
+
+    font-size: clamp(
+      23px,
+      7vw,
+      30px
+    );
+
+    font-weight: 650;
+    line-height: 1.15;
+
+    letter-spacing: -0.02em;
+
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: none !important;
+
+    font-variant-numeric: tabular-nums;
+  }
+
+
+  /*
+   * Business assessment uses prose rather than a number.
+   * Give it its own more appropriate scale.
+   */
+  .evidence-report .er-indicators dd.er-health {
+    font-size: 19px;
+    line-height: 1.35;
+    letter-spacing: 0;
+
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+
+  /*
+   * Supporting evidence text goes underneath the value.
+   */
+  .evidence-report .er-indicators small {
+    display: block;
+
+    width: 100%;
+    max-width: 100%;
+
+    margin: 0;
+
+    color: #67756b;
+
+    font-size: 11px;
+    line-height: 1.55;
+
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: none;
+  }
+}
+
+
+/*
+ * Very narrow phones.
+ */
+@media screen and (max-width: 380px) {
+
+  .evidence-report .er-indicators > div {
+    padding:
+      16px
+      14px;
+  }
+
+  .evidence-report .er-indicators dd {
+    font-size: 23px;
+  }
+
+  .evidence-report .er-indicators dd.er-health {
+    font-size: 18px;
+  }
+}
