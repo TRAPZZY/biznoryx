@@ -35,8 +35,6 @@ import {
 
 import { PostgresBusinessOutcomesRepository } from "../database/business-outcomes-repository.mjs";
 
-import { PostgresActivityRepository } from "../database/activity-repository.mjs";
-
 import {
   PostgresBillingRepository,
   withBillingTenant,
@@ -119,7 +117,6 @@ export function createProductionApp({
   businessOutcomesRepository,
   evidenceReportRepository,
   billingRepository,
-  activityRepository,
   objectStorage,
   ingestionService,
   healthChecks,
@@ -186,9 +183,6 @@ export function createProductionApp({
 
   const billing =
     billingRepository ?? (pool ? new PostgresBillingRepository(pool) : null);
-
-  const activity =
-    activityRepository ?? (pool ? new PostgresActivityRepository(pool) : null);
   const storage = objectStorage ?? objectStorageFromEnvironment();
 
   const ingestion =
@@ -262,8 +256,6 @@ export function createProductionApp({
     businessOutcomes,
 
     billing,
-
-    activity,
 
     objectStorage: storage,
 
@@ -1610,8 +1602,7 @@ async function routeRequest({ request, response, runtime }) {
         period: source.period,
       })),
 
-      auditTrail,
-
+      auditTrail: [],
       subscription: subscription ? publicSubscription(subscription) : null,
     });
 
