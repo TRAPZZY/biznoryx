@@ -1,3 +1,8 @@
+import {
+  AuthError,
+  CAPABILITIES,
+  ROLE_CAPABILITIES,
+} from "../auth/core.mjs";
 import { withTenantTransaction } from "./postgres.mjs";
 
 const EVENT_LABELS = new Map([
@@ -89,6 +94,12 @@ export class PostgresActivityRepository {
       },
 
       async (client) => {
+        await requireReadAccess({
+          client,
+          organizationId,
+          actorUserId,
+        });
+
         const result = await client.query(
           `select
                id,
@@ -110,6 +121,35 @@ export class PostgresActivityRepository {
       },
     );
   }
+}
+
+async function requireReadAccess({ client, organizationId, actorUserId }) {
+  const role = await membershipRole({ client, organizationId, actorUserId });
+  const capabilities = ROLE_CAPABILITIES[role] ?? [];
+
+  if (!capabilities.includes(CAPABILITIES.READ_AUDIT_LOG)) {
+    throw new AuthError("Capability required: audit.read", "CAPABILITY_DENIED");
+  }
+}
+
+async function membershipRole({ client, organizationId, actorUserId }) {
+  const result = await client.query(
+    `select role
+       from organization_memberships
+       where organization_id = $1
+         and user_id = $2
+         and status = 'active'
+       limit 1`,
+    [organizationId, actorUserId],
+  );
+
+  const membership = result.rows[0];
+
+  if (!membership) {
+    throw new AuthError("Active organization membership required.", "ORG_ACCESS_DENIED");
+  }
+
+  return membership.role;
 }
 
 function presentActivity(row) {

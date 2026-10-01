@@ -328,7 +328,8 @@ export class PostgresBusinessOutcomesRepository {
           const row of result.rows
         ) {
           outcomes.push(
-            ...await this.refreshForAction({
+            ...await this.refreshForActionWithClient({
+              client,
               organizationId,
               actorUserId,
               actionId:
@@ -340,6 +341,179 @@ export class PostgresBusinessOutcomesRepository {
         return outcomes;
       },
     );
+  }
+
+  async refreshForActionWithClient({
+    client,
+    organizationId,
+    actorUserId,
+    actionId,
+  }) {
+    await requireWriteAccess({
+      client,
+      organizationId,
+      actorUserId,
+    });
+
+    const action =
+      await selectActionContext({
+        client,
+        organizationId,
+        actionId,
+      });
+
+    if (!action) {
+      throw new AuthError(
+        "Action was not found.",
+        "ORG_ACCESS_DENIED",
+      );
+    }
+
+    if (!ASSESSABLE_ACTION_STATUSES.has(action.status)) {
+      return [];
+    }
+
+    const baselineMetricPointId = action.finding_evidence?.currentMetricPointId;
+
+    if (!baselineMetricPointId) {
+      throw new BusinessOutcomeError(
+        "Action evidence is missing the baseline verified metric point.",
+        "OUTCOME_BASELINE_MISSING",
+      );
+    }
+
+    const baseline = await selectMetricPoint({
+      client,
+      organizationId,
+      metricPointId: baselineMetricPointId,
+    });
+
+    if (!baseline) {
+      throw new BusinessOutcomeError(
+        "Baseline verified metric point was not found.",
+        "OUTCOME_BASELINE_MISSING",
+      );
+    }
+
+    if (baseline.metric_definition_id !== action.metric_definition_id) {
+      throw new BusinessOutcomeError(
+        "Action baseline does not match the action metric definition.",
+        "OUTCOME_BASELINE_CONFLICT",
+      );
+    }
+
+    const laterPoints = await selectLaterMetricPoints({
+      client,
+      organizationId,
+      metricDefinitionId: action.metric_definition_id,
+      baselinePeriodStart: baseline.period_start,
+    });
+
+    const outcomes = [];
+
+    for (const later of laterPoints) {
+      const change = calculateMetricChange({
+        previousValue: baseline.value_numeric,
+        currentValue: later.value_numeric,
+      });
+
+      const status = classifyOutcomeStatus({
+        direction: change.direction,
+        metricPolarity: action.finding_evidence?.metricPolarity,
+      });
+
+      const evidence = buildOutcomeEvidence({
+        action,
+        baseline,
+        later,
+        change,
+        status,
+      });
+
+      const persisted = await client.query(
+        `insert into verified_business_outcomes (
+           organization_id,
+           business_action_id,
+           metric_definition_id,
+           baseline_metric_point_id,
+           later_metric_point_id,
+           baseline_reporting_period_id,
+           later_reporting_period_id,
+           status,
+           baseline_value_numeric,
+           later_value_numeric,
+           absolute_change_numeric,
+           percent_change_numeric,
+           evidence
+         )
+         values (
+           $1,
+           $2,
+           $3,
+           $4,
+           $5,
+           $6,
+           $7,
+           $8,
+           $9::numeric,
+           $10::numeric,
+           $11::numeric,
+           $12::numeric,
+           $13::jsonb
+         )
+         on conflict (
+           organization_id,
+           business_action_id,
+           later_metric_point_id
+         )
+         do update set
+           status = excluded.status,
+           baseline_value_numeric = excluded.baseline_value_numeric,
+           later_value_numeric = excluded.later_value_numeric,
+           absolute_change_numeric = excluded.absolute_change_numeric,
+           percent_change_numeric = excluded.percent_change_numeric,
+           evidence = excluded.evidence,
+           assessed_at = now(),
+           updated_at = now()
+         returning
+           id,
+           organization_id,
+           business_action_id,
+           metric_definition_id,
+           baseline_metric_point_id,
+           later_metric_point_id,
+           baseline_reporting_period_id,
+           later_reporting_period_id,
+           status,
+           baseline_value_numeric,
+           later_value_numeric,
+           absolute_change_numeric,
+           percent_change_numeric,
+           evidence,
+           assessed_at,
+           created_at,
+           updated_at`,
+        [
+          organizationId,
+          actionId,
+          action.metric_definition_id,
+          baselineMetricPointId,
+          later.id,
+          baseline.reporting_period_id,
+          later.reporting_period_id,
+          status,
+          change.previousValue,
+          change.currentValue,
+          change.absoluteChange,
+          change.percentChange,
+          JSON.stringify(evidence),
+        ],
+      );
+
+      outcomes.push(mapOutcome(persisted.rows[0]));
+    }
+
+    return outcomes;
   }
 
   async listOutcomes({

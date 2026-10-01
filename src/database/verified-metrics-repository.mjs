@@ -16,6 +16,7 @@ const ALLOWED_AGGREGATIONS =
     "min",
     "max",
   ]);
+const MAX_METRIC_EVIDENCE_BYTES = 32 * 1024;
 
 export class PostgresVerifiedMetricsRepository {
   constructor(pool) {
@@ -704,6 +705,29 @@ function normalizeMetric(
     );
   }
 
+  const normalizedEvidence =
+    normalizeMetricEvidence(
+      evidence,
+    );
+
+  const serializedEvidence =
+    JSON.stringify(
+      normalizedEvidence,
+    );
+
+  if (
+    Buffer.byteLength(
+      serializedEvidence,
+      "utf8",
+    ) >
+      MAX_METRIC_EVIDENCE_BYTES
+  ) {
+    throw new VerifiedMetricError(
+      "Metric evidence exceeds the supported size budget.",
+      "METRIC_EVIDENCE_INVALID",
+    );
+  }
+
   return {
     metricKey,
     label,
@@ -713,8 +737,115 @@ function normalizeMetric(
     sourceRowCount,
     contributingRowCount,
     unit,
-    evidence,
+    evidence: normalizedEvidence,
   };
+}
+
+function normalizeMetricEvidence(
+  value,
+  depth = 0,
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return value;
+  }
+
+  if (
+    typeof value ===
+      "string"
+  ) {
+    const text =
+      value
+        .replace(
+          /\s+/g,
+          " ",
+        )
+        .trim();
+
+    return text.length >
+      256
+      ? `${text.slice(
+          0,
+          255,
+        )}…`
+      : text;
+  }
+
+  if (
+    typeof value ===
+      "number" ||
+    typeof value ===
+      "boolean"
+  ) {
+    return value;
+  }
+
+  if (
+    Array.isArray(
+      value,
+    )
+  ) {
+    return value
+      .slice(
+        0,
+        16,
+      )
+      .map(
+        (item) =>
+          normalizeMetricEvidence(
+            item,
+            depth + 1,
+          ),
+      );
+  }
+
+  if (
+    typeof value !==
+      "object"
+  ) {
+    return String(
+      value,
+    ).slice(0, 256);
+  }
+
+  if (
+    depth >= 3
+  ) {
+    return {};
+  }
+
+  const normalized = {};
+
+  for (
+    const [key, item] of Object.entries(
+      value,
+    )
+  ) {
+    if (
+      key.length >
+      64
+    ) {
+      continue;
+    }
+
+    const nextValue =
+      normalizeMetricEvidence(
+        item,
+        depth + 1,
+      );
+
+    if (
+      nextValue !==
+        undefined
+    ) {
+      normalized[key] =
+        nextValue;
+    }
+  }
+
+  return normalized;
 }
 
 function ensureUniqueMetricKeys(

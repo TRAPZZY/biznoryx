@@ -14,6 +14,9 @@ const IDENTIFIER_COLUMN_PATTERN =
   /(^id$|_id$|id$|number$|no$|code$|sku$|reference|phone|zip|postal)/i;
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_UPLOAD_ROWS = 50000;
+const MAX_UPLOAD_COLUMNS = 200;
+const MAX_COLUMN_NAME_LENGTH = 80;
+const MAX_FREE_TEXT_LINE_LENGTH = 320;
 const ACCEPTED_EXTENSIONS = new Set([
   ".csv",
   ".tsv",
@@ -390,6 +393,18 @@ function parseJsonRows(content) {
       );
     const row = {};
     for (const [key, value] of Object.entries(record)) {
+      if (key.length > MAX_COLUMN_NAME_LENGTH) {
+        throw new AuthError(
+          "A JSON column name exceeds the supported size.",
+          "VALIDATION_FAILED",
+        );
+      }
+      if (columns.length >= MAX_UPLOAD_COLUMNS && !columns.includes(key)) {
+        throw new AuthError(
+          "Upload exceeds the supported limit of 200 columns.",
+          "VALIDATION_FAILED",
+        );
+      }
       if (!columns.includes(key)) columns.push(key);
       row[key] = value === null || value === undefined ? "" : String(value);
     }
@@ -407,7 +422,8 @@ function extractRowsFromFreeText(text) {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line) => line.length <= MAX_FREE_TEXT_LINE_LENGTH);
   const delimited = parseDelimitedTextLines(lines);
   if (delimited.rows.length) return delimited;
   const rows = [];
@@ -418,7 +434,7 @@ function extractRowsFromFreeText(text) {
     if (!match) continue;
     rows.push({
       date: normalizeDate(match[1]),
-      description: match[2].replace(/\s+/g, " ").trim(),
+      description: match[2].replace(/\s+/g, " ").trim().slice(0, 200),
       amount: normalizeDecimalText(match[3]),
     });
   }
@@ -854,6 +870,13 @@ function buildDecisionNotes({ upload, previous, metricChange }) {
 }
 
 function profileDataset(rows, columns) {
+  if (columns.length > MAX_UPLOAD_COLUMNS) {
+    throw new AuthError(
+      "Upload exceeds the supported limit of 200 columns.",
+      "VALIDATION_FAILED",
+    );
+  }
+
   const numericProfile = [];
   const dimensionProfile = [];
   const dateProfile = [];

@@ -16,6 +16,13 @@ function createFakePool(rows) {
         params,
       });
 
+      if (String(sql).includes("from organization_memberships")) {
+        return {
+          rows: [{ role: "admin" }],
+          rowCount: 1,
+        };
+      }
+
       if (String(sql).includes("from audit_events")) {
         return {
           rows,

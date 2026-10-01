@@ -14,7 +14,14 @@ const contentTypes = new Map([
 ]);
 
 const server = createServer((request, response) => {
-  const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+  let url;
+  try {
+    url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+  } catch {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Bad Request');
+    return;
+  }
   if (url.pathname === '/api/preview-state') {
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     response.end(JSON.stringify(previewState()));

@@ -449,6 +449,7 @@ export class PostgresBusinessActionsRepository {
 
              where organization_id = $1
                and id = $2
+               and status = $4
 
              returning
                id,
@@ -468,8 +469,16 @@ export class PostgresBusinessActionsRepository {
               organizationId,
               actionId,
               status,
+              current.status,
             ],
           );
+
+        if (updated.rowCount !== 1) {
+          throw new BusinessActionError(
+            "Action status changed before the update completed.",
+            "ACTION_STATUS_TRANSITION_INVALID",
+          );
+        }
 
         return mapAction({
           ...updated.rows[0],

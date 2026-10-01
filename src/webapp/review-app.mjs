@@ -216,7 +216,6 @@ async function routeRequest({ request, response, runtime }) {
       sent: true,
       email: verification.email,
       expiresAt: verification.expiresAt,
-      reviewCode: verification.reviewCode,
     });
     return;
   }

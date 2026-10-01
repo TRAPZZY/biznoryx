@@ -487,8 +487,6 @@ async function routeRequest({ request, response, runtime }) {
       requiresEmailVerification: true,
 
       email: user.email,
-
-      expiresAt: verification.expiresAt,
     });
 
     return;
@@ -515,8 +513,6 @@ async function routeRequest({ request, response, runtime }) {
       sent: true,
 
       email: verification.email ?? normalizeEmail(body.email),
-
-      expiresAt: verification.expiresAt,
     });
 
     return;
@@ -602,8 +598,6 @@ async function routeRequest({ request, response, runtime }) {
           requiresEmailVerification: true,
 
           email: normalizeEmail(body.email),
-
-          expiresAt: verification.expiresAt,
         });
 
         return;
@@ -2194,6 +2188,14 @@ async function verifyAndActivateBillingCheckout({
 
   if (!checkout) {
     throw new AuthError("Billing checkout was not found.", "NOT_FOUND");
+  }
+
+  if (checkout.status === "completed") {
+    return runtime.billing.ensureSubscription({
+      organizationId,
+      actorUserId,
+      provider: "paystack",
+    });
   }
 
   if (checkout.provider !== "paystack") {

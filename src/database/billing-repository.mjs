@@ -446,6 +446,21 @@ export class PostgresBillingRepository {
 
     const now = this.now();
 
+    if (reference) {
+      const existing = await client.query(
+        `select id, status, completed_at
+           from billing_checkout_sessions
+           where organization_id = $1
+             and reference = $2
+           limit 1`,
+        [organizationId, reference],
+      );
+
+      if (existing.rows[0]?.status === "completed") {
+        return;
+      }
+    }
+
     await client.query(
       `update organization_billing_subscriptions
           set status =

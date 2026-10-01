@@ -37,6 +37,8 @@ export class ProductionIngestionService {
 
     this.objectStorage =
       objectStorage;
+    this.inflightObjectWrites =
+      new Map();
   }
 
   async upload({
@@ -146,51 +148,56 @@ export class ProductionIngestionService {
         content,
       });
 
-    /*
-     * Check whether the immutable raw object
-     * is already present.
-     *
-     * This also allows recovery from an
-     * earlier attempt where storage succeeded
-     * but the database commit did not.
-     */
-    const existingObject =
-      await this.objectStorage
-        .headObject({
-          key:
-            identity.storageKey,
-        });
+    const writeLock =
+      this.inflightObjectWrites.get(identity.storageKey) ?? Promise.resolve();
 
-    let storedByThisAttempt =
-      false;
+    let unlock = () => {};
 
-    if (!existingObject.exists) {
-      await this.objectStorage
-        .putObject({
-          key:
-            identity.storageKey,
+    const currentLock =
+      new Promise((resolve) => {
+        unlock = resolve;
+      });
 
-          body:
-            rawBytes,
+    this.inflightObjectWrites.set(identity.storageKey, currentLock);
 
-          contentType:
-            "text/csv",
-
-          metadata: {
-            organization:
-              organizationId,
-
-            checksum:
-              identity
-                .checksumSha256,
-          },
-        });
-
-      storedByThisAttempt =
-        true;
-    }
+    let storedByThisAttempt = false;
 
     try {
+      await writeLock;
+
+      const existingObject =
+        await this.objectStorage
+          .headObject({
+            key:
+              identity.storageKey,
+          });
+
+      if (!existingObject.exists) {
+        await this.objectStorage
+          .putObject({
+            key:
+              identity.storageKey,
+
+            body:
+              rawBytes,
+
+            contentType:
+              "text/csv",
+
+            metadata: {
+              organization:
+                organizationId,
+
+              checksum:
+                identity
+                  .checksumSha256,
+            },
+          });
+
+        storedByThisAttempt =
+          true;
+      }
+
       const result =
         await this.repository
           .registerRawUpload({
@@ -225,14 +232,6 @@ export class ProductionIngestionService {
             reportingPeriod,
           });
 
-      /*
-       * Rejected files should not remain in
-       * durable raw-object storage.
-       *
-       * Only delete an object written by this
-       * exact request. Never delete an object
-       * that existed before this attempt.
-       */
       if (
         result.ingestionRun
           .status ===
@@ -250,13 +249,6 @@ export class ProductionIngestionService {
 
       return result;
     } catch (error) {
-      /*
-       * Compensating cleanup:
-       *
-       * if storage succeeded but the database
-       * operation failed, remove the object
-       * written by this request.
-       */
       if (storedByThisAttempt) {
         await safeDeleteObject({
           objectStorage:
@@ -268,6 +260,14 @@ export class ProductionIngestionService {
       }
 
       throw error;
+    } finally {
+      unlock();
+
+      if (
+        this.inflightObjectWrites.get(identity.storageKey) === currentLock
+      ) {
+        this.inflightObjectWrites.delete(identity.storageKey);
+      }
     }
   }
 

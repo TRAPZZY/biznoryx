@@ -1,4 +1,4 @@
-select set_config('app.bootstrap_runtime_password', :'biznoryx_app_password', false);
+select set_config('app.bootstrap_runtime_password', :'biznoryx_app_password', false) is not null;
 
 do $$
 begin

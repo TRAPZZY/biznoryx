@@ -38,6 +38,14 @@ function csvCell(value) {
   return `"${string.replaceAll('"', '""')}"`;
 }
 
+function sanitizePdfText(value, maximumLength = 220) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= maximumLength) return text;
+  const truncated = text.slice(0, maximumLength - 1).trimEnd();
+  return `${truncated}…`;
+}
+
 export function renderReportCsv(report) {
   const rows = [["Kind", "Period", "Comparison period", "Metric", "Category", "Current value", "Previous value", "Absolute movement", "Percent movement", "Definition version", "Report version"]];
   for (const point of report.timeline) rows.push(["Monthly observation", point.period, "", report.metric.label, "", point.value, "", "", "", report.metric.policy?.version ?? "Unconfirmed", report.version]);
@@ -58,10 +66,11 @@ export async function renderReportPdf(report) {
   function newPage() { doc.addPage(); y = 46; }
   function reserve(height) { if (y + height > bottom) newPage(); }
   function paragraph(value, { size = 10, bold = false, ink = color, gap = 10 } = {}) {
+    const text = sanitizePdfText(value);
     doc.font(bold ? "ReportBold" : "Report").fontSize(size).fillColor(ink);
-    const height = doc.heightOfString(String(value), { width, lineGap: 3 });
+    const height = doc.heightOfString(text, { width, lineGap: 3 });
     reserve(height + gap);
-    doc.text(String(value), 44, y, { width, lineGap: 3 });
+    doc.text(text, 44, y, { width, lineGap: 3 });
     y += height + gap;
   }
   function heading(value, number) {
@@ -74,13 +83,14 @@ export async function renderReportPdf(report) {
   function table(headers, rows, columnWidths) {
     function drawRow(values, header = false) {
       doc.font(header ? "ReportBold" : "Report").fontSize(8);
-      const heights = values.map((value, index) => doc.heightOfString(String(value), { width: columnWidths[index] - 14, lineGap: 2 }));
+      const sanitizedValues = values.map((value) => sanitizePdfText(value, 120));
+      const heights = sanitizedValues.map((value, index) => doc.heightOfString(value, { width: columnWidths[index] - 14, lineGap: 2 }));
       const height = Math.max(...heights, 13) + 15;
       if (y + height > bottom) { newPage(); if (!header) drawRow(headers, true); }
       let x = 44;
-      values.forEach((value, index) => {
+      sanitizedValues.forEach((value, index) => {
         if (header) doc.rect(x, y, columnWidths[index], height).fill("#f0f5f1");
-        doc.fillColor(color).font(header ? "ReportBold" : "Report").fontSize(8).text(String(value), x + 7, y + 7, { width: columnWidths[index] - 14, lineGap: 2 });
+        doc.fillColor(color).font(header ? "ReportBold" : "Report").fontSize(8).text(value, x + 7, y + 7, { width: columnWidths[index] - 14, lineGap: 2 });
         x += columnWidths[index];
       });
       y += height;
