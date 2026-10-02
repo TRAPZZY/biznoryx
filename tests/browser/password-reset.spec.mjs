@@ -18,6 +18,17 @@ test("verified customer can recover access with a one-time code", async ({ page 
   await page.getByLabel("Verification code").fill(verificationCode.trim());
   await page.getByRole("button", { name: "Verify and continue" }).click();
 
+  const signOut = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/sign-out") &&
+      response.ok(),
+  );
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Sign out", exact: true })
+    .click();
+  await signOut;
+
   await page.goto("/#/sign-in");
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset your password." })).toBeVisible();

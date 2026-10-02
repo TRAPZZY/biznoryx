@@ -453,7 +453,7 @@ async function routeRequest({ request, response, runtime }) {
   enforceAllowedOrigin(request);
 
   if (isAuthEndpoint(url.pathname)) {
-    enforceAuthRateLimit(request, runtime);
+    enforceAuthRateLimit(request, runtime, url.pathname);
   }
 
   /*
@@ -1991,7 +1991,7 @@ function enforceAllowedOrigin(request) {
   }
 }
 
-function enforceAuthRateLimit(request, runtime) {
+function enforceAuthRateLimit(request, runtime, endpoint) {
   const now = Date.now();
 
   for (const [key, record] of runtime.authAttempts) {
@@ -2000,7 +2000,7 @@ function enforceAuthRateLimit(request, runtime) {
     }
   }
 
-  const key = request.socket.remoteAddress ?? "unknown";
+  const key = `${request.socket.remoteAddress ?? "unknown"}:${endpoint}`;
 
   const existing = runtime.authAttempts.get(key);
 

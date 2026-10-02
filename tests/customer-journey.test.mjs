@@ -692,6 +692,21 @@ test("authentication rejects cross-origin mutations and throttles repeated attem
     }
 
     assert.equal(status, 429);
+
+    const resendCode = await fetch(
+      `${base}/api/auth/resend-code`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "missing@example.com",
+        }),
+      },
+    );
+
+    assert.equal(resendCode.status, 200);
   } finally {
     await new Promise((resolve) =>
       server.close(resolve),

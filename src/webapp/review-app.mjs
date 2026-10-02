@@ -163,7 +163,7 @@ async function routeRequest({ request, response, runtime }) {
     for (const [key, value] of runtime.authAttempts) {
       if (value.expiresAt <= now) runtime.authAttempts.delete(key);
     }
-    const key = request.socket.remoteAddress;
+    const key = `${request.socket.remoteAddress ?? "unknown"}:${url.pathname}`;
     const attempt = runtime.authAttempts.get(key) ?? {
       count: 0,
       expiresAt: now + 60000,

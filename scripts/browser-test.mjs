@@ -1,6 +1,19 @@
 import {
   spawn,
 } from "node:child_process";
+import {
+  createRequire,
+} from "node:module";
+
+const require =
+  createRequire(
+    import.meta.url,
+  );
+
+const playwrightCli =
+  require.resolve(
+    "@playwright/test/cli",
+  );
 
 const port =
   Number(
@@ -71,7 +84,11 @@ function runPlaywright() {
     ) => {
       const child =
         spawn(
-          "npx playwright test",
+          process.execPath,
+          [
+            playwrightCli,
+            "test",
+          ],
           {
             env: {
               ...process.env,
@@ -82,10 +99,6 @@ function runPlaywright() {
 
             stdio:
               "inherit",
-
-            shell:
-              process.platform ===
-              "win32",
           },
         );
 
