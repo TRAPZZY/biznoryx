@@ -42,7 +42,27 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify desktop and mobile browser journeys
-        run: npm run test:browser
+        run: npm run test:browser 2>&1 | tee browser-test.log; exit ${PIPESTATUS[0]}
+
+      - name: Summarize browser failures
+        if: failure()
+        run: |
+          {
+            echo '### Browser journey failures'
+            echo '```'
+            grep -E '✘|Error:|Expected|Received|Timeout|failed|passed' browser-test.log | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload browser test evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-evidence
+          path: |
+            browser-test.log
+            test-results/
+          if-no-files-found: ignore
 
       - name: Verify PostgreSQL RLS acceptance
         run: npm run db:acceptance
