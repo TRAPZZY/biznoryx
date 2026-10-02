@@ -43,7 +43,7 @@ test("evidence report analyzes dated source rows and exports from the UI", async
   await expect(page.getByRole("heading", { name: "Your data is ready to review." })).toBeVisible();
   await expect(page.locator(".validation-summary")).toContainText("$450.00");
   await page.getByRole("button", { name: "Confirm and add to dashboard" }).click();
-  await expect(page.locator(".metrics-grid")).toContainText("$450.00");
+  await expect(page.locator(".overview-v2-stats")).toBeVisible();
 
   await page.getByRole("link", { name: "Evidence reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Evidence behind every decision." })).toBeVisible();
@@ -54,6 +54,28 @@ test("evidence report analyzes dated source rows and exports from the UI", async
   await expect(page.locator(".er-chart").first()).toBeVisible();
   await expect(page.locator(".er-matrix")).toBeVisible();
   await expect(page.getByRole("main")).not.toContainText("sum(year)");
+
+  const indicatorGrid = page.locator(".er-indicators");
+  const desktopLayout = await indicatorGrid.evaluate((element) => ({
+    columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+    firstCardFlow: getComputedStyle(element.children[0]).flexDirection,
+  }));
+  expect(desktopLayout).toEqual({ columns: 4, firstCardFlow: "column" });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileColumns = await indicatorGrid.evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(" ").length,
+  );
+  expect(mobileColumns).toBe(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  const narrowColumns = await indicatorGrid.evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(" ").length,
+  );
+  expect(narrowColumns).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.getByRole("button", { name: "Why this matters" }).first().click();
   await expect(page.getByRole("dialog", { name: /Why this conclusion appears|Start with/i })).toBeVisible();

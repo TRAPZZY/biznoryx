@@ -26,13 +26,13 @@
 .er-text-button { display:inline-flex; align-items:center; gap:6px; color:#246c55; border:0; background:transparent; border-radius:0; font-size:12px; min-height:36px; padding:7px 0; margin-top:6px; text-align:left; }
 .er-text-button svg { width:15px; height:15px; }
 .er-indicators { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; margin:0; padding:18px 0; background:#f5f8f6; border-top:1px solid #e1e7e3; border-bottom:1px solid #e1e7e3; }
-.er-indicators > div { padding:0 16px; border-right:1px solid #dce5df; min-width:0; }
+.er-indicators > div { display:flex; flex-direction:column; align-items:flex-start; min-height:136px; padding:0 16px; border-right:1px solid #dce5df; min-width:0; }
 .er-indicators > div:last-child { border:0; }
 .er-indicators dt { font-size:12px; font-weight:700; }
 .er-indicators dt span { display:block; font-weight:400; color:#6b786f; margin-top:5px; font-size:11px; }
 .er-indicators dd { font-size:25px; font-weight:600; margin:13px 0 8px; line-height:1.2; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .er-indicators dd.er-health { font-size:18px; line-height:1.35; }
-.er-indicators small { display:block; font-size:10px; color:#67756b; line-height:1.6; }
+.er-indicators small { display:block; margin-top:auto; font-size:10px; color:#67756b; line-height:1.6; }
 .er-improving { color:#267052; }
 .er-deteriorating { color:#a3453e; }
 .er-insufficient_evidence { color:#846623; }
@@ -142,6 +142,11 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
   .er-driver-reading h4 { margin-top:10px; }
   .er-agenda-layout { grid-template-columns:minmax(0,1fr); }
   .er-matrix-wrap { max-width:640px; }
+  .er-indicators { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .er-indicators > div { min-height:128px; padding:14px 16px; border-bottom:1px solid #dce5df; }
+  .er-indicators > div:nth-child(2) { border-right:0; }
+  .er-indicators > div:nth-child(n+3) { border-bottom:0; }
+  .er-indicators > div:last-child { border:0; }
   .er-indicators dd { font-size:21px; }
 }
 @media (max-width:700px) {
@@ -157,10 +162,12 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
   .er-story { grid-template-columns:1fr; gap:20px; padding-top:23px; }
   .er-story-main h3 { font-size:22px; }
   .er-first-focus { padding-left:14px; }
-  .er-indicators { grid-template-columns:1fr 1fr; row-gap:22px; }
-  .er-indicators > div { padding:0 11px; }
-  .er-indicators > div:nth-child(2) { border:0; }
-  .er-indicators dd { font-size:22px; }
+  .er-indicators { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:0; padding:0; margin:20px 0 4px; border:1px solid #dce5df; border-radius:6px; overflow:hidden; }
+  .er-indicators > div { min-height:126px; padding:14px 12px; border-bottom:1px solid #dce5df; }
+  .er-indicators > div:nth-child(2) { border-right:0; }
+  .er-indicators > div:nth-child(n+3) { border-bottom:0; }
+  .er-indicators > div:last-child { border:0; }
+  .er-indicators dd { margin:9px 0 6px; font-size:clamp(17px,4.8vw,21px); }
   .er-indicators dd.er-health { font-size:16px; }
   .er-section-head { gap:10px; flex-wrap:wrap; }
   .er-section-head h2 { font-size:18px; }
@@ -331,7 +338,7 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
    */
   .evidence-report .er-indicators {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 
     width: 100%;
     min-width: 0;
@@ -355,21 +362,33 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
    * horizontal layout on mobile.
    */
   .evidence-report .er-indicators > div {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
 
     width: 100%;
     min-width: 0;
+    min-height: 126px;
 
-    padding: 18px 17px;
+    padding: 14px 12px;
 
-    border-right: 0 !important;
+    border-right: 1px solid #dce5df !important;
     border-bottom: 1px solid #dce5df;
 
     text-align: left;
   }
 
-  .evidence-report .er-indicators > div:last-child {
+  .evidence-report .er-indicators > div:nth-child(2) {
+    border-right: 0 !important;
+  }
+
+  .evidence-report .er-indicators > div:nth-child(n+3) {
     border-bottom: 0;
+  }
+
+  .evidence-report .er-indicators > div:last-child {
+    border: 0 !important;
   }
 
 
@@ -434,9 +453,9 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
     color: #25372d;
 
     font-size: clamp(
-      23px,
-      7vw,
-      30px
+      17px,
+      4.8vw,
+      21px
     );
 
     font-weight: 650;
@@ -475,7 +494,7 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
     width: 100%;
     max-width: 100%;
 
-    margin: 0;
+    margin: auto 0 0;
 
     color: #67756b;
 
@@ -494,14 +513,23 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
  */
 @media screen and (max-width: 380px) {
 
+  .evidence-report .er-indicators {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   .evidence-report .er-indicators > div {
-    padding:
-      16px
-      14px;
+    min-height: 116px;
+    padding: 16px 14px;
+    border-right: 0 !important;
+    border-bottom: 1px solid #dce5df !important;
+  }
+
+  .evidence-report .er-indicators > div:last-child {
+    border-bottom: 0 !important;
   }
 
   .evidence-report .er-indicators dd {
-    font-size: 23px;
+    font-size: 22px;
   }
 
   .evidence-report .er-indicators dd.er-health {
