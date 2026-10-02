@@ -12,6 +12,8 @@ The application includes PostgreSQL repositories for identity and sessions, emai
 
 The local review runtime and production runtime are separate on purpose. Production email delivery uses Resend when configured; storage, worker, and billing connections use production environment configuration. A code path or repository acceptance test does not prove that production credentials, provider accounts, web/worker services, backups, DNS/TLS, monitoring, or deployment automation exist. Those provider and operator checks remain launch blockers until configured and verified in the target environment.
 
+Authentication endpoints have an application-level throttle of 15 requests per minute per remote socket address. This counter is process-local and is not a distributed limit across web replicas or a general API abuse control. Configure shared edge/WAF rate limits for authentication and upload/API traffic in production; ensure the platform's trusted-proxy behavior is understood before using forwarded client-IP headers.
+
 The application refuses to start this in-memory runtime when NODE_ENV=production. Do not use real customer data in the local review server.
 
 Latest local evidence:

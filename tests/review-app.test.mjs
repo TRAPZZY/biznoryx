@@ -172,6 +172,7 @@ test('review app binds a slow upload to the organization authorized at request s
       content: 'revenue\n100.00\n'
     });
     const pendingUpload = slowPost({
+      server: app.server,
       url: `${baseUrl}/api/ingestion/upload`,
       cookie,
       csrfToken: session.csrfToken,
@@ -215,12 +216,16 @@ function close(server) {
   });
 }
 
-function slowPost({ url, cookie, csrfToken, firstChunk }) {
+function slowPost({ server, url, cookie, csrfToken, firstChunk }) {
   const parsed = new URL(url);
   let markStarted;
   let outgoing;
   const started = new Promise((resolve) => {
     markStarted = resolve;
+  });
+  server.once('request', (incoming) => {
+    assert.equal(incoming.url, parsed.pathname);
+    incoming.once('data', () => markStarted());
   });
   const response = new Promise((resolve, reject) => {
     outgoing = request({
@@ -244,7 +249,7 @@ function slowPost({ url, cookie, csrfToken, firstChunk }) {
       }));
     });
     outgoing.on('error', reject);
-    outgoing.write(firstChunk, () => markStarted());
+    outgoing.write(firstChunk);
   });
   return {
     started,
