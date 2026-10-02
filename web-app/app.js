@@ -233,7 +233,7 @@ function bindHeroImageFallback() {
 
   if (!image) return;
 
-  const fallback = "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1600&q=80";
+  const fallback = "/hero-dashboard.svg";
   let fallbackApplied = false;
 
   const applyFallback = () => {
@@ -379,7 +379,7 @@ function landing() {
       <section class="hero">
         <img
           class="hero-image"
-          src="https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1600&q=80"
+          src="/hero-office.jpg"
           alt="Open office workspace with staff collaborating at desks in a modern professional environment"
         >
 
