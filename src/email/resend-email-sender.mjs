@@ -14,6 +14,7 @@ export class ResendEmailSender {
     code,
     expiresAt,
     challengeId,
+    purpose = "email_verification",
   }) {
     if (!this.apiKey) {
       throw new EmailDeliveryError(
@@ -40,6 +41,16 @@ export class ResendEmailSender {
           60_000,
       ),
     );
+    const resettingPassword = purpose === "password_reset";
+    const subject = resettingPassword
+      ? "Reset your BIZNORYX password"
+      : "Your BIZNORYX verification code";
+    const instruction = resettingPassword
+      ? "Use this one-time code to reset your BIZNORYX password."
+      : "Verify your BIZNORYX email address.";
+    const heading = resettingPassword
+      ? "Reset your password"
+      : "Verify your email";
 
     const response = await this.fetchImpl(
       "https://api.resend.com/emails",
@@ -49,7 +60,7 @@ export class ResendEmailSender {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
-          "Idempotency-Key": `email-verification/${challengeId}`,
+          "Idempotency-Key": `email-code/${purpose}/${challengeId}`,
         },
 
         body: JSON.stringify({
@@ -57,10 +68,10 @@ export class ResendEmailSender {
 
           to: [to],
 
-          subject: "Your BIZNORYX verification code",
+          subject,
 
           text: [
-            "Verify your BIZNORYX email address.",
+            instruction,
             "",
             `Your verification code is: ${code}`,
             "",
@@ -76,11 +87,11 @@ export class ResendEmailSender {
               </div>
 
               <h1 style="font-size:24px;line-height:1.3;margin:0 0 16px;">
-                Verify your email
+                ${heading}
               </h1>
 
               <p style="font-size:16px;line-height:1.6;color:#536057;">
-                Use the verification code below to finish creating your BIZNORYX account.
+                ${instruction}
               </p>
 
               <div style="

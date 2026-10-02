@@ -241,7 +241,11 @@ export class EmailVerificationService {
 
   issue({ email, purpose = 'email_verification', actorUserId = null }) {
     const normalizedEmail = normalizeEmail(email);
-    const user = [...this.store.users.values()].find((item) => item.email === normalizedEmail);
+    const user = [...this.store.users.values()].find((item) =>
+      item.email === normalizedEmail
+      && !item.disabledAt
+      && (purpose !== 'password_reset' || item.emailVerifiedAt)
+    );
     const issuedAt = this.now();
     if (!user) {
       return { sent: true, email: normalizedEmail, expiresAt: null };
@@ -273,8 +277,12 @@ export class EmailVerificationService {
       id: randomUUID(),
       to: normalizedEmail,
       purpose,
-      subject: 'Your BIZNORYX verification code',
-      body: `Your BIZNORYX verification code is ${code}. It expires in 10 minutes.`,
+      subject: purpose === 'password_reset'
+        ? 'Reset your BIZNORYX password'
+        : 'Your BIZNORYX verification code',
+      body: purpose === 'password_reset'
+        ? `Your BIZNORYX password reset code is ${code}. It expires in 10 minutes.`
+        : `Your BIZNORYX verification code is ${code}. It expires in 10 minutes.`,
       code: process.env.NODE_ENV === 'production' ? undefined : code,
       createdAt: issuedAt,
       expiresAt: challenge.expiresAt
@@ -294,6 +302,46 @@ export class EmailVerificationService {
       challengeId: challenge.id,
       reviewCode: process.env.NODE_ENV === 'production' ? undefined : code
     };
+  }
+
+  resetPassword({ email, code, newPassword }) {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedCode = String(code ?? '').trim();
+    if (typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 128) {
+      throw new AuthError('Password must be between 12 and 128 characters.', 'WEAK_PASSWORD');
+    }
+
+    const now = this.now();
+    const challenge = [...this.store.emailVerifications.values()]
+      .filter((item) => item.email === normalizedEmail && item.purpose === 'password_reset' && !item.consumedAt && !item.supersededAt)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    const user = [...this.store.users.values()].find((item) =>
+      item.email === normalizedEmail && item.emailVerifiedAt && !item.disabledAt
+    );
+
+    if (!challenge || !user || challenge.expiresAt <= now || challenge.attempts >= challenge.maxAttempts) {
+      if (challenge) challenge.consumedAt = now;
+      throw new AuthError('Verification code is invalid or expired.', 'EMAIL_CODE_INVALID');
+    }
+
+    challenge.attempts += 1;
+    if (hashSecret(normalizedCode) !== challenge.codeHash) {
+      if (challenge.attempts >= challenge.maxAttempts) challenge.consumedAt = now;
+      throw new AuthError('Verification code is invalid or expired.', 'EMAIL_CODE_INVALID');
+    }
+
+    challenge.consumedAt = now;
+    user.passwordHash = hashPassword(newPassword);
+    for (const session of this.store.sessions.values()) {
+      if (session.userId === user.id && !session.revokedAt) session.revokedAt = now;
+    }
+    this.auditLog.record({
+      actorUserId: user.id,
+      eventType: 'identity.password_reset_completed',
+      targetType: 'app_user',
+      targetId: user.id
+    });
+    return { reset: true };
   }
 
   verify({ email, code, purpose = 'email_verification' }) {

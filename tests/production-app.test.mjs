@@ -389,3 +389,124 @@ test("production authentication runtime registers, verifies, restores session an
     );
   }
 });
+
+test("production readiness checks database, object storage, and worker by default", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql) {
+      calls.push("database");
+      assert.equal(String(sql), "select 1");
+      return { rows: [{ result: 1 }] };
+    },
+  };
+  const objectStorage = {
+    async healthCheck() {
+      calls.push("objectStorage");
+      return true;
+    },
+  };
+  const processingJobRepository = {
+    async hasHealthyWorker({ maxAgeSeconds }) {
+      calls.push("worker");
+      assert.equal(maxAgeSeconds, 30);
+      return true;
+    },
+  };
+
+  const { server } = createProductionApp({
+    pool,
+    objectStorage,
+    processingJobRepository,
+    production: false,
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const response = await fetch(`${base}/readyz`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, "ready");
+    assert.deepEqual(body.checks, {
+      database: "healthy",
+      objectStorage: "healthy",
+      worker: "healthy",
+    });
+    assert.deepEqual(calls.sort(), ["database", "objectStorage", "worker"]);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("password reset requests have one public response and confirm consumes through the repository", async () => {
+  const calls = [];
+  const { server } = createProductionApp({
+    identityRepository: {},
+    emailVerificationRepository: {
+      async issue(input) {
+        calls.push({ operation: "issue", input });
+        return { sent: true, email: input.email, expiresAt: new Date() };
+      },
+      async resetPassword(input) {
+        calls.push({ operation: "reset", input });
+        return { reset: true };
+      },
+    },
+    production: false,
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const requestReset = (email) => fetch(
+      `${base}/api/auth/password-reset/request`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      },
+    );
+
+    const [known, unknown] = await Promise.all([
+      requestReset("known@example.com"),
+      requestReset("unknown@example.com"),
+    ]);
+
+    assert.equal(known.status, 202);
+    assert.equal(unknown.status, 202);
+    assert.deepEqual(await known.json(), await unknown.json());
+    assert.equal(calls[0].input.purpose, "password_reset");
+    assert.equal(calls[1].input.purpose, "password_reset");
+
+    const confirmation = await fetch(
+      `${base}/api/auth/password-reset/confirm`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "known@example.com",
+          code: "12345678",
+          newPassword: "A-New-Long-Password-2026!",
+        }),
+      },
+    );
+
+    assert.equal(confirmation.status, 200);
+    assert.equal((await confirmation.json()).reset, true);
+    assert.deepEqual(calls[2], {
+      operation: "reset",
+      input: {
+        email: "known@example.com",
+        code: "12345678",
+        newPassword: "A-New-Long-Password-2026!",
+      },
+    });
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

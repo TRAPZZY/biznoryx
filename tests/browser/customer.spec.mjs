@@ -35,7 +35,7 @@ for (const viewport of [
       fullPage: true,
     });
 
-    await page.getByRole("link", { name: "$20/mo start" }).click();
+    await page.getByRole("link", { name: "Get started" }).click();
 
     await page.getByLabel("Full name").fill("Browser Test Owner");
 
@@ -131,8 +131,11 @@ for (const viewport of [
       })
       .click();
 
-    await expect(page.locator(".metrics-grid")).toContainText(
-      "$2,000.30",
+    await expect(page.locator(".overview-v2-stats")).toContainText(
+      "No verified period",
+    );
+    await expect(page.locator(".overview-v2-stats")).toContainText(
+      "Source-backed reports ready",
     );
 
     await page
@@ -159,8 +162,8 @@ for (const viewport of [
 
     await page.reload();
 
-    await expect(page.locator(".metrics-grid")).toContainText(
-      "$2,000.30",
+    await expect(page.locator(".overview-v2-stats")).toContainText(
+      "No verified period",
     );
 
     await page.screenshot({
@@ -198,7 +201,7 @@ for (const viewport of [
       page.getByRole("button", {
         name: "Confirm and add to dashboard",
       }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
 
     await Promise.all([
       page.waitForResponse(

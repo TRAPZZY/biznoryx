@@ -1,16 +1,16 @@
 # BIZNORYX Build Status
 
-Current phase: **Durable billing persistence foundation**
+Current phase: **Production runtime and launch integration**
 
 Public production: **not ready**
 
 ## Current Evidence Takes Precedence
 
-The historical phase tables below describe isolated services, SQL tests and manifests. Their previous acceptance language does not establish a working deployed SaaS. The HTTP application uses process-memory stores, not PostgreSQL repositories. Accounts, sessions, profiles and uploaded data are lost on restart. No external compliance certificate or live production infrastructure has been established.
+The historical phase tables below describe repository-level implementation and acceptance evidence; they do not establish a deployed SaaS. The local review command (`npm run app`) uses process-memory stores and must not receive real customer data. The production command (`npm run app:production`) uses the PostgreSQL-backed HTTP application and refuses startup in production unless its environment passes validation. Its readiness endpoint checks PostgreSQL, configured object storage, and a fresh durable worker heartbeat.
 
-The rebuilt application provides a longer photographic SaaS landing page with connected Product, Solutions, Pricing, Security, and Resources pages; registration with one-time email-code verification in the local review runtime; sign-in; business profile; multi-file generic CSV business-data upload; row validation; explicit import confirmation; named recurring data series; fact-only evidence reports with contribution facts; upload history; truthful tenant activity; billing status; a Paystack-ready $20/month checkout boundary with signed webhook handling; and a calculated line-chart dashboard. Its dashboard no longer returns fabricated preview metrics. Local API and desktop/mobile browser verification covers this workflow.
+The application includes PostgreSQL repositories for identity and sessions, email verification and password recovery, onboarding, ingestion, verified metrics, comparisons, findings, actions and outcomes, reports, billing, and audit activity. Production raw uploads use the S3-compatible object-storage adapter, and `scripts/production-worker.mjs` runs durable metric/comparison/finding jobs. Paystack checkout and signed webhook handling are implemented behind production configuration. The dashboard uses verified data rather than fabricated preview metrics.
 
-The first PostgreSQL runtime slice now provides pooled connections, transaction-scoped tenant context, database-backed registration, sign-in, opaque sessions, CSRF rotation, organization creation and organization switching. Live PostgreSQL acceptance proves restart persistence and cross-tenant denial. Billing now has a PostgreSQL schema, runtime grants, repository abstraction, rollback migration, and RLS acceptance script for subscriptions, checkout sessions, and webhook events. The HTTP application still uses the in-memory review runtime while profile, ingestion, metric, billing and audit repositories are being connected; managed object storage, durable workers, managed email delivery/recovery, Paystack live webhook configuration, live integrations, provider deployment and operational verification remain release blockers.
+The local review runtime and production runtime are separate on purpose. Production email delivery uses Resend when configured; storage, worker, and billing connections use production environment configuration. A code path or repository acceptance test does not prove that production credentials, provider accounts, web/worker services, backups, DNS/TLS, monitoring, or deployment automation exist. Those provider and operator checks remain launch blockers until configured and verified in the target environment.
 
 The application refuses to start this in-memory runtime when NODE_ENV=production. Do not use real customer data in the local review server.
 
@@ -18,13 +18,13 @@ Latest local evidence:
 
 ```text
 npm run verify                  # passed, full Node suite plus format/lint/typecheck/migration/security/build checks
-npm run test:browser            # passed, 21/21 desktop and mobile browser journeys
+npm run test:browser            # passed, 23/23 desktop and mobile browser journeys
 npm audit --omit=dev            # passed, 0 production dependency vulnerabilities
-npm run db:runtime              # passed against disposable PostgreSQL 18 database
-npm run db:acceptance           # passed against clean PostgreSQL 18 database
+npm run db:runtime              # passed, 12/12 PostgreSQL runtime tests against a disposable PostgreSQL 18 database
+npm run db:acceptance           # not run in this shell: DATABASE_URL is not configured
 ```
 
-PostgreSQL runtime and RLS acceptance gates are current as of the latest Docker-backed rerun.
+The runtime acceptance creates and drops its own database. The separate RLS SQL acceptance command requires an explicitly configured target URL and must be run against a disposable clean database before deployment.
 
 ## Durable Runtime Integration
 
@@ -574,6 +574,12 @@ The database acceptance run used PostgreSQL 18 via Docker Compose and proved:
 ## Next Phase
 
 All planned Phase 1-13 product foundation slices are accepted. Any next work should be a new explicitly scoped roadmap item.
+
+## Phase 14 - Release Readiness and Production Hardening
+
+Status: **accepted**
+
+This acceptance covers repository-level release validation and tests only. Public production remains blocked until real provider settings, database acceptance, deployment, and accountable approvals are verified.
 
 ## Phase 14 Acceptance Gates
 

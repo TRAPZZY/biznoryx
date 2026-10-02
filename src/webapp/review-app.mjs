@@ -155,6 +155,8 @@ async function routeRequest({ request, response, runtime }) {
       "/api/sign-in",
       "/api/auth/verify-email",
       "/api/auth/resend-code",
+      "/api/auth/password-reset/request",
+      "/api/auth/password-reset/confirm",
     ].includes(url.pathname)
   ) {
     const now = Date.now();
@@ -216,6 +218,45 @@ async function routeRequest({ request, response, runtime }) {
       sent: true,
       email: verification.email,
       expiresAt: verification.expiresAt,
+    });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/auth/password-reset/request" &&
+    request.method === "POST"
+  ) {
+    const body = await readJson(request);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email ?? ""))
+      throw new AuthError("Enter a valid email address.", "VALIDATION_FAILED");
+    const reset = runtime.emailVerification.issue({
+      email: body.email,
+      purpose: "password_reset",
+    });
+    sendJson(response, 202, {
+      sent: true,
+      message:
+        "If an account exists for that email, a password reset code has been sent.",
+      reviewCode: reset.reviewCode,
+    });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/auth/password-reset/confirm" &&
+    request.method === "POST"
+  ) {
+    const body = await readJson(request);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email ?? ""))
+      throw new AuthError("Enter a valid email address.", "VALIDATION_FAILED");
+    runtime.emailVerification.resetPassword({
+      email: body.email,
+      code: assertText(body.code, "Reset code is required."),
+      newPassword: body.newPassword,
+    });
+    sendJson(response, 200, {
+      reset: true,
+      message: "Password reset. Sign in with your new password.",
     });
     return;
   }

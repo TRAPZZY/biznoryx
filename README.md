@@ -8,6 +8,8 @@ Instead of treating every spreadsheet, sales report, transaction export, or oper
 
 Businesses can upload recurring datasets, validate their source data, preserve evidence, calculate verified metrics, compare periods, identify meaningful movements, and maintain an auditable record of how the business is performing over time.
 
+The repository also contains the Phase 13 enterprise scaling layer for organization plan limits, usage windows, rate-limit evidence, worker concurrency, and operational health. Repository acceptance does not substitute for configuring and operating production infrastructure.
+
 ---
 
 ## Table of Contents
@@ -1298,11 +1300,14 @@ Use environment variables or a local environment file excluded by `.gitignore`.
 Example:
 
 ```bash
+NODE_ENV=production
 DATABASE_URL=
 HOST=0.0.0.0
 PORT=
+BIZNORYX_APP_DB_PASSWORD=
 
 BIZNORYX_PUBLIC_URL=
+BIZNORYX_SECRET_PROVIDER=vault
 
 RESEND_API_KEY=
 BIZNORYX_EMAIL_FROM=

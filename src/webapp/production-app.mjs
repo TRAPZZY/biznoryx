@@ -518,6 +518,63 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (
+    url.pathname === "/api/auth/password-reset/request" &&
+    request.method === "POST"
+  ) {
+    const body = await readJson(request);
+
+    validateEmail(body.email);
+
+    try {
+      await runtime.emailVerification.issue({
+        email: body.email,
+        purpose: "password_reset",
+      });
+    } catch (error) {
+      if (
+        !(error instanceof AuthError) ||
+        error.code !== "EMAIL_DELIVERY_FAILED"
+      ) {
+        throw error;
+      }
+
+      process.stderr.write(
+        "Password reset email delivery failed.\n",
+      );
+    }
+
+    sendJson(response, 202, {
+      sent: true,
+      message:
+        "If an account exists for that email, a password reset code has been sent.",
+    });
+
+    return;
+  }
+
+  if (
+    url.pathname === "/api/auth/password-reset/confirm" &&
+    request.method === "POST"
+  ) {
+    const body = await readJson(request);
+
+    validateEmail(body.email);
+
+    await runtime.emailVerification.resetPassword({
+      email: body.email,
+      code: assertText(body.code, "Reset code is required.", 32),
+      newPassword: body.newPassword,
+    });
+
+    sendJson(response, 200, {
+      reset: true,
+      message: "Password reset. Sign in with your new password.",
+    });
+
+    return;
+  }
+
   /*
    * ==================================================
    * AUTH — VERIFY EMAIL
@@ -1974,6 +2031,8 @@ function isAuthEndpoint(pathname) {
     "/api/sign-in",
     "/api/auth/verify-email",
     "/api/auth/resend-code",
+    "/api/auth/password-reset/request",
+    "/api/auth/password-reset/confirm",
   ].includes(pathname);
 }
 

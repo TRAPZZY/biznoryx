@@ -38,6 +38,69 @@ test('review app signs in and returns tenant-scoped dashboard state', async () =
   }
 });
 
+test('review app password recovery resets credentials and revokes prior sessions', async () => {
+  const app = createReviewApp();
+  const baseUrl = await listen(app.server);
+
+  try {
+    const signedIn = await fetch(`${baseUrl}/api/sign-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(app.runtime.reviewAccount)
+    });
+    const oldCookie = signedIn.headers.get('set-cookie');
+
+    const requested = await fetch(`${baseUrl}/api/auth/password-reset/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: app.runtime.reviewAccount.email })
+    });
+    assert.equal(requested.status, 202);
+    const reset = await requested.json();
+    assert.match(reset.reviewCode, /^\d{8}$/);
+
+    const confirmed = await fetch(`${baseUrl}/api/auth/password-reset/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: app.runtime.reviewAccount.email,
+        code: reset.reviewCode,
+        newPassword: 'ReplacementPassword2026!'
+      })
+    });
+    assert.equal(confirmed.status, 200);
+    assert.equal((await confirmed.json()).reset, true);
+
+    const oldSession = await fetch(`${baseUrl}/api/session`, {
+      headers: { cookie: oldCookie }
+    });
+    assert.equal(oldSession.status, 401);
+
+    const newSignIn = await fetch(`${baseUrl}/api/sign-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: app.runtime.reviewAccount.email,
+        password: 'ReplacementPassword2026!'
+      })
+    });
+    assert.equal(newSignIn.status, 200);
+
+    const reusedCode = await fetch(`${baseUrl}/api/auth/password-reset/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: app.runtime.reviewAccount.email,
+        code: reset.reviewCode,
+        newPassword: 'AnotherReplacementPassword2026!'
+      })
+    });
+    assert.equal(reusedCode.status, 400);
+  } finally {
+    await close(app.server);
+  }
+});
+
 test('review app requires CSRF for tenant mutations', async () => {
   const app = createReviewApp();
   const baseUrl = await listen(app.server);

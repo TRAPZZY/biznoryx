@@ -46,15 +46,17 @@ test(
      * OTP exactly where a production email
      * provider would receive it.
      */
-    let deliveredVerificationCode =
-      null;
+    const deliveredCodes = [];
 
     const testEmailSender = {
       async sendVerificationCode({
         code,
+        purpose,
       }) {
-        deliveredVerificationCode =
-          code;
+        deliveredCodes.push({
+          code,
+          purpose,
+        });
 
         return {
           provider: "test",
@@ -128,7 +130,7 @@ test(
        * transport.
        */
       assert.match(
-        deliveredVerificationCode,
+        deliveredCodes[0].code,
         /^\d{8}$/,
       );
 
@@ -154,7 +156,7 @@ test(
             first.user.email,
 
           code:
-            deliveredVerificationCode,
+            deliveredCodes[0].code,
         });
 
       assert.equal(
@@ -404,6 +406,99 @@ test(
           .memberships[0]
           .organizationId,
         firstOrganization.id,
+      );
+
+      const passwordReset =
+        await emailVerification.issue({
+          email:
+            first.user.email,
+
+          purpose:
+            "password_reset",
+        });
+
+      assert.equal(
+        passwordReset.sent,
+        true,
+      );
+
+      assert.equal(
+        Object.hasOwn(
+          passwordReset,
+          "reviewCode",
+        ),
+        false,
+      );
+
+      assert.equal(
+        deliveredCodes[1].purpose,
+        "password_reset",
+      );
+
+      const replacementPassword =
+        "RecoveredRuntimePassword2026!";
+
+      await emailVerification.resetPassword({
+        email:
+          first.user.email,
+
+        code:
+          deliveredCodes[1].code,
+
+        newPassword:
+          replacementPassword,
+      });
+
+      await assert.rejects(
+        repository.authenticate({
+          token:
+            first.token,
+        }),
+        (error) =>
+          error instanceof AuthError &&
+          error.code === "SESSION_INVALID",
+      );
+
+      await assert.rejects(
+        emailVerification.resetPassword({
+          email:
+            first.user.email,
+
+          code:
+            deliveredCodes[1].code,
+
+          newPassword:
+            "AnotherRecoveredPassword2026!",
+        }),
+        (error) =>
+          error instanceof AuthError &&
+          error.code === "EMAIL_CODE_INVALID",
+      );
+
+      const signedInAfterReset =
+        await restartedRepository.signIn({
+          email:
+            first.user.email,
+
+          password:
+            replacementPassword,
+        });
+
+      assert.equal(
+        signedInAfterReset.user.id,
+        first.user.id,
+      );
+
+      await assert.rejects(
+        restartedRepository.signIn({
+          email:
+            first.user.email,
+
+          password,
+        }),
+        (error) =>
+          error instanceof AuthError &&
+          error.code === "INVALID_CREDENTIALS",
       );
 
       /*

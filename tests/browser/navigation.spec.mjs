@@ -8,7 +8,7 @@ async function signIn(page) {
     .fill("ReviewPassphrase2026!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Your business, in perspective." }),
+    page.locator(".overview-v2"),
   ).toBeVisible();
 }
 
@@ -18,9 +18,13 @@ async function navigate(page, name, path, heading) {
     .getByRole("link", { name, exact: true })
     .click();
   await expect(page).toHaveURL(new RegExp(`#/${path}$`));
-  await expect(
-    page.getByRole("heading", { name: heading, exact: true }),
-  ).toBeVisible();
+  if (path === "dashboard") {
+    await expect(page.locator(".overview-v2")).toBeVisible();
+  } else {
+    await expect(
+      page.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
+  }
   await expect(
     page
       .getByRole("navigation", { name: "Workspace", exact: true })
@@ -38,7 +42,7 @@ for (const viewport of [
     for (const [name, path, heading] of [
       ["Product", "product", "A business performance system, not a spreadsheet wrapper."],
       ["Solutions", "solutions", "Built for owners who need to understand what changed."],
-      ["Pricing", "pricing", "$20 per month for the BIZNORYX business workspace."],
+      ["Pricing", "pricing", "₦40,000 per month for the BIZNORYX business workspace."],
       ["Security", "security", "Tenant isolation and auditability are part of the product."],
       ["Resources", "resources", "How teams build a useful business memory."],
     ]) {
@@ -71,7 +75,7 @@ for (const viewport of [
       await expect(
         page.getByRole("heading", { name: "BIZNORYX", exact: true }),
       ).toBeVisible();
-      await page.getByRole("link", { name: "$20/mo start" }).click();
+      await page.getByRole("link", { name: "Get started" }).click();
       await expect(page).toHaveURL(/#\/register$/);
       await expect(page.getByLabel("Full name")).toBeVisible();
       await page.getByRole("link", { name: "Back to home" }).click();
@@ -80,7 +84,7 @@ for (const viewport of [
       ).toBeVisible();
       await page
         .locator("header")
-        .getByRole("link", { name: "$20/mo start", exact: true })
+        .getByRole("link", { name: "Get started", exact: true })
         .click();
       await page
         .locator(".auth-switch")
@@ -120,7 +124,7 @@ for (const viewport of [
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(/#\/dashboard$/);
       await expect(
-        page.getByRole("heading", { name: "Your business, in perspective." }),
+        page.locator(".overview-v2"),
       ).toBeVisible();
       await expect(page.getByLabel("Business", { exact: true })).toContainText(
         "Acme Retail Group",
@@ -145,30 +149,34 @@ for (const viewport of [
         "reports",
         "Evidence behind every decision.",
       );
-      await navigate(page, "Billing", "billing", "Subscription and checkout");
+      await navigate(page, "Billing", "billing", "Manage your BIZNORYX plan.");
       await navigate(page, "Activity", "activity", "Workspace activity");
       await expect(
-        page.getByRole("heading", { name: "No customer activity yet." }),
+        page.getByRole("heading", { name: "Workspace activity" }),
       ).toBeVisible();
       await navigate(
         page,
         "Overview",
         "dashboard",
-        "Your business, in perspective.",
+        "Acme Retail Group",
       );
       for (const [path, heading] of [
         ["activity", "Workspace activity"],
-        ["billing", "Subscription and checkout"],
+        ["billing", "Manage your BIZNORYX plan."],
         ["reports", "Evidence behind every decision."],
         ["data", "Upload business data"],
         ["business", "Business profile"],
-        ["dashboard", "Your business, in perspective."],
+        ["dashboard", "Acme Retail Group"],
       ]) {
         await page.goBack();
         await expect(page).toHaveURL(new RegExp(`#/${path}$`));
-        await expect(
-          page.getByRole("heading", { name: heading, exact: true }),
-        ).toBeVisible();
+        if (path === "dashboard") {
+          await expect(page.locator(".overview-v2")).toBeVisible();
+        } else {
+          await expect(
+            page.getByRole("heading", { name: heading, exact: true }),
+          ).toBeVisible();
+        }
       }
       await page.goForward();
       await expect(page).toHaveURL(/#\/business$/);
@@ -249,13 +257,11 @@ test("organization switching isolates uploads, validation, metrics and activity"
     page,
     "Overview",
     "dashboard",
-    "Your business, in perspective.",
+    "Acme Retail Group",
   );
-  await expect(page.locator(".metrics-grid")).not.toContainText("$1,234.56");
+  await expect(page.locator(".overview-v2-stats")).toContainText("No verified period");
   await expect(
-    page.getByRole("heading", {
-      name: "Your story starts with the first period.",
-    }),
+    page.locator(".overview-v2"),
   ).toBeVisible();
   await page
     .getByLabel("Business", { exact: true })
@@ -273,19 +279,17 @@ test("organization switching isolates uploads, validation, metrics and activity"
   await page
     .getByRole("button", { name: "Confirm and add to dashboard" })
     .click();
-  await expect(page.locator(".metrics-grid")).toContainText("$1,234.56");
+  await expect(page.locator(".overview-v2-stats")).toContainText("Source-backed reports ready");
   await page
     .getByLabel("Business", { exact: true })
     .selectOption({ label: "Northstar Foods" });
   await expect(page.locator(".workspace-top")).toContainText("Northstar Foods");
-  await expect(page.locator(".metrics-grid")).not.toContainText("$1,234.56");
+  await expect(page.locator(".overview-v2-stats")).toContainText("No verified period");
   await expect(page.getByRole("main")).not.toContainText("acme-navigation.csv");
   await page.reload();
   await expect(page.locator(".workspace-top")).toContainText("Northstar Foods");
   await expect(
-    page.getByRole("heading", {
-      name: "Your story starts with the first period.",
-    }),
+    page.locator(".overview-v2"),
   ).toBeVisible();
   await page
     .getByLabel("Business", { exact: true })
@@ -293,8 +297,12 @@ test("organization switching isolates uploads, validation, metrics and activity"
   await expect(page.locator(".workspace-top")).toContainText(
     "Acme Retail Group",
   );
-  await expect(page.locator(".metrics-grid")).toContainText("$1,234.56");
-  await expect(page.locator(".evidence-name")).toHaveText(
-    "acme-navigation.csv",
+  await expect(page.locator(".overview-v2-stats")).toContainText("Source-backed reports ready");
+  await navigate(
+    page,
+    "Evidence reports",
+    "reports",
+    "Evidence behind every decision.",
   );
+  await expect(page.getByRole("main")).toContainText("acme-navigation.csv");
 });

@@ -38,6 +38,12 @@ jobs:
       - name: Verify local gates
         run: npm run verify
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify desktop and mobile browser journeys
+        run: npm run test:browser
+
       - name: Verify PostgreSQL RLS acceptance
         run: npm run db:acceptance
         env:

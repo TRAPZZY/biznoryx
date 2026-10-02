@@ -1063,6 +1063,16 @@ function auth(register) {
                 : ""
             }
 
+            ${
+              register
+                ? ""
+                : link(
+                    "/password-reset",
+                    "Forgot password?",
+                    "auth-recovery-link",
+                  )
+            }
+
             <button
               class="primary"
               type="submit"
@@ -1095,6 +1105,7 @@ function auth(register) {
                 : "Create an account",
             )}
           </p>
+
         </div>
 
         <p class="auth-footer">
@@ -1170,6 +1181,97 @@ function auth(register) {
       );
     },
   );
+
+  if (
+    !register &&
+    new URLSearchParams(location.hash.split("?")[1] ?? "").get("reset") ===
+      "success"
+  ) {
+    document.querySelector("#auth-form .form-message").textContent =
+      "Password reset. Sign in with your new password.";
+  }
+}
+
+function passwordReset() {
+  mount(`
+    <div class="auth-layout">
+      <aside class="auth-visual">
+        ${wordmark()}
+
+        <div>
+          <p class="overline">Account recovery</p>
+          <h1>Get back to your business with a secure reset.</h1>
+          <p>We will send a one-time code to your verified email address.</p>
+        </div>
+
+        <span>BIZNORYX / ACCOUNT SECURITY</span>
+      </aside>
+
+      <main class="auth-main">
+        ${link(
+          "/sign-in",
+          `${icon("arrow-left")} Back to sign in`,
+          "back-link",
+        )}
+
+        <div class="auth-form-wrap">
+          <p class="overline">Password recovery</p>
+          <h2>Reset your password.</h2>
+          <p class="muted">Request a one-time code, then choose a new password.</p>
+
+          <form id="password-reset-request">
+            ${field(
+              "Work email",
+              "email",
+              "email",
+              "",
+              'autocomplete="email" maxlength="254"',
+            )}
+            <button class="secondary" type="submit">Send reset code ${icon("mail")}</button>
+            ${message()}
+          </form>
+
+          <div class="reset-code-preview" hidden></div>
+
+          <form id="password-reset-confirm" hidden>
+            <input type="hidden" name="email">
+            <label>
+              One-time code
+              <input name="code" inputmode="numeric" autocomplete="one-time-code" minlength="8" maxlength="8" pattern="[0-9]{8}" required>
+            </label>
+            <label>
+              New password
+              <input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+            </label>
+            <button class="primary" type="submit">Reset password ${icon("arrow-right")}</button>
+            ${message()}
+          </form>
+        </div>
+
+        <p class="auth-footer">Your business. Your data. A better perspective.</p>
+      </main>
+    </div>
+  `);
+
+  const requestForm = document.querySelector("#password-reset-request");
+  const confirmForm = document.querySelector("#password-reset-confirm");
+  const preview = document.querySelector(".reset-code-preview");
+
+  bindForm("#password-reset-request", async ({ email }) => {
+    const result = await api("auth/password-reset/request", { email });
+    confirmForm.elements.email.value = email;
+    confirmForm.hidden = false;
+    if (result.reviewCode) {
+      preview.hidden = false;
+      preview.innerHTML = `<span>Local review code</span><strong>${esc(result.reviewCode)}</strong>`;
+    }
+    requestForm.querySelector("[role=status]").textContent = result.message;
+  });
+
+  bindForm("#password-reset-confirm", async ({ email, code, newPassword }) => {
+    await api("auth/password-reset/confirm", { email, code, newPassword });
+    location.hash = "/sign-in?reset=success";
+  });
 }
 
 function verifyEmail() {
@@ -6698,6 +6800,10 @@ async function route() {
       "/verify-email"
     ) {
       return verifyEmail();
+    }
+
+    if (path === "/password-reset") {
+      return passwordReset();
     }
 
     if (

@@ -1,4 +1,3 @@
-import { createHealthChecks } from "../src/server/health.mjs";
 import {
   checkDatabaseHealth,
   createPostgresPool,
@@ -40,32 +39,9 @@ const host =
 
 const pool = createPostgresPool();
 
-const healthChecks = createHealthChecks({
-  timeoutMs: 2_000,
-
-  probes: {
-    database: async () => {
-      await checkDatabaseHealth(pool);
-      return true;
-    },
-
-    /*
-     * These intentionally remain unconfigured
-     * until their production phases are complete.
-     *
-     * /readyz must therefore remain NOT READY
-     * rather than pretending the whole platform
-     * is launch-ready.
-     */
-    objectStorage: undefined,
-    worker: undefined,
-  },
-});
-
 const { server } =
   createProductionApp({
     pool,
-    healthChecks,
     production,
   });
 
@@ -104,10 +80,6 @@ async function start() {
 
   process.stdout.write(
     `BIZNORYX production runtime listening on http://${host}:${port}\n`,
-  );
-
-  process.stdout.write(
-    "Readiness remains gated until storage and worker dependencies are connected.\n",
   );
 }
 

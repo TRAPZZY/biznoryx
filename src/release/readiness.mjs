@@ -8,11 +8,16 @@ const REQUIRED_PRODUCTION_ENV = Object.freeze([
   'NODE_ENV',
   'DATABASE_URL',
   'BIZNORYX_APP_DB_PASSWORD',
-  'BIZNORYX_SESSION_SECRET',
-  'BIZNORYX_CSRF_SECRET',
   'BIZNORYX_PUBLIC_URL',
-  'BIZNORYX_STORAGE_BUCKET',
-  'BIZNORYX_STORAGE_REGION',
+  'BIZNORYX_OBJECT_STORAGE_BUCKET',
+  'BIZNORYX_OBJECT_STORAGE_REGION',
+  'BIZNORYX_OBJECT_STORAGE_ENDPOINT',
+  'BIZNORYX_OBJECT_STORAGE_ACCESS_KEY_ID',
+  'BIZNORYX_OBJECT_STORAGE_SECRET_ACCESS_KEY',
+  'RESEND_API_KEY',
+  'BIZNORYX_EMAIL_FROM',
+  'PAYSTACK_SECRET_KEY',
+  'PAYSTACK_PLAN_CODE',
   'BIZNORYX_SECRET_PROVIDER'
 ]);
 
@@ -26,12 +31,28 @@ export function validateProductionEnvironment(env = process.env) {
   if (env.DATABASE_URL && /localhost|127\.0\.0\.1|biznoryx_local_password/i.test(env.DATABASE_URL)) findings.push(blocker('DATABASE_URL must not point at local development credentials.'));
   if (env.BIZNORYX_APP_DB_PASSWORD && env.BIZNORYX_APP_DB_PASSWORD.length < 24) findings.push(blocker('BIZNORYX_APP_DB_PASSWORD must be at least 24 characters.'));
   if (env.BIZNORYX_APP_DB_PASSWORD && /local_runtime_password_change_me/i.test(env.BIZNORYX_APP_DB_PASSWORD)) findings.push(blocker('BIZNORYX_APP_DB_PASSWORD must not use the local development value.'));
-  for (const secretName of ['BIZNORYX_SESSION_SECRET', 'BIZNORYX_CSRF_SECRET']) {
-    if (env[secretName] && env[secretName].length < 32) findings.push(blocker(`${secretName} must be at least 32 characters.`));
-  }
   if (env.BIZNORYX_PUBLIC_URL && !/^https:\/\//.test(env.BIZNORYX_PUBLIC_URL)) findings.push(blocker('BIZNORYX_PUBLIC_URL must use HTTPS.'));
+  if (env.BIZNORYX_OBJECT_STORAGE_ENDPOINT) {
+    try {
+      if (new URL(env.BIZNORYX_OBJECT_STORAGE_ENDPOINT).protocol !== 'https:') {
+        findings.push(blocker('BIZNORYX_OBJECT_STORAGE_ENDPOINT must use HTTPS.'));
+      }
+    } catch {
+      findings.push(blocker('BIZNORYX_OBJECT_STORAGE_ENDPOINT must be a valid HTTPS URL.'));
+    }
+  }
+  if (
+    env.BIZNORYX_OBJECT_STORAGE_FORCE_PATH_STYLE &&
+    !['true', 'false'].includes(
+      env.BIZNORYX_OBJECT_STORAGE_FORCE_PATH_STYLE.toLowerCase(),
+    )
+  ) {
+    findings.push(
+      blocker('BIZNORYX_OBJECT_STORAGE_FORCE_PATH_STYLE must be true or false.'),
+    );
+  }
   if (env.BIZNORYX_SECRET_PROVIDER && !['vault', 'aws_secrets_manager', 'gcp_secret_manager', 'azure_key_vault'].includes(env.BIZNORYX_SECRET_PROVIDER)) {
-    findings.push(blocker('BIZNORYX_SECRET_PROVIDER must be a supported managed secret provider.'));
+    findings.push(blocker('BIZNORYX_SECRET_PROVIDER must identify a supported managed secret provider.'));
   }
   return {
     state: findings.length === 0 ? 'ready' : 'blocked',

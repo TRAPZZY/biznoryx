@@ -6,6 +6,7 @@ import {
 
 import {
   AuthError,
+  hashPassword,
   hashSecret,
   normalizeEmail,
 } from "../auth/core.mjs";
@@ -35,6 +36,15 @@ export class PostgresEmailVerificationRepository {
     purpose = "email_verification",
     actorUserId = null,
   }) {
+    if (
+      !["email_verification", "password_reset"].includes(purpose)
+    ) {
+      throw new AuthError(
+        "Verification purpose is invalid.",
+        "VALIDATION_FAILED",
+      );
+    }
+
     const normalizedEmail =
       normalizeEmail(email);
 
@@ -46,8 +56,9 @@ export class PostgresEmailVerificationRepository {
          from app_users
          where lower(email) = lower($1)
            and disabled_at is null
+           and ($2 <> 'password_reset' or email_verified_at is not null)
          limit 1`,
-        [normalizedEmail],
+        [normalizedEmail, purpose],
       );
 
     const user = userResult.rows[0];
@@ -160,7 +171,7 @@ export class PostgresEmailVerificationRepository {
            )
            values (
              $1,
-             'identity.email_verification_issued',
+               $4,
              'app_user',
              $2,
              $3::jsonb
@@ -171,6 +182,9 @@ export class PostgresEmailVerificationRepository {
             JSON.stringify({
               purpose,
             }),
+            purpose === "password_reset"
+              ? "identity.password_reset_issued"
+              : "identity.email_verification_issued",
           ],
         );
       },
@@ -183,6 +197,7 @@ export class PostgresEmailVerificationRepository {
           code,
           expiresAt,
           challengeId,
+          purpose,
         },
       );
     } catch (error) {
@@ -428,6 +443,166 @@ export class PostgresEmailVerificationRepository {
       disabledAt:
         user.disabled_at,
     };
+  }
+
+  async resetPassword({
+    email,
+    code,
+    newPassword,
+  }) {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    const normalizedCode =
+      String(code ?? "").trim();
+
+    if (!/^\d{8}$/.test(normalizedCode)) {
+      throw invalidVerificationCode();
+    }
+
+    if (
+      typeof newPassword !== "string" ||
+      newPassword.length < 12 ||
+      newPassword.length > 128
+    ) {
+      throw new AuthError(
+        "Password must be between 12 and 128 characters.",
+        "WEAK_PASSWORD",
+      );
+    }
+
+    const userResult =
+      await this.pool.query(
+        `select id
+         from app_users
+         where lower(email) = lower($1)
+           and email_verified_at is not null
+           and disabled_at is null
+         limit 1`,
+        [normalizedEmail],
+      );
+
+    const user = userResult.rows[0];
+
+    if (!user) {
+      throw invalidVerificationCode();
+    }
+
+    const now = this.now();
+
+    const reset = await withTransaction(
+      this.pool,
+      async (client) => {
+        await client.query(
+          "select set_config('app.current_user_id', $1, true)",
+          [user.id],
+        );
+
+        const challengeResult =
+          await client.query(
+            `select
+               id,
+               code_hash,
+               attempts,
+               max_attempts,
+               expires_at
+             from email_verification_challenges
+             where user_id = $1
+               and email = $2
+               and purpose = 'password_reset'
+               and consumed_at is null
+               and superseded_at is null
+             order by created_at desc
+             limit 1
+             for update`,
+            [user.id, normalizedEmail],
+          );
+
+        const challenge = challengeResult.rows[0];
+
+        if (!challenge) {
+          return false;
+        }
+
+        const attempts = Number(challenge.attempts);
+        const maxAttempts = Number(challenge.max_attempts);
+        const nextAttempts = attempts + 1;
+        const expired = new Date(challenge.expires_at) <= now;
+        const valid =
+          !expired &&
+          attempts < maxAttempts &&
+          secretsMatch(
+            hashSecret(normalizedCode),
+            challenge.code_hash,
+          );
+
+        if (!valid) {
+          await client.query(
+            `update email_verification_challenges
+             set attempts = $2,
+                 consumed_at = case
+                   when $2 >= max_attempts or $3 then $4
+                   else consumed_at
+                 end
+             where id = $1
+               and consumed_at is null`,
+            [challenge.id, nextAttempts, expired, now],
+          );
+
+          return false;
+        }
+
+        await client.query(
+          `update email_verification_challenges
+           set attempts = $2,
+               consumed_at = $3
+           where id = $1
+             and consumed_at is null`,
+          [challenge.id, nextAttempts, now],
+        );
+
+        await client.query(
+          `update app_users
+           set password_hash = $2,
+               updated_at = $3
+           where id = $1
+             and disabled_at is null`,
+          [user.id, hashPassword(newPassword), now],
+        );
+
+        await client.query(
+          `update user_sessions
+           set revoked_at = $2
+           where user_id = $1
+             and revoked_at is null`,
+          [user.id, now],
+        );
+
+        await client.query(
+          `insert into audit_events (
+             actor_user_id,
+             event_type,
+             target_type,
+             target_id
+           )
+           values (
+             $1,
+             'identity.password_reset_completed',
+             'app_user',
+             $1
+           )`,
+          [user.id],
+        );
+
+        return true;
+      },
+    );
+
+    if (!reset) {
+      throw invalidVerificationCode();
+    }
+
+    return { reset: true };
   }
 
   async invalidateChallenge({
