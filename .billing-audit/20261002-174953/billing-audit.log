@@ -1,0 +1,1580 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261002174953
+Username: UNKNOWN\traph
+RunAs User: UNKNOWN\traph
+Configuration Name: 
+Machine: UNKNOWN (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\traph\AppData\Local\Programs\Microsoft VS Code\07f806f999\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 26324
+PSVersion: 5.1.26100.9444
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9444
+BuildVersion: 10.0.26100.9444
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "Audit evidence: $AuditRoot"
+Audit evidence: C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx\.billing-audit\20261002-174953
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Git audit
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "1. SOURCE CONTROL CHECK"
+
+==============================================================================
+1. SOURCE CONTROL CHECK
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if (Test-CommandAvailable "git") {
+
+    $InsideRepo = (& git rev-parse --is-inside-work-tree 2>$null).Trim()
+
+    if ($InsideRepo -ne "true") {
+        Fail-Safely "The current directory is not a Git working tree."
+    }
+
+    $Branch = (& git branch --show-current).Trim()
+    $Commit = (& git rev-parse HEAD).Trim()
+    $Dirty = (& git status --porcelain)
+
+    Write-Host "Branch : $Branch"
+    Write-Host "Commit : $Commit"
+
+    if ($Dirty) {
+        Write-Warn "The repository has uncommitted changes."
+        Write-Host ""
+        & git status --short
+        Write-Host ""
+        Write-Warn "The script will NOT overwrite or reset those changes."
+    }
+    else {
+        Write-OK "Git working tree is clean."
+    }
+
+    if (-not $SkipGitFetch) {
+        try {
+            Write-Host "Refreshing origin/main metadata..."
+            & git fetch origin main --quiet
+
+            if ($LASTEXITCODE -eq 0) {
+                $RemoteMain = (& git rev-parse origin/main).Trim()
+
+                Write-Host "origin/main: $RemoteMain"
+
+                if ($Commit -eq $RemoteMain) {
+                    Write-OK "Local HEAD matches origin/main."
+                }
+                else {
+                    $IsAncestor = $false
+
+                    & git merge-base --is-ancestor HEAD origin/main 2>$null
+
+                    if ($LASTEXITCODE -eq 0) {
+                        $IsAncestor = $true
+                    }
+
+                    if ($IsAncestor) {
+                        Write-Warn "Your local checkout is behind origin/main."
+                        Write-Warn "This script will not automatically merge application code."
+                    }
+                    else {
+                        Write-Warn "Local HEAD and origin/main differ. No automatic Git mutation will occur."
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Warn "Unable to refresh origin/main. Continuing with the checked-out source."
+        }
+    }
+}
+Branch : production-readiness-fix-20261001-004139
+Commit : 85df57c888267069c8191ff8417917240fce30b1
+[WARN] The repository has uncommitted changes.
+
+
+
+[WARN] The script will NOT overwrite or reset those changes.
+Refreshing origin/main metadata...
+
+origin/main: 85df57c888267069c8191ff8417917240fce30b1
+[PASS] Local HEAD matches origin/main.
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-Warn "Git was not found. Source comparison will be skipped."
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function,
+script file, or operable program. Check the spelling of the name, or if a path
+was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsEr
+   rorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Verify billing source implementation
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "2. BILLING IMPLEMENTATION CHECK"
+
+==============================================================================
+2. BILLING IMPLEMENTATION CHECK
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$ProductionAppPath = Join-Path $RepoRoot "src\webapp\production-app.mjs"
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$BillingRepositoryPath = Join-Path $RepoRoot "src\database\billing-repository.mjs"
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$WebAppPath = Join-Path $RepoRoot "web-app\app.js"
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$MigrationPath = Join-Path $RepoRoot "db\migrations\0025_billing_payment_history.sql"
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$ProductionApp = Get-Content $ProductionAppPath -Raw
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$BillingRepository = Get-Content $BillingRepositoryPath -Raw
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$WebApp = Get-Content $WebAppPath -Raw
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$SourceChecks = [ordered]@{
+    "Billing history API" =
+        $ProductionApp.Contains("/api/billing/history")
+
+    "Paystack payment persistence" =
+        $ProductionApp.Contains("recordPayment(")
+
+    "Payment repository" =
+        $BillingRepository.Contains("async recordPayment(")
+
+    "Payment history repository" =
+        $BillingRepository.Contains("async listPayments(")
+
+    "Duplicate payment protection" =
+        (
+            $BillingRepository.Contains("on conflict (provider, reference)") -and
+            $BillingRepository.Contains("BILLING_REFERENCE_CONFLICT")
+        )
+
+    "Billing history frontend" =
+        (
+            $WebApp.Contains("Billing history") -or
+            $WebApp.Contains("billing-history")
+        )
+
+    "Migration 0025" =
+        (Test-Path $MigrationPath)
+}
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$MissingSourceFeatures = @()
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>foreach ($Check in $SourceChecks.GetEnumerator()) {
+    if ($Check.Value) {
+        Write-OK $Check.Key
+    }
+    else {
+        Write-Fail $Check.Key
+        $MissingSourceFeatures += $Check.Key
+    }
+}
+[PASS] Billing history API
+[PASS] Paystack payment persistence
+[PASS] Payment repository
+[PASS] Payment history repository
+[PASS] Duplicate payment protection
+[PASS] Billing history frontend
+[PASS] Migration 0025
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($MissingSourceFeatures.Count -gt 0) {
+    Fail-Safely @"
+The checked-out application does not contain the complete current
+billing-history implementation.
+
+Missing:
+$($MissingSourceFeatures -join ", ")
+
+Do not repair the database against an older application build.
+Update/reconcile your application branch first.
+"@
+}
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Locate database connection
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "3. DATABASE CONNECTION"
+
+==============================================================================
+3. DATABASE CONNECTION
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$DatabaseMode = $null
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$DatabaseUrl = $null
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($env:BIZNORYX_ADMIN_DATABASE_URL) {
+    $DatabaseMode = "url"
+    $DatabaseUrl = $env:BIZNORYX_ADMIN_DATABASE_URL
+    Write-OK "Using BIZNORYX_ADMIN_DATABASE_URL."
+}
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>elseif ($env:DATABASE_URL) {
+    $DatabaseMode = "url"
+    $DatabaseUrl = $env:DATABASE_URL
+    Write-OK "Using DATABASE_URL."
+}
+>> TerminatingError(): "The term 'elseif' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'elseif' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+elseif : The term 'elseif' is not recognized as the name of a cmdlet, function,
+script file, or operable program. Check the spelling of the name, or if a path
+was included, verify that the path is correct and try again.
+At line:1 char:1
++ elseif ($env:DATABASE_URL) {
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (elseif:String) [], ParentContains
+   ErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>elseif (Test-CommandAvailable "docker") {
+    $DatabaseMode = "docker"
+    Write-OK "No database URL supplied. Using BIZNORYX Docker Compose PostgreSQL."
+}
+PS>TerminatingError(): "The term 'elseif' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'elseif' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+elseif : The term 'elseif' is not recognized as the name of a cmdlet, function,
+script file, or operable program. Check the spelling of the name, or if a path
+was included, verify that the path is correct and try again.
+At line:1 char:1
++ elseif (Test-CommandAvailable "docker") {
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (elseif:String) [], ParentContains
+   ErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Fail-Safely @"
+No database connection is available.
+
+For production, set:
+`$env:BIZNORYX_ADMIN_DATABASE_URL = "postgresql://..."`
+
+Then run this script again.
+
+The script intentionally requires an administrative/migration-capable
+database connection because billing history is protected by tenant RLS.
+"@
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function,
+script file, or operable program. Check the spelling of the name, or if a path
+was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsEr
+   rorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># PostgreSQL execution helpers
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>function Invoke-BiznoryxSql {
+    param(
+        [Parameter(Mandatory)][string]$Sql,
+        [switch]$TuplesOnly
+    )
+
+    if ($script:DatabaseMode -eq "url") {
+
+        if (-not (Test-CommandAvailable "psql")) {
+            Fail-Safely "psql is required when using a PostgreSQL connection URL."
+        }
+
+        $Args = @(
+            $script:DatabaseUrl,
+            "-X",
+            "-v", "ON_ERROR_STOP=1"
+        )
+
+        if ($TuplesOnly) {
+            $Args += @("-A", "-t")
+        }
+
+        $Args += @("-c", $Sql)
+
+        $Output = & psql @Args 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            throw ($Output -join [Environment]::NewLine)
+        }
+
+        return ($Output -join [Environment]::NewLine).Trim()
+    }
+
+    $DockerArgs = @(
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-U", "biznoryx_admin",
+        "-d", "biznoryx",
+        "-X",
+        "-v", "ON_ERROR_STOP=1"
+    )
+
+    if ($TuplesOnly) {
+        $DockerArgs += @("-A", "-t")
+    }
+
+    $DockerArgs += @("-c", $Sql)
+
+    $Output = & docker @DockerArgs 2>&1
+
+    if ($LASTEXITCODE -ne 0) {
+        throw ($Output -join [Environment]::NewLine)
+    }
+
+    return ($Output -join [Environment]::NewLine).Trim()
+}
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>function Invoke-BiznoryxSqlFile {
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        throw "SQL file does not exist: $Path"
+    }
+
+    if ($script:DatabaseMode -eq "url") {
+
+        if (-not (Test-CommandAvailable "psql")) {
+            Fail-Safely "psql is required when using a PostgreSQL connection URL."
+        }
+
+        & psql `
+            $script:DatabaseUrl `
+            -X `
+            -v ON_ERROR_STOP=1 `
+            -f $Path
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Migration execution failed."
+        }
+
+        return
+    }
+
+    $Sql = Get-Content $Path -Raw
+
+    $Sql | & docker compose exec -T postgres `
+        psql `
+        -U biznoryx_admin `
+        -d biznoryx `
+        -X `
+        -v ON_ERROR_STOP=1
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Migration execution failed."
+    }
+}
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Connectivity / role
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$DbIdentity = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+    current_database() || '|' ||
+    current_user || '|' ||
+    coalesce(
+      (
+        select rolsuper::text || '|' || rolbypassrls::text
+        from pg_roles
+        where rolname = current_user
+      ),
+      'false|false'
+    );
+"@
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "Database identity: $DbIdentity"
+Database identity: biznoryx|biznoryx_admin|true|true
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-OK "PostgreSQL connection established."
+[PASS] PostgreSQL connection established.
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Migration state
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "4. BILLING HISTORY MIGRATION CHECK"
+
+==============================================================================
+4. BILLING HISTORY MIGRATION CHECK
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$MigrationTableExists = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+  case
+    when to_regclass('public.schema_migrations') is null
+    then 'false'
+    else 'true'
+  end;
+"@
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($MigrationTableExists -ne "true") {
+    Fail-Safely @"
+schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state.
+"@
+}
+[FAIL] schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state.
+
+No further repair actions will be performed.
+PS>TerminatingError(): "schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state."
+>> TerminatingError(): "schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state."
+schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state.
+schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state.
+At line:7 char:5
++     throw $Message
++     ~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (schema_migratio...igration stat
+   e.:String) [], RuntimeException
+    + FullyQualifiedErrorId : schema_migrations does not exist.
+
+This database does not appear to be a correctly migrated BIZNORYX
+database. The script will not guess its migration state.
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$PaymentTableExists = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+  case
+    when to_regclass('public.billing_payments') is null
+    then 'false'
+    else 'true'
+  end;
+"@
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$MigrationTracked = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select exists (
+    select 1
+      from schema_migrations
+     where filename = '0025_billing_payment_history.sql'
+);
+"@
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "schema_migrations" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "schema_migrations" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "schema_migrations" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "schema_migrations" does not exist
+docker.exe : ERROR:  relation "schema_migrations" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:S
+   tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "billing_payments exists : $PaymentTableExists"
+billing_payments exists : false
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "0025 migration tracked : $MigrationTracked"
+>> TerminatingError(): "The variable '$MigrationTracked' cannot be retrieved because it has not been set."
+The variable '$MigrationTracked' cannot be retrieved because it has not been set.
+The variable '$MigrationTracked' cannot be retrieved because it has not been set.
+At line:1 char:38
++ Write-Host "0025 migration tracked : $MigrationTracked"
++                                      ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (MigrationTracked:String) [], Pa
+   rentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Database backups
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "5. BACKING UP BILLING STATE"
+
+==============================================================================
+5. BACKING UP BILLING STATE
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>function Backup-Query {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Sql
+    )
+
+    $Path = Join-Path $AuditRoot "$Name.jsonl"
+
+    try {
+        $Data = Invoke-BiznoryxSql -TuplesOnly -Sql $Sql
+
+        [System.IO.File]::WriteAllText(
+            $Path,
+            $Data,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+
+        Write-OK "Backed up $Name"
+    }
+    catch {
+        Write-Warn "Unable to back up $Name : $($_.Exception.Message)"
+        throw
+    }
+}
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Backup-Query `
+    -Name "billing_subscriptions" `
+    -Sql @"
+select row_to_json(x)::text
+from (
+    select *
+    from organization_billing_subscriptions
+    order by created_at
+) x;
+"@
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+[WARN] Unable to back up billing_subscriptions : ERROR:  relation "organization_billing_subscriptions" does not exist
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist
+docker.exe : ERROR:  relation "organization_billing_subscriptions" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:S
+   tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Backup-Query `
+    -Name "billing_checkout_sessions" `
+    -Sql @"
+select row_to_json(x)::text
+from (
+    select *
+    from billing_checkout_sessions
+    order by created_at
+) x;
+"@
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_checkout_sessions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_checkout_sessions" does not exist"
+[WARN] Unable to back up billing_checkout_sessions : ERROR:  relation "billing_checkout_sessions" does not exist
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_checkout_sessions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_checkout_sessions" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_checkout_sessions" does not exist
+docker.exe : ERROR:  relation "billing_checkout_sessions" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:S
+   tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Backup-Query `
+    -Name "billing_webhook_events" `
+    -Sql @"
+select row_to_json(x)::text
+from (
+    select *
+    from billing_webhook_events
+    order by received_at
+) x;
+"@
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_webhook_events" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_webhook_events" does not exist"
+[WARN] Unable to back up billing_webhook_events : ERROR:  relation "billing_webhook_events" does not exist
+PS>TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_webhook_events" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_webhook_events" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_webhook_events" does not exist
+docker.exe : ERROR:  relation "billing_webhook_events" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:S
+   tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($PaymentTableExists -eq "true") {
+    Backup-Query `
+        -Name "billing_payments" `
+        -Sql @"
+select row_to_json(x)::text
+from (
+    select *
+    from billing_payments
+    order by paid_at
+) x;
+"@
+}
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-OK "Billing backups completed before mutation."
+[PASS] Billing backups completed before mutation.
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Apply missing migration if necessary
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "6. MIGRATION RECONCILIATION"
+
+==============================================================================
+6. MIGRATION RECONCILIATION
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($PaymentTableExists -ne "true") {
+
+    if ($AuditOnly) {
+        Write-Warn "billing_payments does not exist. AuditOnly prevents migration repair."
+    }
+    else {
+        Write-Warn "billing_payments is missing."
+        Write-Host "Applying 0025_billing_payment_history.sql..."
+
+        Invoke-BiznoryxSqlFile -Path $MigrationPath
+
+        Invoke-BiznoryxSql -Sql @"
+insert into schema_migrations (filename)
+values ('0025_billing_payment_history.sql')
+on conflict (filename) do nothing;
+"@ | Out-Null
+
+        $PaymentTableExists = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+  case
+    when to_regclass('public.billing_payments') is null
+    then 'false'
+    else 'true'
+  end;
+"@
+
+        if ($PaymentTableExists -ne "true") {
+            Fail-Safely "Migration executed but billing_payments was not created."
+        }
+
+        Write-OK "Billing payment-history migration applied."
+    }
+}
+[WARN] billing_payments is missing.
+Applying 0025_billing_payment_history.sql...
+
+PS>TerminatingError(): "Migration execution failed."
+>> TerminatingError(): "Migration execution failed."
+Migration execution failed.
+Migration execution failed.
+At line:39 char:9
++         throw "Migration execution failed."
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Migration execution failed.:Str
+   ing) [], RuntimeException
+    + FullyQualifiedErrorId : Migration execution failed.
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>elseif ($MigrationTracked -ne "t") {
+
+    Write-Warn "billing_payments exists but migration 0025 is not tracked."
+
+    # Validate the critical schema before marking it tracked.
+    $SchemaValid = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select (
+    exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'billing_payments'
+          and column_name = 'organization_id'
+    )
+    and exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'billing_payments'
+          and column_name = 'reference'
+    )
+    and exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'billing_payments'
+          and column_name = 'amount_minor'
+    )
+    and exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'billing_payments'
+          and column_name = 'currency'
+    )
+    and exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'billing_payments'
+          and column_name = 'paid_at'
+    )
+);
+"@
+
+    if ($SchemaValid -ne "t") {
+        Fail-Safely @"
+billing_payments exists, but its schema does not match the expected
+BIZNORYX payment-history schema.
+
+The script will not mark migration 0025 as applied.
+"@
+    }
+
+    if (-not $AuditOnly) {
+        Invoke-BiznoryxSql -Sql @"
+insert into schema_migrations (filename)
+values ('0025_billing_payment_history.sql')
+on conflict (filename) do nothing;
+"@ | Out-Null
+
+        Write-OK "Existing compatible payment-history schema is now tracked."
+    }
+}
+>> TerminatingError(): "The variable '$MigrationTracked' cannot be retrieved because it has not been set."
+The variable '$MigrationTracked' cannot be retrieved because it has not been set.
+The variable '$MigrationTracked' cannot be retrieved because it has not been set.
+At line:1 char:9
++ elseif ($MigrationTracked -ne "t") {
++         ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (MigrationTracked:String) [], Pa
+   rentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-OK "Migration 0025 is present and tracked."
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function,
+script file, or operable program. Check the spelling of the name, or if a path
+was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsEr
+   rorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Audit completed checkout/payment consistency
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "7. PAYMENT HISTORY CONSISTENCY AUDIT"
+
+==============================================================================
+7. PAYMENT HISTORY CONSISTENCY AUDIT
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($PaymentTableExists -ne "true") {
+    Write-Warn "Payment history table does not exist, so record-level audit cannot continue."
+}
+[WARN] Payment history table does not exist, so record-level audit cannot continue.
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+
+    $CompletedCheckoutCount = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from billing_checkout_sessions
+where provider = 'paystack'
+  and status = 'completed'
+  and completed_at is not null;
+"@
+
+    $PaymentCount = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from billing_payments
+where provider = 'paystack'
+  and status = 'success';
+"@
+
+    $MissingPaymentCount = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from billing_checkout_sessions c
+left join billing_payments p
+  on p.provider = c.provider
+ and p.reference = c.reference
+where c.provider = 'paystack'
+  and c.status = 'completed'
+  and c.completed_at is not null
+  and p.id is null;
+"@
+
+    $ConflictingPaymentCount = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from billing_checkout_sessions c
+join billing_payments p
+  on p.provider = c.provider
+ and p.reference = c.reference
+where c.provider = 'paystack'
+  and c.status = 'completed'
+  and (
+       p.organization_id <> c.organization_id
+    or p.amount_minor <> c.amount_minor
+    or upper(p.currency) <> upper(c.currency)
+  );
+"@
+
+    Write-Host ""
+    Write-Host "Completed Paystack checkouts : $CompletedCheckoutCount"
+    Write-Host "Recorded Paystack payments  : $PaymentCount"
+    Write-Host "Missing history records     : $MissingPaymentCount"
+    Write-Host "Conflicting history records : $ConflictingPaymentCount"
+    Write-Host ""
+
+    if ([int64]$ConflictingPaymentCount -gt 0) {
+
+        $ConflictFile = Join-Path $AuditRoot "payment-conflicts.txt"
+
+        $ConflictDetails = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+    'reference=' || c.reference ||
+    ' checkout_org=' || c.organization_id ||
+    ' payment_org=' || p.organization_id ||
+    ' checkout_amount=' || c.amount_minor ||
+    ' payment_amount=' || p.amount_minor ||
+    ' checkout_currency=' || c.currency ||
+    ' payment_currency=' || p.currency
+from billing_checkout_sessions c
+join billing_payments p
+  on p.provider = c.provider
+ and p.reference = c.reference
+where c.provider = 'paystack'
+  and c.status = 'completed'
+  and (
+       p.organization_id <> c.organization_id
+    or p.amount_minor <> c.amount_minor
+    or upper(p.currency) <> upper(c.currency)
+  )
+order by c.completed_at;
+"@
+
+        Set-Content `
+            -Path $ConflictFile `
+            -Value $ConflictDetails `
+            -Encoding UTF8
+
+        Fail-Safely @"
+A financial-history conflict was detected.
+
+The script intentionally WILL NOT rewrite an existing payment.
+
+Conflict evidence:
+$ConflictFile
+"@
+    }
+
+    if ([int64]$MissingPaymentCount -gt 0) {
+
+        Write-Warn "Your suspicion is confirmed."
+        Write-Warn "$MissingPaymentCount completed Paystack checkout(s) are missing from billing history."
+
+        if ($AuditOnly) {
+            Write-Warn "AuditOnly is enabled. No records will be inserted."
+        }
+        else {
+
+            Write-Host ""
+            Write-Host "Repairing missing history records..." -ForegroundColor Cyan
+
+            $RepairResult = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+with repaired as (
+    insert into billing_payments (
+        organization_id,
+        provider,
+        reference,
+        status,
+        amount_minor,
+        currency,
+        channel,
+        paid_at
+    )
+    select
+        c.organization_id,
+        c.provider,
+        c.reference,
+        'success',
+        c.amount_minor,
+        upper(c.currency),
+        null,
+        c.completed_at
+    from billing_checkout_sessions c
+    left join billing_payments p
+      on p.provider = c.provider
+     and p.reference = c.reference
+    where c.provider = 'paystack'
+      and c.status = 'completed'
+      and c.completed_at is not null
+      and p.id is null
+    on conflict (provider, reference) do nothing
+    returning reference
+)
+select reference
+from repaired
+order by reference;
+"@
+
+            if ($RepairResult) {
+                Write-Host ""
+                Write-Host "Repaired references:" -ForegroundColor Green
+                Write-Host $RepairResult
+            }
+
+            $RemainingMissing = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from billing_checkout_sessions c
+left join billing_payments p
+  on p.provider = c.provider
+ and p.reference = c.reference
+where c.provider = 'paystack'
+  and c.status = 'completed'
+  and c.completed_at is not null
+  and p.id is null;
+"@
+
+            if ([int64]$RemainingMissing -ne 0) {
+                Fail-Safely "$RemainingMissing payment-history records remain missing after repair."
+            }
+
+            Write-OK "Completed checkouts now have corresponding billing-history records."
+        }
+    }
+    else {
+        Write-OK "No completed checkout is missing from billing_payments."
+    }
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or
+if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Check active subscriptions lacking payment evidence
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "8. ACTIVE SUBSCRIPTION EVIDENCE CHECK"
+
+==============================================================================
+8. ACTIVE SUBSCRIPTION EVIDENCE CHECK
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$ActiveWithoutPayment = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from organization_billing_subscriptions s
+where s.provider = 'paystack'
+  and s.status = 'active'
+  and not exists (
+      select 1
+      from billing_payments p
+      where p.organization_id = s.organization_id
+        and p.provider = s.provider
+        and p.status = 'success'
+  );
+"@
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist
+docker.exe : ERROR:  relation "organization_billing_subscriptions" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ([int64]$ActiveWithoutPayment -gt 0) {
+
+    Write-Warn "$ActiveWithoutPayment active workspace(s) have no payment-history evidence."
+
+    $Orphans = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+    'organization=' || organization_id ||
+    ' checkout_reference=' || coalesce(checkout_reference, '<none>') ||
+    ' active_at=' || coalesce(active_at::text, '<none>')
+from organization_billing_subscriptions s
+where s.provider = 'paystack'
+  and s.status = 'active'
+  and not exists (
+      select 1
+      from billing_payments p
+      where p.organization_id = s.organization_id
+        and p.provider = s.provider
+        and p.status = 'success'
+  );
+"@
+
+    $OrphanPath = Join-Path $AuditRoot "active-subscriptions-without-payment.txt"
+
+    Set-Content `
+        -Path $OrphanPath `
+        -Value $Orphans `
+        -Encoding UTF8
+
+    Write-Warn "Evidence saved to:"
+    Write-Host $OrphanPath
+
+    Write-Warn @"
+These subscriptions were not automatically rewritten because an
+'active' status alone is not enough evidence to fabricate a payment.
+"@
+}
+>> TerminatingError(): "The variable '$ActiveWithoutPayment' cannot be retrieved because it has not been set."
+The variable '$ActiveWithoutPayment' cannot be retrieved because it has not been set.
+The variable '$ActiveWithoutPayment' cannot be retrieved because it has not been set.
+At line:1 char:12
++ if ([int64]$ActiveWithoutPayment -gt 0) {
++            ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (ActiveWithoutPayment:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-OK "Every active Paystack subscription has payment-history evidence."
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or
+if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Duplicate/reference integrity
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "9. DUPLICATE PAYMENT REFERENCE CHECK"
+
+==============================================================================
+9. DUPLICATE PAYMENT REFERENCE CHECK
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$DuplicateReferences = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select count(*)
+from (
+    select provider, reference
+    from billing_payments
+    group by provider, reference
+    having count(*) > 1
+) duplicates;
+"@
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_payments" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_payments" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_payments" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "billing_payments" does not exist
+docker.exe : ERROR:  relation "billing_payments" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ([int64]$DuplicateReferences -gt 0) {
+    Fail-Safely "Duplicate Paystack payment references exist in billing_payments."
+}
+>> TerminatingError(): "The variable '$DuplicateReferences' cannot be retrieved because it has not been set."
+The variable '$DuplicateReferences' cannot be retrieved because it has not been set.
+The variable '$DuplicateReferences' cannot be retrieved because it has not been set.
+At line:1 char:12
++ if ([int64]$DuplicateReferences -gt 0) {
++            ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (DuplicateReferences:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-OK "No duplicate payment references exist."
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or
+if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Final billing state snapshot
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "10. FINAL BILLING SNAPSHOT"
+
+==============================================================================
+10. FINAL BILLING SNAPSHOT
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$FinalSnapshot = Invoke-BiznoryxSql -TuplesOnly -Sql @"
+select
+  json_build_object(
+    'subscriptions',
+      (select count(*) from organization_billing_subscriptions),
+
+    'active_subscriptions',
+      (
+        select count(*)
+        from organization_billing_subscriptions
+        where status = 'active'
+      ),
+
+    'completed_checkouts',
+      (
+        select count(*)
+        from billing_checkout_sessions
+        where provider = 'paystack'
+          and status = 'completed'
+      ),
+
+    'payment_history_records',
+      (
+        select count(*)
+        from billing_payments
+        where provider = 'paystack'
+      ),
+
+    'missing_completed_checkout_payments',
+      (
+        select count(*)
+        from billing_checkout_sessions c
+        left join billing_payments p
+          on p.provider = c.provider
+         and p.reference = c.reference
+        where c.provider = 'paystack'
+          and c.status = 'completed'
+          and c.completed_at is not null
+          and p.id is null
+      )
+  )::text;
+"@
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+>> TerminatingError(docker.exe): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist"
+The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: ERROR:  relation "organization_billing_subscriptions" does not exist
+docker.exe : ERROR:  relation "organization_billing_subscriptions" does not exist
+At line:52 char:15
++     $Output = & docker @DockerArgs 2>&1
++               ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  relatio... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>$SnapshotPath = Join-Path $AuditRoot "final-billing-state.json"
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Set-Content `
+    -Path $SnapshotPath `
+    -Value $FinalSnapshot `
+    -Encoding UTF8
+>> TerminatingError(): "The variable '$FinalSnapshot' cannot be retrieved because it has not been set."
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+At line:3 char:12
++     -Value $FinalSnapshot `
++            ~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (FinalSnapshot:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host $FinalSnapshot
+>> TerminatingError(): "The variable '$FinalSnapshot' cannot be retrieved because it has not been set."
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+At line:1 char:12
++ Write-Host $FinalSnapshot
++            ~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (FinalSnapshot:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-OK "Final billing snapshot saved."
+[PASS] Final billing snapshot saved.
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Application verification
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if (-not $SkipVerification) {
+
+    Write-Section "11. APPLICATION REGRESSION CHECK"
+
+    if (-not (Test-CommandAvailable "node")) {
+        Fail-Safely "Node.js is not installed or is unavailable in PATH."
+    }
+
+    if (-not (Test-CommandAvailable "npm")) {
+        Fail-Safely "npm is not installed or is unavailable in PATH."
+    }
+
+    $NodeVersionRaw = (& node --version).Trim()
+    Write-Host "Node: $NodeVersionRaw"
+
+    $NodeMajor = [int](($NodeVersionRaw -replace '^v', '').Split('.')[0])
+
+    if ($NodeMajor -lt 24) {
+        Fail-Safely @"
+BIZNORYX currently requires Node.js >= 24.
+
+Installed:
+$NodeVersionRaw
+"@
+    }
+
+    Write-Host ""
+    Write-Host "Running BIZNORYX verification pipeline..." -ForegroundColor Cyan
+
+    & npm run verify
+
+    if ($LASTEXITCODE -ne 0) {
+        Fail-Safely "npm run verify failed. Review the output before deployment."
+    }
+
+    Write-OK "Format, lint, type, migration, security, tests and build checks passed."
+
+    # Billing-specific browser regression tests.
+    $BillingBrowserTests = @(
+        "tests\browser\billing-history.spec.mjs",
+        "tests\browser\billing-history-records.spec.mjs"
+    ) | Where-Object {
+        Test-Path (Join-Path $RepoRoot $_)
+    }
+
+    if ($BillingBrowserTests.Count -gt 0) {
+
+        Write-Host ""
+        Write-Host "Running billing-history browser regression tests..." -ForegroundColor Cyan
+
+        & npx playwright test @BillingBrowserTests
+
+        if ($LASTEXITCODE -ne 0) {
+            Fail-Safely @"
+Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated.
+"@
+        }
+
+        Write-OK "Billing history browser regression tests passed."
+    }
+    else {
+        Write-Warn "Billing-specific Playwright files were not found; browser regression test skipped."
+    }
+}
+
+==============================================================================
+11. APPLICATION REGRESSION CHECK
+==============================================================================
+Node: v24.20.0
+
+Running BIZNORYX verification pipeline...
+ℹ skipped 8
+ℹ todo 0
+ℹ duration_ms 18168.8611
+
+> biznoryx-production@0.1.0 build
+> node scripts/build-check.mjs
+
+Application sources and assets packaged in dist. Production runtime remains gated.
+[PASS] Format, lint, type, migration, security, tests and build checks passed.
+
+Running billing-history browser regression tests...
+
+[FAIL] Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated.
+
+No further repair actions will be performed.
+PS>TerminatingError(): "Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated."
+>> TerminatingError(): "Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated."
+Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated.
+Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated.
+At line:7 char:5
++     throw $Message
++     ~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Billing-history...n investigated.:String) [], RuntimeException
+    + FullyQualifiedErrorId : Billing-history browser regression testing failed.
+
+The database repair was backed up, but do not deploy until this browser
+failure has been investigated.
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-Warn "Application verification was skipped by request."
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or
+if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># Final result
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS># ------------------------------------------------------------
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Section "FINAL STATUS"
+
+==============================================================================
+FINAL STATUS
+==============================================================================
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "BIZNORYX BILLING HISTORY AUDIT COMPLETE" -ForegroundColor Green
+BIZNORYX BILLING HISTORY AUDIT COMPLETE
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "The script checked:"
+The script checked:
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - billing-history application code"
+  - billing-history application code
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - Paystack payment persistence"
+  - Paystack payment persistence
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - migration 0025"
+  - migration 0025
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - completed checkout/payment consistency"
+  - completed checkout/payment consistency
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - active subscription payment evidence"
+  - active subscription payment evidence
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - duplicate references"
+  - duplicate references
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - database migration state"
+  - database migration state
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  - application regression tests"
+  - application regression tests
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>if ($AuditOnly) {
+    Write-Host "Mode: AUDIT ONLY — no repair mutation requested." -ForegroundColor Yellow
+}
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>else {
+    Write-Host "Mode: AUDIT + SAFE REPAIR" -ForegroundColor Green
+}
+>> TerminatingError(): "The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again."
+The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+else : The term 'else' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or
+if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ else {
++ ~~~~
+    + CategoryInfo          : ObjectNotFound: (else:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "Evidence and backups:"
+Evidence and backups:
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  $AuditRoot"
+  C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx\.billing-audit\20261002-174953
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "Final billing state:"
+Final billing state:
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host "  $FinalSnapshot"
+>> TerminatingError(): "The variable '$FinalSnapshot' cannot be retrieved because it has not been set."
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+The variable '$FinalSnapshot' cannot be retrieved because it has not been set.
+At line:1 char:15
++ Write-Host "  $FinalSnapshot"
++               ~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (FinalSnapshot:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : VariableIsUndefined
+
+]633;D;1]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>Write-Host ""
+
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+]633;D]633;A]633;P;Cwd=C:\x5cUsers\x5ctraph\x5cDocuments\x5cCodex\x5c2026-09-28\x5creferenced-chatgpt-conversation-this-is-an\x5cwork\x5cbiznoryxPS C:\Users\traph\Documents\Codex\2026-09-28\referenced-chatgpt-conversation-this-is-an\work\biznoryx> ]633;B
+PS>try {
+    Stop-Transcript | Out-Null
+}
+catch {
+    # Nothing to do.
+}
+**********************
+Windows PowerShell transcript end
+End time: 20261002175132
+**********************
