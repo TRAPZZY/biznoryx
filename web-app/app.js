@@ -5556,7 +5556,73 @@ function openReportDialog(
   dialog.showModal();
 }
 
+function renderBillingHistory(payments) {
+  if (payments === null) {
+    return `
+      <div class="billing-empty-history billing-history-error">
+        ${icon("circle-alert")}
+        <div>
+          <strong>Payment history is unavailable</strong>
+          <p>We could not load confirmed payments for this workspace. No payment status has been inferred.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  if (payments.length === 0) {
+    return `
+      <div class="billing-empty-history">
+        ${icon("receipt")}
+        <div>
+          <strong>No completed payments yet</strong>
+          <p>Confirmed Paystack payments will appear here after the provider verifies them.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="billing-history-table-wrap">
+      <table class="billing-history-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Payment</th>
+            <th scope="col">Method</th>
+            <th scope="col">Reference</th>
+            <th scope="col">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${payments.map((payment) => `
+            <tr>
+              <td><time datetime="${esc(payment.paidAt)}">${esc(new Date(payment.paidAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }))}</time></td>
+              <td><span class="billing-payment-status">${esc(payment.status === "success" ? "Paid" : payment.status)}</span></td>
+              <td>${esc(payment.channel || payment.provider || "Paystack")}</td>
+              <td class="billing-payment-reference">${esc(payment.reference)}</td>
+              <td class="billing-payment-amount">${esc(formatBillingPaymentAmount(payment.amountMinor, payment.currency))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formatBillingPaymentAmount(amountMinor, currency) {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(Number(amountMinor) / 100);
+  } catch {
+    return `${currency} ${(Number(amountMinor) / 100).toFixed(2)}`;
+  }
+}
+
 function billingPage() {
+  const paymentHistoryRequest = api("billing/history");
   const subscription =
     dashboard?.subscription ?? null;
 
@@ -6108,20 +6174,13 @@ function billingPage() {
             )}
           </div>
 
-          <div class="billing-empty-history">
-            ${icon(
-              "receipt",
-            )}
-
-            <div>
-              <strong>
-                No payment history to show yet
-              </strong>
-
-              <p>
-                Successful subscription payments and
-                receipts will appear here.
-              </p>
+          <div id="billing-history-content" aria-live="polite">
+            <div class="billing-empty-history">
+              ${icon("loader-circle")}
+              <div>
+                <strong>Loading payment history</strong>
+                <p>Checking confirmed payments for this workspace.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -6288,6 +6347,25 @@ function billingPage() {
     `,
     "/billing",
   );
+
+  const historyContent = document.querySelector(
+    "#billing-history-content",
+  );
+
+  paymentHistoryRequest
+    .then(({ payments }) => {
+      if (historyContent && location.hash.startsWith("#/billing")) {
+        historyContent.innerHTML = renderBillingHistory(
+          Array.isArray(payments) ? payments : [],
+        );
+        window.lucide?.createIcons({ root: historyContent });
+      }
+    })
+    .catch(() => {
+      if (historyContent && location.hash.startsWith("#/billing")) {
+        historyContent.innerHTML = renderBillingHistory(null);
+      }
+    });
 
   const dialog =
     document.querySelector(

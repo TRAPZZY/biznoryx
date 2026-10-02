@@ -104,17 +104,41 @@ insert into billing_webhook_events (
   'subscription_activated'
 );
 
+insert into billing_payments (
+  id,
+  organization_id,
+  provider,
+  reference,
+  status,
+  amount_minor,
+  currency,
+  channel,
+  paid_at
+) values (
+  '60000000-0000-4000-8000-000000000181',
+  '10000000-0000-4000-8000-000000000181',
+  'paystack',
+  'phase18-ref',
+  'success',
+  2000,
+  'USD',
+  'card',
+  now()
+);
+
 do $$
 declare
   visible_subscriptions integer;
   visible_checkouts integer;
   visible_webhooks integer;
+  visible_payments integer;
 begin
   select count(*) into visible_subscriptions from organization_billing_subscriptions;
   select count(*) into visible_checkouts from billing_checkout_sessions;
   select count(*) into visible_webhooks from billing_webhook_events;
-  if visible_subscriptions <> 1 or visible_checkouts <> 1 or visible_webhooks <> 1 then
-    raise exception 'unexpected billing visibility subscriptions=% checkouts=% webhooks=%', visible_subscriptions, visible_checkouts, visible_webhooks;
+  select count(*) into visible_payments from billing_payments;
+  if visible_subscriptions <> 1 or visible_checkouts <> 1 or visible_webhooks <> 1 or visible_payments <> 1 then
+    raise exception 'unexpected billing visibility subscriptions=% checkouts=% webhooks=% payments=%', visible_subscriptions, visible_checkouts, visible_webhooks, visible_payments;
   end if;
 end $$;
 
@@ -149,16 +173,45 @@ begin
   end;
 end $$;
 
+do $$
+begin
+  begin
+    insert into billing_payments (
+      organization_id,
+      provider,
+      reference,
+      status,
+      amount_minor,
+      currency,
+      paid_at
+    ) values (
+      '10000000-0000-4000-8000-000000000182',
+      'paystack',
+      'cross-tenant-payment-ref',
+      'success',
+      2000,
+      'USD',
+      now()
+    );
+    raise exception 'expected cross-tenant billing payment insert to fail';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+end $$;
+
 reset app.current_organization_id;
 reset app.current_user_id;
 
 do $$
 declare
   visible_webhooks integer;
+  visible_payments integer;
 begin
   select count(*) into visible_webhooks from billing_webhook_events;
-  if visible_webhooks <> 0 then
-    raise exception 'expected default-deny for billing webhook events, got %', visible_webhooks;
+  select count(*) into visible_payments from billing_payments;
+  if visible_webhooks <> 0 or visible_payments <> 0 then
+    raise exception 'expected default-deny for billing history, got webhooks=% payments=%', visible_webhooks, visible_payments;
   end if;
 end $$;
 

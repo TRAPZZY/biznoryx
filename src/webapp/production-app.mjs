@@ -8,6 +8,8 @@ import { extname, join, normalize } from "node:path";
 
 import {
   AuthError,
+  CAPABILITIES,
+  ROLE_CAPABILITIES,
   normalizeEmail,
   secureSessionCookie,
 } from "../auth/core.mjs";
@@ -958,6 +960,58 @@ async function routeRequest({ request, response, runtime }) {
 
     sendJson(response, 200, {
       subscription: publicSubscription(subscription),
+    });
+
+    return;
+  }
+
+  if (
+    url.pathname === "/api/billing/history" &&
+    request.method === "GET"
+  ) {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: false,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select an organization before loading billing history.",
+    );
+    const memberships = await runtime.identity.activeMemberships(
+      context.user.id,
+    );
+    const activeMembership = memberships.find(
+      (membership) => membership.organizationId === organizationId,
+    );
+
+    if (
+      !ROLE_CAPABILITIES[activeMembership?.role]?.includes(
+        CAPABILITIES.MANAGE_ORGANIZATION,
+      )
+    ) {
+      throw new AuthError(
+        "Organization owner access is required to view billing history.",
+        "ORG_ACCESS_DENIED",
+      );
+    }
+
+    if (!runtime.billing || typeof runtime.billing.listPayments !== "function") {
+      throw new AuthError(
+        "Billing history is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const payments = await runtime.billing.listPayments({
+      organizationId,
+      actorUserId: context.user.id,
+      limit: 50,
+    });
+
+    sendJson(response, 200, {
+      payments: payments.map(publicBillingPayment),
     });
 
     return;
@@ -2092,6 +2146,18 @@ function publicSubscription(subscription) {
   };
 }
 
+function publicBillingPayment(payment) {
+  return {
+    reference: payment.reference,
+    provider: payment.provider,
+    status: payment.status,
+    amountMinor: payment.amountMinor,
+    currency: payment.currency,
+    channel: payment.channel,
+    paidAt: payment.paidAt,
+  };
+}
+
 function subscriptionNextStep(subscription, price) {
   if (subscription.status === "active") {
     return "Subscription active";
@@ -2291,6 +2357,17 @@ async function verifyAndActivateBillingCheckout({
     subscription: currentSubscription,
   });
 
+  await runtime.billing.recordPayment({
+    organizationId,
+    provider: "paystack",
+    reference: verified.reference,
+    status: verified.status,
+    amountMinor: verified.amount,
+    currency: verified.currency,
+    channel: verified.channel,
+    paidAt: verified.paid_at ?? verified.transaction_date ?? new Date(),
+  });
+
   if (
     currentSubscription.status === "active" &&
     currentSubscription.checkoutReference === reference
@@ -2416,6 +2493,22 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
             : "subscription_renewed"
           : "subscription_activated";
     }
+  }
+
+  if (
+    verified?.status === "success" &&
+    (eventName === "charge.success" || eventName === "invoice.update")
+  ) {
+    await runtime.billing.recordPayment({
+      organizationId,
+      provider: "paystack",
+      reference: verified.reference,
+      status: verified.status,
+      amountMinor: verified.amount,
+      currency: verified.currency,
+      channel: verified.channel,
+      paidAt: verified.paid_at ?? verified.transaction_date ?? new Date(),
+    });
   }
 
   const eventIdentity =

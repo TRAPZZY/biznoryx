@@ -294,6 +294,42 @@ test(
         true,
       );
 
+      const paymentInput = {
+        organizationId: firstOrganization.id,
+        reference: checkout.reference,
+        status: "success",
+        amountMinor: 4_000_000,
+        currency: "NGN",
+        channel: "card",
+        paidAt: new Date("2026-10-01T12:00:00.000Z"),
+      };
+
+      const recordedPayment = await billing.recordPayment(paymentInput);
+      const repeatedPayment = await billing.recordPayment(paymentInput);
+      assert.equal(repeatedPayment.id, recordedPayment.id);
+
+      await billing.recordPayment({
+        ...paymentInput,
+        reference: `renewal-${suffix}`,
+        paidAt: new Date("2026-11-01T12:00:00.000Z"),
+      });
+
+      const history = await billing.listPayments({
+        organizationId: firstOrganization.id,
+        actorUserId: first.user.id,
+      });
+      assert.deepEqual(
+        history.map((payment) => payment.reference),
+        [`renewal-${suffix}`, checkout.reference],
+      );
+      assert.equal(history[1].amountMinor, 4_000_000);
+      assert.equal(history[1].currency, "NGN");
+
+      await assert.rejects(
+        billing.recordPayment({ ...paymentInput, status: "failed" }),
+        (error) => error.code === "VALIDATION_FAILED",
+      );
+
       /*
        * Activate first organization
        * on the user's session.
@@ -528,6 +564,22 @@ test(
               `outside-company-${suffix}`,
           },
         );
+
+      await assert.rejects(
+        billing.recordPayment({
+          ...paymentInput,
+          organizationId: secondOrganization.id,
+        }),
+        (error) => error.code === "BILLING_REFERENCE_CONFLICT",
+      );
+
+      assert.deepEqual(
+        await billing.listPayments({
+          organizationId: secondOrganization.id,
+          actorUserId: second.user.id,
+        }),
+        [],
+      );
 
       /*
        * First user must never be able to

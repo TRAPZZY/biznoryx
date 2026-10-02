@@ -492,6 +492,19 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (url.pathname === "/api/billing/history" && request.method === "GET") {
+    const context = authenticateFromRequest(request, runtime, {
+      required: true,
+    });
+    requireCapability(
+      runtime,
+      context,
+      CAPABILITIES.MANAGE_ORGANIZATION,
+    );
+    sendJson(response, 200, { payments: [] });
+    return;
+  }
+
   if (url.pathname === "/api/billing/checkout" && request.method === "POST") {
     const context = authenticateFromRequest(request, runtime, {
       requireCsrf: true,

@@ -310,6 +310,131 @@ export class PostgresBillingRepository {
     return mapCheckout(result);
   }
 
+  async recordPayment({
+    organizationId,
+    provider = "paystack",
+    reference,
+    status,
+    amountMinor,
+    currency,
+    channel = null,
+    paidAt,
+  }) {
+    const normalizedReference =
+      String(reference ?? "").trim();
+    const normalizedCurrency =
+      String(currency ?? "").trim().toUpperCase();
+    const normalizedChannel =
+      channel == null || String(channel).trim() === ""
+        ? null
+        : String(channel).trim();
+    const paymentDate = new Date(paidAt);
+
+    if (
+      provider !== "paystack" ||
+      !normalizedReference ||
+      normalizedReference.length > 160 ||
+      status !== "success" ||
+      !Number.isSafeInteger(Number(amountMinor)) ||
+      Number(amountMinor) <= 0 ||
+      !/^[A-Z]{3}$/.test(normalizedCurrency) ||
+      (normalizedChannel && normalizedChannel.length > 80) ||
+      !Number.isFinite(paymentDate.getTime())
+    ) {
+      throw new AuthError(
+        "Verified billing payment details are invalid.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    const row = await withBillingTenant(
+      this.pool,
+      { organizationId },
+      async (client) => {
+        const inserted = await client.query(
+          `insert into billing_payments (
+             organization_id,
+             provider,
+             reference,
+             status,
+             amount_minor,
+             currency,
+             channel,
+             paid_at
+           )
+           values ($1, $2, $3, $4, $5, $6, $7, $8)
+           on conflict (provider, reference) do nothing
+           returning id, organization_id, provider, reference, status,
+                     amount_minor, currency, channel, paid_at, created_at`,
+          [
+            organizationId,
+            provider,
+            normalizedReference,
+            status,
+            Number(amountMinor),
+            normalizedCurrency,
+            normalizedChannel,
+            paymentDate,
+          ],
+        );
+
+        if (inserted.rows[0]) {
+          return inserted.rows[0];
+        }
+
+        const existing = await client.query(
+          `select id, organization_id, provider, reference, status,
+                  amount_minor, currency, channel, paid_at, created_at
+             from billing_payments
+            where organization_id = $1
+              and provider = $2
+              and reference = $3
+            limit 1`,
+          [organizationId, provider, normalizedReference],
+        );
+
+        if (!existing.rows[0]) {
+          throw new AuthError(
+            "Billing payment reference is already associated with another workspace.",
+            "BILLING_REFERENCE_CONFLICT",
+          );
+        }
+
+        return existing.rows[0];
+      },
+    );
+
+    return mapPayment(row);
+  }
+
+  async listPayments({
+    organizationId,
+    actorUserId,
+    limit = 50,
+  }) {
+    const safeLimit =
+      Number.isInteger(limit)
+        ? Math.max(1, Math.min(limit, 100))
+        : 50;
+
+    const result = await withBillingTenant(
+      this.pool,
+      { organizationId, actorUserId },
+      (client) =>
+        client.query(
+          `select id, organization_id, provider, reference, status,
+                  amount_minor, currency, channel, paid_at, created_at
+             from billing_payments
+            where organization_id = $1
+            order by paid_at desc, id desc
+            limit $2`,
+          [organizationId, safeLimit],
+        ),
+    );
+
+    return result.rows.map(mapPayment);
+  }
+
   async applyWebhookEvent({
     organizationId,
     provider = "paystack",
@@ -673,5 +798,20 @@ function mapCheckout(row) {
 
     updatedAt:
       row.updated_at,
+  };
+}
+
+function mapPayment(row) {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    provider: row.provider,
+    reference: row.reference,
+    status: row.status,
+    amountMinor: Number(row.amount_minor),
+    currency: row.currency,
+    channel: row.channel,
+    paidAt: row.paid_at,
+    createdAt: row.created_at,
   };
 }

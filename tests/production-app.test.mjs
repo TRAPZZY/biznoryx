@@ -510,3 +510,79 @@ test("password reset requests have one public response and confirm consumes thro
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("billing history is owner-only and returns sanitized payment records", async () => {
+  let membershipRole = "owner";
+  const requested = [];
+  const { server } = createProductionApp({
+    identityRepository: {
+      async authenticate({ token }) {
+        assert.equal(token, "billing-session");
+        return {
+          user: { id: "user-1", email: "owner@example.com" },
+          session: { id: "session-1", activeOrganizationId: "org-1" },
+        };
+      },
+      async activeMemberships(userId) {
+        assert.equal(userId, "user-1");
+        return [{ organizationId: "org-1", role: membershipRole }];
+      },
+    },
+    emailVerificationRepository: {},
+    billingRepository: {
+      async listPayments(input) {
+        requested.push(input);
+        return [{
+          id: "private-payment-id",
+          organizationId: "org-1",
+          reference: "paystack-ref-1",
+          provider: "paystack",
+          status: "success",
+          amountMinor: 4_000_000,
+          currency: "NGN",
+          channel: "card",
+          paidAt: new Date("2026-10-01T12:00:00.000Z"),
+        }];
+      },
+    },
+    production: false,
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const response = await fetch(`${base}/api/billing/history`, {
+      headers: { cookie: "bnx_session=billing-session" },
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(requested, [{
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      limit: 50,
+    }]);
+    assert.deepEqual(body.payments, [{
+      reference: "paystack-ref-1",
+      provider: "paystack",
+      status: "success",
+      amountMinor: 4_000_000,
+      currency: "NGN",
+      channel: "card",
+      paidAt: "2026-10-01T12:00:00.000Z",
+    }]);
+    assert.equal(Object.hasOwn(body.payments[0], "organizationId"), false);
+    assert.equal(Object.hasOwn(body.payments[0], "id"), false);
+
+    membershipRole = "viewer";
+    const denied = await fetch(`${base}/api/billing/history`, {
+      headers: { cookie: "bnx_session=billing-session" },
+    });
+    assert.equal(denied.status, 404);
+    assert.equal(requested.length, 1);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

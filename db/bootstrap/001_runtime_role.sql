@@ -61,7 +61,8 @@ grant select, insert, update on
   worker_jobs,
   organization_billing_subscriptions,
   billing_checkout_sessions,
-  billing_webhook_events
+  billing_webhook_events,
+  billing_payments
 to biznoryx_app;
 
 grant select on app_users to biznoryx_app;
