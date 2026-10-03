@@ -43,8 +43,7 @@ export class PostgresBillingRepository {
             current.plan_name !== plan.name ||
             String(current.currency).toUpperCase() !==
               String(plan.currency).toUpperCase() ||
-            Number(current.amount_minor) !==
-              Number(plan.amountMinor) ||
+            Number(current.amount_minor) !== Number(plan.amountMinor) ||
             current.billing_interval !== plan.interval;
 
           /*
@@ -56,10 +55,7 @@ export class PostgresBillingRepository {
            *
            * Active customers are never silently repriced.
            */
-          if (
-            current.status === "trialing" &&
-            planIsStale
-          ) {
+          if (current.status === "trialing" && planIsStale) {
             const updated = await client.query(
               `update organization_billing_subscriptions
                   set provider = $2,
@@ -160,14 +156,7 @@ export class PostgresBillingRepository {
             plan.currency,
             plan.amountMinor,
             plan.interval,
-            new Date(
-              this.now().getTime() +
-                14 *
-                  24 *
-                  60 *
-                  60 *
-                  1000,
-            ),
+            new Date(this.now().getTime() + 14 * 24 * 60 * 60 * 1000),
             actorUserId,
           ],
         );
@@ -268,9 +257,8 @@ export class PostgresBillingRepository {
          * This prevents a stale USD subscription from being
          * paired with a new NGN checkout.
          */
-        const subscriptionUpdate =
-          await client.query(
-            `update organization_billing_subscriptions
+        const subscriptionUpdate = await client.query(
+          `update organization_billing_subscriptions
                 set provider = $4,
                     plan_id = $5,
                     plan_name = $6,
@@ -284,19 +272,19 @@ export class PostgresBillingRepository {
               where organization_id = $1
                 and status <> 'active'
               returning id`,
-            [
-              organizationId,
-              reference,
-              actorUserId,
-              provider,
-              plan.id,
-              plan.name,
-              plan.currency,
-              plan.amountMinor,
-              plan.interval,
-              this.now(),
-            ],
-          );
+          [
+            organizationId,
+            reference,
+            actorUserId,
+            provider,
+            plan.id,
+            plan.name,
+            plan.currency,
+            plan.amountMinor,
+            plan.interval,
+            this.now(),
+          ],
+        );
 
         /*
          * Do not accidentally replace an already-active
@@ -305,9 +293,7 @@ export class PostgresBillingRepository {
          * Throwing here rolls back the checkout insert because
          * this entire operation runs in one transaction.
          */
-        if (
-          subscriptionUpdate.rowCount !== 1
-        ) {
+        if (subscriptionUpdate.rowCount !== 1) {
           throw new AuthError(
             "An active subscription does not require a new checkout.",
             "VALIDATION_FAILED",
@@ -331,10 +317,10 @@ export class PostgresBillingRepository {
     channel = null,
     paidAt,
   }) {
-    const normalizedReference =
-      String(reference ?? "").trim();
-    const normalizedCurrency =
-      String(currency ?? "").trim().toUpperCase();
+    const normalizedReference = String(reference ?? "").trim();
+    const normalizedCurrency = String(currency ?? "")
+      .trim()
+      .toUpperCase();
     const normalizedChannel =
       channel == null || String(channel).trim() === ""
         ? null
@@ -418,15 +404,10 @@ export class PostgresBillingRepository {
     return mapPayment(row);
   }
 
-  async listPayments({
-    organizationId,
-    actorUserId,
-    limit = 50,
-  }) {
-    const safeLimit =
-      Number.isInteger(limit)
-        ? Math.max(1, Math.min(limit, 100))
-        : 50;
+  async listPayments({ organizationId, actorUserId, limit = 50 }) {
+    const safeLimit = Number.isInteger(limit)
+      ? Math.max(1, Math.min(limit, 100))
+      : 50;
 
     const result = await withBillingTenant(
       this.pool,
@@ -458,11 +439,7 @@ export class PostgresBillingRepository {
     providerSubscriptionCode = null,
     providerEmailToken = null,
   }) {
-    const payloadSha256 = createHash(
-      "sha256",
-    )
-      .update(payload)
-      .digest("hex");
+    const payloadSha256 = createHash("sha256").update(payload).digest("hex");
 
     const result = await withBillingTenant(
       this.pool,
@@ -509,25 +486,20 @@ export class PostgresBillingRepository {
           ],
         );
 
-        if (
-          inserted.rowCount === 0
-        ) {
+        if (inserted.rowCount === 0) {
           return {
             duplicate: true,
           };
         }
 
-        await this.applySubscriptionAction(
-          client,
-          {
-            organizationId,
-            reference,
-            action,
-            providerCustomerCode,
-            providerSubscriptionCode,
-            providerEmailToken,
-          },
-        );
+        await this.applySubscriptionAction(client, {
+          organizationId,
+          reference,
+          action,
+          providerCustomerCode,
+          providerSubscriptionCode,
+          providerEmailToken,
+        });
 
         return {
           duplicate: false,
@@ -538,10 +510,7 @@ export class PostgresBillingRepository {
     return result;
   }
 
-  async cancelSubscription({
-    organizationId,
-    actorUserId,
-  }) {
+  async cancelSubscription({ organizationId, actorUserId }) {
     const result = await withBillingTenant(
       this.pool,
       { organizationId, actorUserId },
@@ -565,11 +534,7 @@ export class PostgresBillingRepository {
                       trial_ends_at, active_at,
                       current_period_end, created_at,
                       updated_at`,
-          [
-            organizationId,
-            actorUserId,
-            this.now(),
-          ],
+          [organizationId, actorUserId, this.now()],
         );
 
         if (updated.rows[0]) {
@@ -608,6 +573,99 @@ export class PostgresBillingRepository {
     return mapSubscription(result);
   }
 
+  async renewSubscription({ organizationId, actorUserId }) {
+    const result = await withBillingTenant(
+      this.pool,
+      {
+        organizationId,
+        actorUserId,
+      },
+      async (client) => {
+        const updated = await client.query(
+          `update organization_billing_subscriptions
+                  set status = 'active',
+                      cancellation_requested_at = null,
+                      updated_by_user_id =
+                        coalesce(
+                          $2,
+                          updated_by_user_id
+                        ),
+                      updated_at = $3
+                where organization_id = $1
+                  and status = 'non_renewing'
+                returning id,
+                          organization_id,
+                          provider,
+                          provider_customer_code,
+                          provider_subscription_code,
+                          provider_email_token,
+                          cancellation_requested_at,
+                          plan_id,
+                          plan_name,
+                          currency,
+                          amount_minor,
+                          billing_interval,
+                          status,
+                          checkout_reference,
+                          trial_ends_at,
+                          active_at,
+                          current_period_end,
+                          created_at,
+                          updated_at`,
+          [organizationId, actorUserId, this.now()],
+        );
+
+        if (updated.rows[0]) {
+          return updated.rows[0];
+        }
+
+        const existing = await client.query(
+          `select id,
+                      organization_id,
+                      provider,
+                      provider_customer_code,
+                      provider_subscription_code,
+                      provider_email_token,
+                      cancellation_requested_at,
+                      plan_id,
+                      plan_name,
+                      currency,
+                      amount_minor,
+                      billing_interval,
+                      status,
+                      checkout_reference,
+                      trial_ends_at,
+                      active_at,
+                      current_period_end,
+                      created_at,
+                      updated_at
+                 from organization_billing_subscriptions
+                where organization_id = $1
+                limit 1`,
+          [organizationId],
+        );
+
+        if (!existing.rows[0]) {
+          throw new AuthError(
+            "Billing subscription was not found.",
+            "NOT_FOUND",
+          );
+        }
+
+        if (existing.rows[0].status === "active") {
+          return existing.rows[0];
+        }
+
+        throw new AuthError(
+          "Only a non-renewing subscription can resume renewal.",
+          "VALIDATION_FAILED",
+        );
+      },
+    );
+
+    return mapSubscription(result);
+  }
+
   async applySubscriptionAction(
     client,
     {
@@ -620,35 +678,15 @@ export class PostgresBillingRepository {
     },
   ) {
     const status = new Map([
-      [
-        "subscription_activated",
-        "active",
-      ],
-      [
-        "subscription_renewed",
-        "active",
-      ],
-      [
-        "subscription_past_due",
-        "past_due",
-      ],
-      [
-        "subscription_canceled",
-        "canceled",
-      ],
-      [
-        "subscription_non_renewing",
-        "non_renewing",
-      ],
-      [
-        "ignored",
-        null,
-      ],
+      ["subscription_activated", "active"],
+      ["subscription_renewed", "active"],
+      ["subscription_past_due", "past_due"],
+      ["subscription_canceled", "canceled"],
+      ["subscription_non_renewing", "non_renewing"],
+      ["ignored", null],
     ]).get(action);
 
-    if (
-      status === undefined
-    ) {
+    if (status === undefined) {
       throw new AuthError(
         "Unsupported billing webhook action.",
         "VALIDATION_FAILED",
@@ -738,14 +776,7 @@ export class PostgresBillingRepository {
         status,
         reference,
         now,
-        new Date(
-          now.getTime() +
-            30 *
-              24 *
-              60 *
-              60 *
-              1000,
-        ),
+        new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
         providerCustomerCode,
         providerSubscriptionCode,
         providerEmailToken,
@@ -764,11 +795,7 @@ export class PostgresBillingRepository {
                 updated_at = $3
           where organization_id = $1
             and reference = $2`,
-        [
-          organizationId,
-          reference,
-          now,
-        ],
+        [organizationId, reference, now],
       );
     }
   }
@@ -776,10 +803,7 @@ export class PostgresBillingRepository {
 
 export async function withBillingTenant(
   pool,
-  {
-    organizationId,
-    actorUserId = null,
-  },
+  { organizationId, actorUserId = null },
   work,
 ) {
   if (!organizationId) {
@@ -789,138 +813,99 @@ export async function withBillingTenant(
     );
   }
 
-  return withTransaction(
-    pool,
-    async (client) => {
-      await client.query(
-        "select set_config('app.current_organization_id', $1, true)",
-        [organizationId],
-      );
+  return withTransaction(pool, async (client) => {
+    await client.query(
+      "select set_config('app.current_organization_id', $1, true)",
+      [organizationId],
+    );
 
-      if (actorUserId) {
-        await client.query(
-          "select set_config('app.current_user_id', $1, true)",
-          [actorUserId],
-        );
-      }
+    if (actorUserId) {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        actorUserId,
+      ]);
+    }
 
-      return work(client);
-    },
-  );
+    return work(client);
+  });
 }
 
 function mapSubscription(row) {
   return {
     id: row.id,
 
-    organizationId:
-      row.organization_id,
+    organizationId: row.organization_id,
 
-    provider:
-      row.provider,
+    provider: row.provider,
 
-    providerCustomerCode:
-      row.provider_customer_code,
+    providerCustomerCode: row.provider_customer_code,
 
-    providerSubscriptionCode:
-      row.provider_subscription_code,
+    providerSubscriptionCode: row.provider_subscription_code,
 
-    providerEmailToken:
-      row.provider_email_token,
+    providerEmailToken: row.provider_email_token,
 
-    cancellationRequestedAt:
-      row.cancellation_requested_at,
+    cancellationRequestedAt: row.cancellation_requested_at,
 
-    planId:
-      row.plan_id,
+    planId: row.plan_id,
 
-    planName:
-      row.plan_name,
+    planName: row.plan_name,
 
-    currency:
-      row.currency,
+    currency: row.currency,
 
-    amountMinor:
-      row.amount_minor,
+    amountMinor: row.amount_minor,
 
-    interval:
-      row.billing_interval,
+    interval: row.billing_interval,
 
-    status:
-      row.status,
+    status: row.status,
 
-    checkoutReference:
-      row.checkout_reference,
+    checkoutReference: row.checkout_reference,
 
-    trialEndsAt:
-      row.trial_ends_at,
+    trialEndsAt: row.trial_ends_at,
 
-    activeAt:
-      row.active_at,
+    activeAt: row.active_at,
 
-    currentPeriodEnd:
-      row.current_period_end,
+    currentPeriodEnd: row.current_period_end,
 
-    createdAt:
-      row.created_at,
+    createdAt: row.created_at,
 
-    updatedAt:
-      row.updated_at,
+    updatedAt: row.updated_at,
   };
 }
 
 function mapCheckout(row) {
   return {
-    id:
-      row.id,
+    id: row.id,
 
-    organizationId:
-      row.organization_id,
+    organizationId: row.organization_id,
 
-    actorUserId:
-      row.actor_user_id,
+    actorUserId: row.actor_user_id,
 
-    provider:
-      row.provider,
+    provider: row.provider,
 
-    reference:
-      row.reference,
+    reference: row.reference,
 
-    status:
-      row.status,
+    status: row.status,
 
-    authorizationUrl:
-      row.authorization_url,
+    authorizationUrl: row.authorization_url,
 
-    accessCode:
-      row.access_code,
+    accessCode: row.access_code,
 
-    planId:
-      row.plan_id,
+    planId: row.plan_id,
 
-    planName:
-      row.plan_name,
+    planName: row.plan_name,
 
-    currency:
-      row.currency,
+    currency: row.currency,
 
-    amountMinor:
-      row.amount_minor,
+    amountMinor: row.amount_minor,
 
-    interval:
-      row.billing_interval,
+    interval: row.billing_interval,
 
-    metadata:
-      row.metadata,
+    metadata: row.metadata,
 
-    completedAt:
-      row.completed_at,
+    completedAt: row.completed_at,
 
-    createdAt:
-      row.created_at,
+    createdAt: row.created_at,
 
-    updatedAt:
-      row.updated_at,
+    updatedAt: row.updated_at,
   };
 }
 

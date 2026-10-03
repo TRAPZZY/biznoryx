@@ -1,4 +1,9 @@
-import { renderEvidenceReport, reportControls, evidenceDialog, definitionDialog } from "./evidence-report.js";
+import {
+  renderEvidenceReport,
+  reportControls,
+  evidenceDialog,
+  definitionDialog,
+} from "./evidence-report.js";
 
 let csrfToken;
 let session;
@@ -29,10 +34,7 @@ function isSidebarCollapsed() {
 
 function setSidebarCollapsed(collapsed) {
   try {
-    window.localStorage.setItem(
-      SIDEBAR_STORAGE_KEY,
-      collapsed ? "1" : "0",
-    );
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
   } catch {
     // The workspace still works when storage is unavailable.
   }
@@ -53,18 +55,13 @@ const esc = (value) =>
       })[c],
   );
 
-const icon = (name) =>
-  `<i data-lucide="${name}" aria-hidden="true"></i>`;
+const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
 
 const link = (href, text, cls = "") =>
   `<a href="#${href}" class="${cls}">${text}</a>`;
 
 const wordmark = () =>
-  link(
-    "/",
-    'BIZNORYX<span class="wordmark-dot">.</span>',
-    "wordmark",
-  );
+  link("/", 'BIZNORYX<span class="wordmark-dot">.</span>', "wordmark");
 
 const money = (
   cents,
@@ -84,10 +81,7 @@ const numberValue = (value) =>
 const metricAmount = (item) =>
   item?.metricType === "money"
     ? money(item.metricCents ?? item.revenueCents)
-    : numberValue(
-        item?.metricValue ??
-          Number(item?.metricCents ?? 0) / 100,
-      );
+    : numberValue(item?.metricValue ?? Number(item?.metricCents ?? 0) / 100);
 
 const hasMetricAmount = (item) =>
   item?.metricCents !== undefined ||
@@ -97,13 +91,9 @@ const hasMetricAmount = (item) =>
 const metricChangePercent = (latest, previous) => {
   if (!latest || !previous) return null;
 
-  const current = Number(
-    latest.metricCents ?? latest.revenueCents ?? 0,
-  );
+  const current = Number(latest.metricCents ?? latest.revenueCents ?? 0);
 
-  const last = Number(
-    previous.metricCents ?? previous.revenueCents ?? 0,
-  );
+  const last = Number(previous.metricCents ?? previous.revenueCents ?? 0);
 
   if (last === 0) return null;
 
@@ -127,24 +117,16 @@ function performanceLineChart(series) {
     const x =
       series.length === 1
         ? width / 2
-        : pad +
-          (index * (width - pad * 2)) /
-            (series.length - 1);
+        : pad + (index * (width - pad * 2)) / (series.length - 1);
 
     const y =
-      height -
-      pad -
-      ((values[index] - min) / span) *
-        (height - pad * 2);
+      height - pad - ((values[index] - min) / span) * (height - pad * 2);
 
     return { item, x, y };
   });
 
   const path = points
-    .map(
-      (point, index) =>
-        `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`,
-    )
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
 
   const area =
@@ -220,8 +202,7 @@ async function api(path, body) {
 
   if (!response.ok) {
     const error = new Error(
-      payload.message ||
-        "Unable to complete your request. Please try again.",
+      payload.message || "Unable to complete your request. Please try again.",
     );
 
     error.status = response.status;
@@ -271,13 +252,7 @@ function go(path) {
   }
 }
 
-function field(
-  label,
-  name,
-  type = "text",
-  value = "",
-  extra = "",
-) {
+function field(label, name, type = "text", value = "", extra = "") {
   return `
     <label>
       ${label}
@@ -303,36 +278,31 @@ function message() {
 }
 
 function bindForm(id, action) {
-  document
-    .querySelector(id)
-    ?.addEventListener("submit", async (event) => {
-      event.preventDefault();
+  document.querySelector(id)?.addEventListener("submit", async (event) => {
+    event.preventDefault();
 
-      const form = event.currentTarget;
-      const button = form.querySelector('[type="submit"]');
-      const output = form.querySelector(".form-message");
+    const form = event.currentTarget;
+    const button = form.querySelector('[type="submit"]');
+    const output = form.querySelector(".form-message");
 
-      button.disabled = true;
+    button.disabled = true;
 
+    if (output) {
+      output.textContent = "Working...";
+      output.classList.remove("error-text");
+    }
+
+    try {
+      await action(Object.fromEntries(new FormData(form)), form);
+    } catch (error) {
       if (output) {
-        output.textContent = "Working...";
-        output.classList.remove("error-text");
+        output.textContent = error.message;
+        output.classList.add("error-text");
       }
-
-      try {
-        await action(
-          Object.fromEntries(new FormData(form)),
-          form,
-        );
-      } catch (error) {
-        if (output) {
-          output.textContent = error.message;
-          output.classList.add("error-text");
-        }
-      } finally {
-        button.disabled = false;
-      }
-    });
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 function publicHeader(active = "/") {
@@ -351,23 +321,15 @@ function publicHeader(active = "/") {
       <nav aria-label="Main navigation">
         ${items
           .map(([href, text]) =>
-            link(
-              href,
-              text,
-              active === href ? "active" : "",
-            ),
+            link(href, text, active === href ? "active" : ""),
           )
           .join("")}
       </nav>
 
       <div class="nav-actions">
         ${link(
-          session?.authenticated
-            ? "/dashboard"
-            : "/sign-in",
-          session?.authenticated
-            ? "Open workspace"
-            : "Sign in",
+          session?.authenticated ? "/dashboard" : "/sign-in",
+          session?.authenticated ? "Open workspace" : "Sign in",
           "quiet-link",
         )}
 
@@ -714,19 +676,15 @@ function landing() {
     </footer>
   `);
 
-  document
-    .querySelectorAll("[data-scroll]")
-    .forEach((a) =>
-      a.addEventListener("click", (event) => {
-        event.preventDefault();
+  document.querySelectorAll("[data-scroll]").forEach((a) =>
+    a.addEventListener("click", (event) => {
+      event.preventDefault();
 
-        document
-          .getElementById(a.dataset.scroll)
-          ?.scrollIntoView({
-            behavior: "smooth",
-          });
-      }),
-    );
+      document.getElementById(a.dataset.scroll)?.scrollIntoView({
+        behavior: "smooth",
+      });
+    }),
+  );
 
   bindHeroImageFallback();
 }
@@ -736,11 +694,9 @@ function publicPage(path) {
     "/product": {
       kicker: "Product",
 
-      title:
-        "A business performance system, not a spreadsheet wrapper.",
+      title: "A business performance system, not a spreadsheet wrapper.",
 
-      body:
-        "BIZNORYX connects business profile, data intake, metric history, evidence reports and activity into one tenant-isolated workspace.",
+      body: "BIZNORYX connects business profile, data intake, metric history, evidence reports and activity into one tenant-isolated workspace.",
 
       image:
         "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=2000&q=85",
@@ -766,11 +722,9 @@ function publicPage(path) {
     "/solutions": {
       kicker: "Solutions",
 
-      title:
-        "Built for owners who need to understand what changed.",
+      title: "Built for owners who need to understand what changed.",
 
-      body:
-        "Use BIZNORYX for recurring sales reports, transaction history, inventory movement, service operations and other business datasets where the question is what changed and why it matters.",
+      body: "Use BIZNORYX for recurring sales reports, transaction history, inventory movement, service operations and other business datasets where the question is what changed and why it matters.",
 
       image:
         "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&w=2000&q=85",
@@ -796,11 +750,9 @@ function publicPage(path) {
     "/pricing": {
       kicker: "Pricing",
 
-      title:
-        "₦40,000 per month for the BIZNORYX business workspace.",
+      title: "₦40,000 per month for the BIZNORYX business workspace.",
 
-      body:
-        "One simple monthly plan gives a business the workspace, verified sign-up, recurring business-data intake, evidence reporting, dashboard history and billing access.",
+      body: "One simple monthly plan gives a business the workspace, verified sign-up, recurring business-data intake, evidence reporting, dashboard history and billing access.",
 
       image:
         "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=2000&q=85",
@@ -826,11 +778,9 @@ function publicPage(path) {
     "/security": {
       kicker: "Security model",
 
-      title:
-        "Tenant isolation and auditability are part of the product.",
+      title: "Tenant isolation and auditability are part of the product.",
 
-      body:
-        "The application protects workspace routes, server-side mutations, CSRF boundaries and organization access. The database model is built around tenant ownership and row-level security.",
+      body: "The application protects workspace routes, server-side mutations, CSRF boundaries and organization access. The database model is built around tenant ownership and row-level security.",
 
       image:
         "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=2000&q=85",
@@ -856,11 +806,9 @@ function publicPage(path) {
     "/resources": {
       kicker: "Resources",
 
-      title:
-        "How teams build a useful business memory.",
+      title: "How teams build a useful business memory.",
 
-      body:
-        "Resources explain the data preparation, reporting cadence and evidence principles that make BIZNORYX more than a one-time analyzer.",
+      body: "Resources explain the data preparation, reporting cadence and evidence principles that make BIZNORYX more than a one-time analyzer.",
 
       image:
         "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=2000&q=85",
@@ -884,8 +832,7 @@ function publicPage(path) {
     },
   };
 
-  const page =
-    pages[path] ?? pages["/product"];
+  const page = pages[path] ?? pages["/product"];
 
   mount(`
     ${publicHeader(path)}
@@ -999,19 +946,11 @@ function auth(register) {
       </aside>
 
       <main class="auth-main">
-        ${link(
-          "/",
-          `${icon("arrow-left")} Back to home`,
-          "back-link",
-        )}
+        ${link("/", `${icon("arrow-left")} Back to home`, "back-link")}
 
         <div class="auth-form-wrap">
           <p class="overline">
-            ${
-              register
-                ? "Start your workspace"
-                : "Welcome back"
-            }
+            ${register ? "Start your workspace" : "Welcome back"}
           </p>
 
           <h2>
@@ -1057,9 +996,7 @@ function auth(register) {
               "password",
               "",
               `minlength="12" maxlength="128" autocomplete="${
-                register
-                  ? "new-password"
-                  : "current-password"
+                register ? "new-password" : "current-password"
               }"`,
             )}
 
@@ -1087,11 +1024,7 @@ function auth(register) {
               class="primary"
               type="submit"
             >
-              ${
-                register
-                  ? "Create account"
-                  : "Sign in"
-              }
+              ${register ? "Create account" : "Sign in"}
 
               ${icon("arrow-right")}
             </button>
@@ -1100,19 +1033,11 @@ function auth(register) {
           </form>
 
           <p class="auth-switch">
-            ${
-              register
-                ? "Already have an account?"
-                : "New to BIZNORYX?"
-            }
+            ${register ? "Already have an account?" : "New to BIZNORYX?"}
 
             ${link(
-              register
-                ? "/sign-in"
-                : "/register",
-              register
-                ? "Sign in"
-                : "Create an account",
+              register ? "/sign-in" : "/register",
+              register ? "Sign in" : "Create an account",
             )}
           </p>
 
@@ -1125,72 +1050,49 @@ function auth(register) {
     </div>
   `);
 
-  bindForm(
-    "#auth-form",
-    async (data) => {
-      let result;
+  bindForm("#auth-form", async (data) => {
+    let result;
 
-      try {
-        result = await api(
-          register
-            ? "register"
-            : "sign-in",
-          data,
-        );
-      } catch (error) {
-        if (
-          error.payload
-            ?.requiresEmailVerification
-        ) {
-          pendingVerification = {
-            email:
-              error.payload.email ||
-              data.email,
-
-            reviewCode:
-              error.payload
-                .reviewCode || null,
-          };
-
-          go("/verify-email");
-          return;
-        }
-
-        throw error;
-      }
-
-      if (
-        result.requiresEmailVerification
-      ) {
+    try {
+      result = await api(register ? "register" : "sign-in", data);
+    } catch (error) {
+      if (error.payload?.requiresEmailVerification) {
         pendingVerification = {
-          email: result.email,
+          email: error.payload.email || data.email,
 
-          reviewCode:
-            result.reviewCode || null,
+          reviewCode: error.payload.reviewCode || null,
         };
 
         go("/verify-email");
         return;
       }
 
-      csrfToken =
-        result.csrfToken;
+      throw error;
+    }
 
-      session = {
-        authenticated: true,
-        shell: result.shell,
+    if (result.requiresEmailVerification) {
+      pendingVerification = {
+        email: result.email,
+
+        reviewCode: result.reviewCode || null,
       };
 
-      dashboard = null;
-      validation = null;
+      go("/verify-email");
+      return;
+    }
 
-      go(
-        result.shell.state === "empty"
-          ? "/business"
-          : "/dashboard",
-      );
-    },
-  );
+    csrfToken = result.csrfToken;
+
+    session = {
+      authenticated: true,
+      shell: result.shell,
+    };
+
+    dashboard = null;
+    validation = null;
+
+    go(result.shell.state === "empty" ? "/business" : "/dashboard");
+  });
 
   if (
     !register &&
@@ -1285,8 +1187,7 @@ function passwordReset() {
 }
 
 function verifyEmail() {
-  const email =
-    pendingVerification?.email || "";
+  const email = pendingVerification?.email || "";
 
   mount(`
     <div class="auth-layout">
@@ -1331,15 +1232,11 @@ function verifyEmail() {
 
           <p class="muted">
             Enter the verification code sent to
-            ${esc(
-              email ||
-                "your work email",
-            )}.
+            ${esc(email || "your work email")}.
           </p>
 
           ${
-            pendingVerification
-              ?.reviewCode
+            pendingVerification?.reviewCode
               ? `
                 <div class="local-code">
                   <span>
@@ -1347,10 +1244,7 @@ function verifyEmail() {
                   </span>
 
                   <strong>
-                    ${esc(
-                      pendingVerification
-                        .reviewCode,
-                    )}
+                    ${esc(pendingVerification.reviewCode)}
                   </strong>
                 </div>
               `
@@ -1402,140 +1296,76 @@ function verifyEmail() {
     </div>
   `);
 
-  bindForm(
-    "#verify-form",
-    async (data) => {
-      const result = await api(
-        "auth/verify-email",
-        data,
-      );
+  bindForm("#verify-form", async (data) => {
+    const result = await api("auth/verify-email", data);
 
-      csrfToken =
-        result.csrfToken;
+    csrfToken = result.csrfToken;
 
-      session = {
-        authenticated: true,
-        shell: result.shell,
+    session = {
+      authenticated: true,
+      shell: result.shell,
+    };
+
+    dashboard = null;
+    validation = null;
+    pendingVerification = null;
+
+    go(result.shell.state === "empty" ? "/business" : "/dashboard");
+  });
+
+  document.querySelector("#resend-code").onclick = async (event) => {
+    const button = event.currentTarget;
+
+    button.disabled = true;
+
+    try {
+      const result = await api("auth/resend-code", {
+        email: document.querySelector('[name="email"]').value,
+      });
+
+      pendingVerification = {
+        email: result.email,
+
+        reviewCode: result.reviewCode || null,
       };
 
-      dashboard = null;
-      validation = null;
-      pendingVerification = null;
-
-      go(
-        result.shell.state === "empty"
-          ? "/business"
-          : "/dashboard",
-      );
-    },
-  );
-
-  document
-    .querySelector("#resend-code")
-    .onclick = async (event) => {
-      const button =
-        event.currentTarget;
-
-      button.disabled = true;
-
-      try {
-        const result =
-          await api(
-            "auth/resend-code",
-            {
-              email:
-                document.querySelector(
-                  '[name="email"]',
-                ).value,
-            },
-          );
-
-        pendingVerification = {
-          email:
-            result.email,
-
-          reviewCode:
-            result.reviewCode ||
-            null,
-        };
-
-        verifyEmail();
-      } catch (error) {
-        document.querySelector(
-          ".form-message",
-        ).textContent =
-          error.message;
-      } finally {
-        button.disabled = false;
-      }
-    };
+      verifyEmail();
+    } catch (error) {
+      document.querySelector(".form-message").textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
 }
 
 function shell(content, active) {
   const org =
-    dashboard?.shell
-      ?.activeOrganization ||
-    session?.shell
-      ?.activeOrganization;
+    dashboard?.shell?.activeOrganization || session?.shell?.activeOrganization;
 
   const orgs =
-    dashboard?.shell
-      ?.organizations ||
-    session?.shell
-      ?.organizations ||
-    [];
+    dashboard?.shell?.organizations || session?.shell?.organizations || [];
 
-  const subscription =
-    dashboard?.subscription;
+  const subscription = dashboard?.subscription;
 
-  const sidebarCollapsed =
-    isSidebarCollapsed();
+  const sidebarCollapsed = isSidebarCollapsed();
 
   const navigationItems = [
-    [
-      "/dashboard",
-      "layout-dashboard",
-      "Overview",
-    ],
+    ["/dashboard", "layout-dashboard", "Overview"],
 
-    [
-      "/data",
-      "database",
-      "Data & uploads",
-    ],
+    ["/data", "database", "Data & uploads"],
 
-    [
-      "/reports",
-      "file-check-2",
-      "Evidence reports",
-    ],
+    ["/reports", "file-check-2", "Evidence reports"],
 
-    [
-      "/business",
-      "building-2",
-      "Business profile",
-    ],
+    ["/business", "building-2", "Business profile"],
 
-    [
-      "/billing",
-      "credit-card",
-      "Billing",
-    ],
+    ["/billing", "credit-card", "Billing"],
 
-    [
-      "/activity",
-      "history",
-      "Activity",
-    ],
+    ["/activity", "history", "Activity"],
   ];
 
   mount(`
     <div
-      class="workspace${
-        sidebarCollapsed
-          ? " sidebar-collapsed"
-          : ""
-      }"
+      class="workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}"
     >
       <aside
         class="sidebar"
@@ -1558,46 +1388,22 @@ function shell(content, active) {
             class="sidebar-toggle"
             type="button"
             aria-controls="workspace-sidebar"
-            aria-expanded="${
-              sidebarCollapsed
-                ? "false"
-                : "true"
-            }"
+            aria-expanded="${sidebarCollapsed ? "false" : "true"}"
             aria-label="${
-              sidebarCollapsed
-                ? "Expand sidebar"
-                : "Collapse sidebar"
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
             }"
-            title="${
-              sidebarCollapsed
-                ? "Expand sidebar"
-                : "Collapse sidebar"
-            }"
+            title="${sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}"
           >
-            ${icon(
-              sidebarCollapsed
-                ? "panel-left-open"
-                : "panel-left-close",
-            )}
+            ${icon(sidebarCollapsed ? "panel-left-open" : "panel-left-close")}
           </button>
         </div>
 
         <div
           class="org-control"
-          title="${esc(
-            org?.name ||
-              "Your workspace",
-          )}"
+          title="${esc(org?.name || "Your workspace")}"
         >
           <span class="org-avatar">
-            ${esc(
-              (
-                org?.name ||
-                "B"
-              )
-                .slice(0, 1)
-                .toUpperCase(),
-            )}
+            ${esc((org?.name || "B").slice(0, 1).toUpperCase())}
           </span>
 
           <label
@@ -1609,11 +1415,7 @@ function shell(content, active) {
 
           <select
             id="org-switch"
-            ${
-              orgs.length
-                ? ""
-                : "disabled"
-            }
+            ${orgs.length ? "" : "disabled"}
           >
             ${
               orgs.length
@@ -1621,19 +1423,10 @@ function shell(content, active) {
                     .map(
                       (o) =>
                         `<option
-                          value="${esc(
-                            o.id,
-                          )}"
-                          ${
-                            o.id ===
-                            org?.id
-                              ? "selected"
-                              : ""
-                          }
+                          value="${esc(o.id)}"
+                          ${o.id === org?.id ? "selected" : ""}
                         >
-                          ${esc(
-                            o.name,
-                          )}
+                          ${esc(o.name)}
                         </option>`,
                     )
                     .join("")
@@ -1653,24 +1446,12 @@ function shell(content, active) {
         <nav aria-label="Workspace">
           ${navigationItems
             .map(
-              ([
-                path,
-                symbol,
-                title,
-              ]) => `
+              ([path, symbol, title]) => `
                 <a
                   href="#${path}"
-                  class="${
-                    active === path
-                      ? "active"
-                      : ""
-                  }"
-                  aria-label="${esc(
-                    title,
-                  )}"
-                  title="${esc(
-                    title,
-                  )}"
+                  class="${active === path ? "active" : ""}"
+                  aria-label="${esc(title)}"
+                  title="${esc(title)}"
                 >
                   ${icon(symbol)}
 
@@ -1728,10 +1509,7 @@ function shell(content, active) {
               /
             </span>
 
-            ${esc(
-              org?.name ||
-                "Set up your business",
-            )}
+            ${esc(org?.name || "Set up your business")}
           </span>
 
           <div class="workspace-top-actions">
@@ -1740,22 +1518,12 @@ function shell(content, active) {
                 ? `
                   <span
                     class="subscription-pill ${
-                      subscription.status ===
-                      "active"
-                        ? "active"
-                        : ""
+                      subscription.status === "active" ? "active" : ""
                     }"
                   >
-                    ${esc(
-                      subscription.status.replaceAll(
-                        "_",
-                        " ",
-                      ),
-                    )}
+                    ${esc(subscription.status.replaceAll("_", " "))}
                     ·
-                    ${esc(
-                      subscription.priceLabel,
-                    )}
+                    ${esc(subscription.priceLabel)}
                   </span>
                 `
                 : ""
@@ -1772,28 +1540,15 @@ function shell(content, active) {
 
             <span
               class="account-avatar"
-              title="${esc(
-                dashboard?.shell
-                  ?.user?.email ||
-                  "",
-              )}"
+              title="${esc(dashboard?.shell?.user?.email || "")}"
             >
-              ${esc(
-                (
-                  dashboard?.shell
-                    ?.user
-                    ?.displayName ||
-                  "You"
-                ).slice(0, 1),
-              )}
+              ${esc((dashboard?.shell?.user?.displayName || "You").slice(0, 1))}
             </span>
           </div>
         </header>
 
         <main class="workspace-content">
-          ${subscriptionBanner(
-            subscription,
-          )}
+          ${subscriptionBanner(subscription)}
 
           ${content}
         </main>
@@ -1801,160 +1556,97 @@ function shell(content, active) {
     </div>
   `);
 
-  const sidebarToggle =
-    document.querySelector(
-      "#sidebar-toggle",
+  const sidebarToggle = document.querySelector("#sidebar-toggle");
+
+  document.querySelector("#sidebar-help")?.addEventListener("click", () => {
+    const widget = document.querySelector(
+      "call-us-selector, call-us, #wp-live-chat-by-3CX",
     );
 
-  document
-    .querySelector(
-      "#sidebar-help",
-    )
-    ?.addEventListener(
-      "click",
-      () => {
-        const widget =
-          document.querySelector(
-            "call-us-selector, call-us, #wp-live-chat-by-3CX",
-          );
+    if (widget && typeof widget.click === "function") {
+      widget.click();
+    }
 
-        if (
-          widget &&
-          typeof widget.click === "function"
-        ) {
-          widget.click();
-        }
-
-        widget?.scrollIntoView?.({
-          block: "end",
-          inline: "end",
-        });
-      },
-    );
-
-  sidebarToggle?.addEventListener(
-    "click",
-    () => {
-      const workspace =
-        document.querySelector(
-          ".workspace",
-        );
-
-      if (!workspace) return;
-
-      const collapsed =
-        workspace.classList.toggle(
-          "sidebar-collapsed",
-        );
-
-      setSidebarCollapsed(
-        collapsed,
-      );
-
-      sidebarToggle.setAttribute(
-        "aria-expanded",
-        collapsed
-          ? "false"
-          : "true",
-      );
-
-      sidebarToggle.setAttribute(
-        "aria-label",
-        collapsed
-          ? "Expand sidebar"
-          : "Collapse sidebar",
-      );
-
-      sidebarToggle.setAttribute(
-        "title",
-        collapsed
-          ? "Expand sidebar"
-          : "Collapse sidebar",
-      );
-
-      sidebarToggle.innerHTML =
-        icon(
-          collapsed
-            ? "panel-left-open"
-            : "panel-left-close",
-        );
-
-      window.lucide?.createIcons();
-    },
-  );
-
-  document
-    .querySelectorAll(
-      "[data-sign-out]",
-    )
-    .forEach((button) => {
-      button.onclick =
-        async (event) => {
-          const target =
-            event.currentTarget;
-
-          target.disabled = true;
-
-          try {
-            await api(
-              "sign-out",
-              {},
-            );
-
-            session = null;
-            dashboard = null;
-            validation = null;
-            csrfToken = null;
-            activeSeriesKey =
-              null;
-
-            go("/");
-          } catch (error) {
-            target.textContent =
-              error.message;
-
-            target.disabled =
-              false;
-          }
-        };
+    widget?.scrollIntoView?.({
+      block: "end",
+      inline: "end",
     });
+  });
 
-  const orgSwitch =
-    document.querySelector(
-      "#org-switch",
+  sidebarToggle?.addEventListener("click", () => {
+    const workspace = document.querySelector(".workspace");
+
+    if (!workspace) return;
+
+    const collapsed = workspace.classList.toggle("sidebar-collapsed");
+
+    setSidebarCollapsed(collapsed);
+
+    sidebarToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+
+    sidebarToggle.setAttribute(
+      "aria-label",
+      collapsed ? "Expand sidebar" : "Collapse sidebar",
     );
+
+    sidebarToggle.setAttribute(
+      "title",
+      collapsed ? "Expand sidebar" : "Collapse sidebar",
+    );
+
+    sidebarToggle.innerHTML = icon(
+      collapsed ? "panel-left-open" : "panel-left-close",
+    );
+
+    window.lucide?.createIcons();
+  });
+
+  document.querySelectorAll("[data-sign-out]").forEach((button) => {
+    button.onclick = async (event) => {
+      const target = event.currentTarget;
+
+      target.disabled = true;
+
+      try {
+        await api("sign-out", {});
+
+        session = null;
+        dashboard = null;
+        validation = null;
+        csrfToken = null;
+        activeSeriesKey = null;
+
+        go("/");
+      } catch (error) {
+        target.textContent = error.message;
+
+        target.disabled = false;
+      }
+    };
+  });
+
+  const orgSwitch = document.querySelector("#org-switch");
 
   if (orgSwitch) {
-    orgSwitch.onchange =
-      async (event) => {
-        try {
-          await api(
-            "organizations/switch",
-            {
-              organizationId:
-                event.target.value,
-            },
-          );
+    orgSwitch.onchange = async (event) => {
+      try {
+        await api("organizations/switch", {
+          organizationId: event.target.value,
+        });
 
-          validation = null;
-          activeSeriesKey = null;
+        validation = null;
+        activeSeriesKey = null;
 
-          await route();
-        } catch (error) {
-          showError(error);
-        }
-      };
+        await route();
+      } catch (error) {
+        showError(error);
+      }
+    };
   }
 }
 
-function subscriptionBanner(
-  subscription,
-) {
-  if (
-    !subscription ||
-    subscription.status ===
-      "active"
-  ) {
+function subscriptionBanner(subscription) {
+  if (!subscription || subscription.status === "active") {
     return "";
   }
 
@@ -1964,34 +1656,21 @@ function subscriptionBanner(
 
       <div>
         <strong>
-          ${esc(
-            subscription.priceLabel,
-          )}
+          ${esc(subscription.priceLabel)}
           BIZNORYX workspace
         </strong>
 
         <p>
-          ${esc(
-            subscription.nextStep,
-          )}
+          ${esc(subscription.nextStep)}
         </p>
       </div>
 
-      ${link(
-        "/billing",
-        "Review billing",
-        "button secondary",
-      )}
+      ${link("/billing", "Review billing", "button secondary")}
     </div>
   `;
 }
 
-function heading(
-  kicker,
-  title,
-  subtitle,
-  action = "",
-) {
+function heading(kicker, title, subtitle, action = "") {
   return `
     <div class="page-heading">
       <div>
@@ -2014,23 +1693,17 @@ function heading(
 }
 
 function business() {
-  const p =
-    dashboard?.profile || {};
+  const p = dashboard?.profile || {};
 
   const hasOrg = Boolean(
-    dashboard?.shell
-      ?.activeOrganization ||
-      session?.shell
-        ?.activeOrganization,
+    dashboard?.shell?.activeOrganization || session?.shell?.activeOrganization,
   );
 
   shell(
     `
       ${heading(
         "YOUR BUSINESS",
-        hasOrg
-          ? "Business profile"
-          : "Make this workspace yours.",
+        hasOrg ? "Business profile" : "Make this workspace yours.",
         "The context behind your performance starts here.",
       )}
 
@@ -2062,11 +1735,7 @@ function business() {
             "Business name",
             "legalName",
             "text",
-            p.legalName ||
-              dashboard?.shell
-                ?.activeOrganization
-                ?.name ||
-              "",
+            p.legalName || dashboard?.shell?.activeOrganization?.name || "",
             'maxlength="120"',
           )}
 
@@ -2083,8 +1752,7 @@ function business() {
               "Business model",
               "businessModel",
               "text",
-              p.businessModel ||
-                "",
+              p.businessModel || "",
               'placeholder="e.g. Online product sales" maxlength="200"',
             )}
           </div>
@@ -2109,12 +1777,7 @@ function business() {
                   .map(
                     (c) =>
                       `<option
-                        ${
-                          p.primaryCurrency ===
-                          c
-                            ? "selected"
-                            : ""
-                        }
+                        ${p.primaryCurrency === c ? "selected" : ""}
                       >
                         ${c}
                       </option>`,
@@ -2133,27 +1796,12 @@ function business() {
                   },
                   (_, i) =>
                     `<option
-                      value="${
-                        i + 1
-                      }"
-                      ${
-                        p.fiscalYearStartMonth ===
-                        i + 1
-                          ? "selected"
-                          : ""
-                      }
+                      value="${i + 1}"
+                      ${p.fiscalYearStartMonth === i + 1 ? "selected" : ""}
                     >
-                      ${new Date(
-                        2026,
-                        i,
-                        1,
-                      ).toLocaleString(
-                        "en",
-                        {
-                          month:
-                            "long",
-                        },
-                      )}
+                      ${new Date(2026, i, 1).toLocaleString("en", {
+                        month: "long",
+                      })}
                     </option>`,
                 ).join("")}
               </select>
@@ -2164,10 +1812,7 @@ function business() {
             "Time zone",
             "timezone",
             "text",
-            p.timezone ||
-              Intl.DateTimeFormat()
-                .resolvedOptions()
-                .timeZone,
+            p.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           )}
 
           <div class="form-actions">
@@ -2175,24 +1820,12 @@ function business() {
               type="submit"
               class="primary"
             >
-              ${
-                hasOrg
-                  ? "Save business profile"
-                  : "Create business"
-              }
+              ${hasOrg ? "Save business profile" : "Create business"}
 
               ${icon("arrow-right")}
             </button>
 
-            ${
-              hasOrg
-                ? link(
-                    "/data",
-                    "Continue to data",
-                    "quiet-link",
-                  )
-                : ""
-            }
+            ${hasOrg ? link("/data", "Continue to data", "quiet-link") : ""}
           </div>
 
           ${message()}
@@ -2223,52 +1856,30 @@ function business() {
     "/business",
   );
 
-  bindForm(
-    "#business-form",
-    async (data) => {
-      if (
-        !session?.shell
-          ?.activeOrganization &&
-        !dashboard?.shell
-          ?.activeOrganization
-      ) {
-        const result =
-          await api(
-            "organizations",
-            {
-              name:
-                data.legalName,
-            },
-          );
+  bindForm("#business-form", async (data) => {
+    if (
+      !session?.shell?.activeOrganization &&
+      !dashboard?.shell?.activeOrganization
+    ) {
+      const result = await api("organizations", {
+        name: data.legalName,
+      });
 
-        session.shell =
-          result.shell;
-      }
+      session.shell = result.shell;
+    }
 
-      await api(
-        "onboarding/profile",
-        {
-          ...data,
+    await api("onboarding/profile", {
+      ...data,
 
-          fiscalYearStartMonth:
-            Number(
-              data.fiscalYearStartMonth,
-            ),
-        },
-      );
+      fiscalYearStartMonth: Number(data.fiscalYearStartMonth),
+    });
 
-      go("/data");
-    },
-  );
+    go("/data");
+  });
 }
 
 function dataPage() {
-  const uploads =
-    Array.isArray(
-      dashboard?.uploads,
-    )
-      ? dashboard.uploads
-      : [];
+  const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
   shell(
     `
@@ -2360,9 +1971,7 @@ function dataPage() {
               "Reporting month",
               "period",
               "month",
-              new Date()
-                .toISOString()
-                .slice(0, 7),
+              new Date().toISOString().slice(0, 7),
             )}
 
             <label>
@@ -2417,29 +2026,15 @@ function dataPage() {
           </h4>
 
           <p>
-            ${esc(
-              dashboard.profile
-                ?.primaryCurrency ||
-                "USD",
-            )}
+            ${esc(dashboard.profile?.primaryCurrency || "USD")}
           </p>
 
-          ${link(
-            "/business",
-            "Edit business profile",
-            "inline-link",
-          )}
+          ${link("/business", "Edit business profile", "inline-link")}
         </aside>
       </div>
 
       <div id="validation-result">
-        ${
-          validation
-            ? validationHtml(
-                validation,
-              )
-            : ""
-        }
+        ${validation ? validationHtml(validation) : ""}
       </div>
 
       <section class="table-section">
@@ -2476,56 +2071,34 @@ function dataPage() {
                         (u) => `
                           <tr>
                             <td>
-                              ${icon(
-                                "file-spreadsheet",
-                              )}
+                              ${icon("file-spreadsheet")}
 
-                              ${esc(
-                                u.fileName,
-                              )}
+                              ${esc(u.fileName)}
                             </td>
 
                             <td>
                               ${esc(
-                                u.sourceFormat ||
-                                  u.dataKind ||
-                                  "Business file",
+                                u.sourceFormat || u.dataKind || "Business file",
                               )}
                             </td>
 
                             <td>
-                              ${esc(
-                                u.dataSeries ||
-                                  "Primary performance",
-                              )}
+                              ${esc(u.dataSeries || "Primary performance")}
                             </td>
 
                             <td>
-                              ${esc(
-                                u.period ||
-                                  u.periodLabel ||
-                                  "—",
-                              )}
+                              ${esc(u.period || u.periodLabel || "—")}
                             </td>
 
                             <td>
-                              ${esc(
-                                u.metricLabel ||
-                                  "Metric",
-                              )}
+                              ${esc(u.metricLabel || "Metric")}
 
                               ${
-                                u.status ===
-                                  "confirmed" ||
-                                u.status ===
-                                  "awaiting_confirmation"
+                                u.status === "confirmed" ||
+                                u.status === "awaiting_confirmation"
                                   ? `
                                     <small>
-                                      ${esc(
-                                        metricAmount(
-                                          u,
-                                        ),
-                                      )}
+                                      ${esc(metricAmount(u))}
                                     </small>
                                   `
                                   : ""
@@ -2540,18 +2113,13 @@ function dataPage() {
                                     "validated",
                                     "processed",
                                     "ready",
-                                  ].includes(
-                                    u.status,
-                                  )
+                                  ].includes(u.status)
                                     ? "success"
                                     : ""
                                 }"
                               >
                                 ${esc(
-                                  String(
-                                    u.status ||
-                                      "unknown",
-                                  ).replaceAll(
+                                  String(u.status || "unknown").replaceAll(
                                     "_",
                                     " ",
                                   ),
@@ -2562,15 +2130,11 @@ function dataPage() {
                             <td>
                               <button
                                 class="text-button review-upload"
-                                data-id="${
-                                  u.id
-                                }"
+                                data-id="${u.id}"
                                 type="button"
                               >
                                 Review
-                                ${icon(
-                                  "arrow-up-right",
-                                )}
+                                ${icon("arrow-up-right")}
                               </button>
                             </td>
                           </tr>
@@ -2593,95 +2157,55 @@ function dataPage() {
     "/data",
   );
 
-  const fileInput =
-    document.querySelector(
-      '[name="file"]',
-    );
+  const fileInput = document.querySelector('[name="file"]');
 
   if (fileInput) {
     fileInput.onchange = () => {
-      const files = [
-        ...fileInput.files,
-      ];
+      const files = [...fileInput.files];
 
-      const fileLabel =
-        document.querySelector(
-          "#file-label",
-        );
+      const fileLabel = document.querySelector("#file-label");
 
       if (fileLabel) {
-        fileLabel.textContent =
-          files.length
-            ? `${files.length} file${
-                files.length === 1
-                  ? ""
-                  : "s"
-              } selected`
-            : "Choose business files";
+        fileLabel.textContent = files.length
+          ? `${files.length} file${files.length === 1 ? "" : "s"} selected`
+          : "Choose business files";
       }
     };
   }
 
-  const dataKindSelect =
-    document.querySelector(
-      '[name="dataKind"]',
-    );
+  const dataKindSelect = document.querySelector('[name="dataKind"]');
 
-  const dataSeriesInput =
-    document.querySelector(
-      '[name="dataSeries"]',
-    );
+  const dataSeriesInput = document.querySelector('[name="dataSeries"]');
 
-  if (
-    dataKindSelect &&
-    dataSeriesInput
-  ) {
+  if (dataKindSelect && dataSeriesInput) {
     dataKindSelect.onchange = () => {
       if (
-        dataKindSelect.value !==
-          "Sales performance" &&
-        DEFAULT_UPLOAD_SERIES.has(
-          dataSeriesInput.value.trim(),
-        )
+        dataKindSelect.value !== "Sales performance" &&
+        DEFAULT_UPLOAD_SERIES.has(dataSeriesInput.value.trim())
       ) {
-        dataSeriesInput.value =
-          dataKindSelect.value;
+        dataSeriesInput.value = dataKindSelect.value;
       }
     };
   }
 
-  const drop =
-    document.querySelector(
-      "#dropzone",
-    );
+  const drop = document.querySelector("#dropzone");
 
-  if (
-    drop &&
-    fileInput
-  ) {
+  if (drop && fileInput) {
     drop.ondragover = (e) => {
       e.preventDefault();
 
-      drop.classList.add(
-        "dragging",
-      );
+      drop.classList.add("dragging");
     };
 
-    drop.ondragleave = () =>
-      drop.classList.remove(
-        "dragging",
-      );
+    drop.ondragleave = () => drop.classList.remove("dragging");
 
     drop.ondrop = (e) => {
       e.preventDefault();
 
-      drop.classList.remove(
-        "dragging",
-      );
+      drop.classList.remove("dragging");
 
       try {
-        fileInput.files =
-          e.dataTransfer.files;
+        fileInput.files = e.dataTransfer.files;
       } catch {
         return;
       }
@@ -2690,207 +2214,104 @@ function dataPage() {
     };
   }
 
-  bindForm(
-    "#upload-form",
-    async (data) => {
-      const files = [
-        ...document.querySelector(
-          '[name="file"]',
-        ).files,
-      ];
+  bindForm("#upload-form", async (data) => {
+    const files = [...document.querySelector('[name="file"]').files];
 
-      if (!files.length) {
-        throw new Error(
-          "Choose at least one business file.",
-        );
-      }
+    if (!files.length) {
+      throw new Error("Choose at least one business file.");
+    }
 
-      if (
-        files.some(
-          (file) =>
-            file.size >
-            25 *
-              1024 *
-              1024,
-        )
-      ) {
-        throw new Error(
-          "Choose files smaller than 25 MB each.",
-        );
-      }
+    if (files.some((file) => file.size > 25 * 1024 * 1024)) {
+      throw new Error("Choose files smaller than 25 MB each.");
+    }
 
-      const result =
-        await api(
-          "ingestion/upload",
-          {
-            files:
-              await Promise.all(
-                files.map(
-                  readFilePayload,
-                ),
-              ),
+    const result = await api("ingestion/upload", {
+      files: await Promise.all(files.map(readFilePayload)),
 
-            period:
-              data.period,
+      period: data.period,
 
-            dataSeries:
-              data.dataSeries,
+      dataSeries: data.dataSeries,
 
-            dataKind:
-              data.dataKind,
+      dataKind: data.dataKind,
 
-            metricColumn:
-              data.metricColumn,
-          },
-        );
+      metricColumn: data.metricColumn,
+    });
 
+    validation =
+      result?.upload ||
+      (Array.isArray(result?.uploads) ? result.uploads[0] || null : null);
+
+    dashboard = await api("dashboard");
+
+    dataPage();
+
+    document.querySelector("#validation-result")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+
+  document.querySelectorAll(".review-upload").forEach((button) => {
+    button.onclick = () => {
       validation =
-        result?.upload ||
-        (
-          Array.isArray(
-            result?.uploads,
-          )
-            ? result.uploads[0] ||
-              null
-            : null
-        );
-
-      dashboard =
-        await api(
-          "dashboard",
-        );
+        uploads.find((upload) => upload.id === button.dataset.id) || null;
 
       dataPage();
 
-      document
-        .querySelector(
-          "#validation-result",
-        )
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-    },
-  );
+      document.querySelector("#validation-result")?.scrollIntoView({
+        behavior: "smooth",
+      });
+    };
+  });
 
-  document
-    .querySelectorAll(
-      ".review-upload",
-    )
-    .forEach(
-      (button) => {
-        button.onclick = () => {
-          validation =
-            uploads.find(
-              (upload) =>
-                upload.id ===
-                button.dataset.id,
-            ) ||
-            null;
+  bindForm("#confirm-form", async () => {
+    if (!validation?.id) {
+      throw new Error("No upload is selected for confirmation.");
+    }
 
-          dataPage();
+    await api("ingestion/confirm", {
+      uploadId: validation.id,
+    });
 
-          document
-            .querySelector(
-              "#validation-result",
-            )
-            ?.scrollIntoView({
-              behavior:
-                "smooth",
-            });
-        };
-      },
-    );
+    validation = null;
 
-  bindForm(
-    "#confirm-form",
-    async () => {
-      if (
-        !validation?.id
-      ) {
-        throw new Error(
-          "No upload is selected for confirmation.",
-        );
-      }
-
-      await api(
-        "ingestion/confirm",
-        {
-          uploadId:
-            validation.id,
-        },
-      );
-
-      validation = null;
-
-      go("/dashboard");
-    },
-  );
+    go("/dashboard");
+  });
 }
 
-async function readFilePayload(
-  file,
-) {
-  const extension =
-    file.name
-      .split(".")
-      .pop()
-      ?.toLowerCase() ||
-    "";
+async function readFilePayload(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
 
-  const textLike = [
-    "csv",
-    "tsv",
-    "json",
-    "txt",
-  ].includes(extension);
+  const textLike = ["csv", "tsv", "json", "txt"].includes(extension);
 
   const payload = {
     fileName: file.name,
 
-    contentType:
-      file.type ||
-      "application/octet-stream",
+    contentType: file.type || "application/octet-stream",
 
     sizeBytes: file.size,
   };
 
   if (textLike) {
-    payload.content =
-      await file.text();
+    payload.content = await file.text();
 
     return payload;
   }
 
-  payload.contentBase64 =
-    await fileToBase64(file);
+  payload.contentBase64 = await fileToBase64(file);
 
   return payload;
 }
 
-async function fileToBase64(
-  file,
-) {
-  const buffer =
-    await file.arrayBuffer();
+async function fileToBase64(file) {
+  const buffer = await file.arrayBuffer();
 
   let binary = "";
 
-  const bytes =
-    new Uint8Array(buffer);
+  const bytes = new Uint8Array(buffer);
 
-  for (
-    let index = 0;
-    index < bytes.length;
-    index += 0x8000
-  ) {
-    binary +=
-      String.fromCharCode(
-        ...bytes.subarray(
-          index,
-          index + 0x8000,
-        ),
-      );
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   }
 
   return btoa(binary);
@@ -2901,43 +2322,19 @@ function validationHtml(u) {
     return "";
   }
 
-  const issues =
-    Array.isArray(u.issues)
-      ? u.issues
-      : [];
+  const issues = Array.isArray(u.issues) ? u.issues : [];
 
-  const columns =
-    Array.isArray(u.columns)
-      ? u.columns
-      : [];
+  const columns = Array.isArray(u.columns) ? u.columns : [];
 
-  const preview =
-    Array.isArray(u.preview)
-      ? u.preview
-      : [];
+  const preview = Array.isArray(u.preview) ? u.preview : [];
 
-  const rowCount =
-    Number.isFinite(
-      Number(
-        u.rowCount ??
-          u.sourceRowCount,
-      ),
-    )
-      ? Number(
-          u.rowCount ??
-            u.sourceRowCount,
-        )
-      : 0;
+  const rowCount = Number.isFinite(Number(u.rowCount ?? u.sourceRowCount))
+    ? Number(u.rowCount ?? u.sourceRowCount)
+    : 0;
 
-  const isConfirmed =
-    [
-      "confirmed",
-      "validated",
-      "processed",
-      "ready",
-    ].includes(
-      u.status,
-    );
+  const isConfirmed = ["confirmed", "validated", "processed", "ready"].includes(
+    u.status,
+  );
 
   return `
     <section class="validation">
@@ -2958,32 +2355,17 @@ function validationHtml(u) {
           </h2>
         </div>
 
-        ${icon(
-          issues.length
-            ? "circle-alert"
-            : "circle-check",
-        )}
+        ${icon(issues.length ? "circle-alert" : "circle-check")}
       </div>
 
       <p>
-        ${esc(
-          u.fileName ||
-            "Business file",
-        )}
+        ${esc(u.fileName || "Business file")}
         &middot;
-        ${esc(
-          u.sourceFormat ||
-            u.dataSeries ||
-            "Business file",
-        )}
+        ${esc(u.sourceFormat || u.dataSeries || "Business file")}
         &middot;
         ${rowCount} rows
         &middot;
-        ${esc(
-          u.period ||
-            u.periodLabel ||
-            "Reporting period",
-        )}
+        ${esc(u.period || u.periodLabel || "Reporting period")}
       </p>
 
       ${
@@ -2994,18 +2376,9 @@ function validationHtml(u) {
                 .map(
                   (issue) => `
                     <li>
-                      ${
-                        issue?.row
-                          ? `Row ${esc(
-                              issue.row,
-                            )}: `
-                          : ""
-                      }
+                      ${issue?.row ? `Row ${esc(issue.row)}: ` : ""}
 
-                      ${esc(
-                        issue?.message ||
-                          "Validation issue",
-                      )}
+                      ${esc(issue?.message || "Validation issue")}
                     </li>
                   `,
                 )
@@ -3017,51 +2390,30 @@ function validationHtml(u) {
               <span>
                 Data type
                 <strong>
-                  ${esc(
-                    u.dataKind ||
-                      u.sourceFormat ||
-                      "Business dataset",
-                  )}
+                  ${esc(u.dataKind || u.sourceFormat || "Business dataset")}
                 </strong>
               </span>
 
               <span>
                 Metric column
                 <strong>
-                  ${esc(
-                    u.metricColumn ||
-                      u.sourceColumn ||
-                      "Auto-detected",
-                  )}
+                  ${esc(u.metricColumn || u.sourceColumn || "Auto-detected")}
                 </strong>
               </span>
 
               <span>
                 ${
                   hasMetricAmount(u)
-                    ? `${esc(
-                        u.metricLabel ||
-                          "Metric",
-                      )} total`
+                    ? `${esc(u.metricLabel || "Metric")} total`
                     : "Processing status"
                 }
 
                 <strong>
                   ${
                     hasMetricAmount(u)
-                      ? esc(
-                          metricAmount(
-                            u,
-                          ),
-                        )
+                      ? esc(metricAmount(u))
                       : esc(
-                          String(
-                            u.status ||
-                              "validated",
-                          ).replaceAll(
-                            "_",
-                            " ",
-                          ),
+                          String(u.status || "validated").replaceAll("_", " "),
                         )
                   }
                 </strong>
@@ -3076,9 +2428,7 @@ function validationHtml(u) {
             </div>
 
             ${
-              rowCount ||
-              columns.length ||
-              u.checksum
+              rowCount || columns.length || u.checksum
                 ? `
                   <div class="evidence-preview">
                     <h3>
@@ -3098,12 +2448,7 @@ function validationHtml(u) {
                           column(s)${
                             u.checksum
                               ? `, checksum ${esc(
-                                  String(
-                                    u.checksum,
-                                  ).slice(
-                                    0,
-                                    12,
-                                  ),
+                                  String(u.checksum).slice(0, 12),
                                 )}`
                               : ""
                           }
@@ -3117,16 +2462,12 @@ function validationHtml(u) {
 
                         <span>
                           Source processed as
-                          ${esc(
-                            u.sourceFormat ||
-                              "business file",
-                          )}.
+                          ${esc(u.sourceFormat || "business file")}.
                         </span>
                       </li>
 
                       ${
-                        u.metricColumn ||
-                        u.sourceColumn
+                        u.metricColumn || u.sourceColumn
                           ? `
                             <li>
                               <strong>
@@ -3135,10 +2476,7 @@ function validationHtml(u) {
 
                               <span>
                                 Metric source:
-                                ${esc(
-                                  u.metricColumn ||
-                                    u.sourceColumn,
-                                )}.
+                                ${esc(u.metricColumn || u.sourceColumn)}.
                               </span>
                             </li>
                           `
@@ -3162,9 +2500,7 @@ function validationHtml(u) {
                     </ul>
                   </div>
 
-                  ${profileSummaryHtml(
-                    u,
-                  )}
+                  ${profileSummaryHtml(u)}
                 `
                 : ""
             }
@@ -3172,8 +2508,7 @@ function validationHtml(u) {
       }
 
       ${
-        columns.length &&
-        preview.length
+        columns.length && preview.length
           ? `
             <div class="table-scroll">
               <table>
@@ -3183,9 +2518,7 @@ function validationHtml(u) {
                       .map(
                         (column) =>
                           `<th>
-                            ${esc(
-                              column,
-                            )}
+                            ${esc(column)}
                           </th>`,
                       )
                       .join("")}
@@ -3201,11 +2534,7 @@ function validationHtml(u) {
                             .map(
                               (column) =>
                                 `<td>
-                                  ${esc(
-                                    row?.[
-                                      column
-                                    ],
-                                  )}
+                                  ${esc(row?.[column])}
                                 </td>`,
                             )
                             .join("")}
@@ -3236,18 +2565,13 @@ function validationHtml(u) {
       }
 
       ${
-        u.status ===
-          "awaiting_confirmation"
+        u.status === "awaiting_confirmation"
           ? `
             <form id="confirm-form">
               <button
                 class="primary"
                 type="submit"
-                ${
-                  issues.length
-                    ? "disabled"
-                    : ""
-                }
+                ${issues.length ? "disabled" : ""}
               >
                 Confirm and add to dashboard
                 ${icon("check")}
@@ -3263,24 +2587,13 @@ function validationHtml(u) {
 }
 
 function profileSummaryHtml(u) {
-  const numeric = (
-    u.numericProfile || []
-  ).slice(0, 4);
+  const numeric = (u.numericProfile || []).slice(0, 4);
 
-  const dimensions = (
-    u.dimensionProfile || []
-  ).slice(0, 3);
+  const dimensions = (u.dimensionProfile || []).slice(0, 3);
 
-  const drivers = (
-    u.dimensionBreakdowns ||
-    []
-  ).slice(0, 3);
+  const drivers = (u.dimensionBreakdowns || []).slice(0, 3);
 
-  if (
-    !numeric.length &&
-    !dimensions.length &&
-    !drivers.length
-  ) {
+  if (!numeric.length && !dimensions.length && !drivers.length) {
     return "";
   }
 
@@ -3299,24 +2612,14 @@ function profileSummaryHtml(u) {
                   (item) => `
                     <p>
                       <strong>
-                        ${esc(
-                          item.label,
-                        )}
+                        ${esc(item.label)}
                       </strong>
 
                       <span>
                         ${
-                          item.valueType ===
-                          "money"
-                            ? money(
-                                item.sumCents,
-                              )
-                            : numberValue(
-                                Number(
-                                  item.sumCents,
-                                ) /
-                                  100,
-                              )
+                          item.valueType === "money"
+                            ? money(item.sumCents)
+                            : numberValue(Number(item.sumCents) / 100)
                         }
                         total
                       </span>
@@ -3342,15 +2645,11 @@ function profileSummaryHtml(u) {
                   (item) => `
                     <p>
                       <strong>
-                        ${esc(
-                          item.label,
-                        )}
+                        ${esc(item.label)}
                       </strong>
 
                       <span>
-                        ${
-                          item.uniqueCount
-                        }
+                        ${item.uniqueCount}
                         unique value(s)
                       </span>
                     </p>
@@ -3375,41 +2674,17 @@ function profileSummaryHtml(u) {
                   (item) => `
                     <p>
                       <strong>
-                        ${esc(
-                          item.label,
-                        )}
+                        ${esc(item.label)}
                       </strong>
 
                       <span>
-                        ${esc(
-                          item
-                            .topValues[
-                            0
-                          ]?.value ||
-                            "",
-                        )}
+                        ${esc(item.topValues[0]?.value || "")}
                         ·
                         ${esc(
-                          u.metricType ===
-                          "money"
-                            ? money(
-                                item
-                                  .topValues[
-                                  0
-                                ]
-                                  ?.sumCents ||
-                                  0,
-                              )
+                          u.metricType === "money"
+                            ? money(item.topValues[0]?.sumCents || 0)
                             : numberValue(
-                                Number(
-                                  item
-                                    .topValues[
-                                    0
-                                  ]
-                                    ?.sumCents ||
-                                    0,
-                                ) /
-                                  100,
+                                Number(item.topValues[0]?.sumCents || 0) / 100,
                               ),
                         )}
                       </span>
@@ -3426,21 +2701,13 @@ function profileSummaryHtml(u) {
 }
 
 function dashboardGuideHtml() {
-  const hasProfile =
-    Boolean(
-      dashboard.profile,
-    );
+  const hasProfile = Boolean(dashboard.profile);
 
-  const confirmed =
-    dashboard.uploads.filter(
-      (u) =>
-        u.status ===
-        "confirmed",
-    ).length;
+  const confirmed = dashboard.uploads.filter(
+    (u) => u.status === "confirmed",
+  ).length;
 
-  const reports =
-    dashboard.evidenceReports
-      ?.length ?? 0;
+  const reports = dashboard.evidenceReports?.length ?? 0;
 
   const steps = [
     [
@@ -3459,11 +2726,7 @@ function dashboardGuideHtml() {
       "Upload source data",
 
       confirmed
-        ? `${confirmed} confirmed source file${
-            confirmed === 1
-              ? ""
-              : "s"
-          }`
+        ? `${confirmed} confirmed source file${confirmed === 1 ? "" : "s"}`
         : "CSV, TSV, JSON, TXT and text-based PDF statements",
 
       confirmed > 0,
@@ -3475,11 +2738,7 @@ function dashboardGuideHtml() {
       "Read the evidence report",
 
       reports
-        ? `${reports} fact-based report${
-            reports === 1
-              ? ""
-              : "s"
-          } ready`
+        ? `${reports} fact-based report${reports === 1 ? "" : "s"} ready`
         : "Confirm a source to generate verified facts",
 
       reports > 0,
@@ -3490,13 +2749,11 @@ function dashboardGuideHtml() {
     [
       "Repeat next period",
 
-      dashboard.series
-        ?.length > 1
+      dashboard.series?.length > 1
         ? "Trend memory is active"
         : "Add the next month to reveal movement",
 
-      dashboard.series
-        ?.length > 1,
+      dashboard.series?.length > 1,
 
       "/data",
     ],
@@ -3524,33 +2781,12 @@ function dashboardGuideHtml() {
       <ol>
         ${steps
           .map(
-            ([
-              title,
-              copy,
-              done,
-              href,
-            ], index) => `
+            ([title, copy, done, href], index) => `
               <li
-                class="${
-                  done
-                    ? "done"
-                    : ""
-                }"
+                class="${done ? "done" : ""}"
               >
                 <span>
-                  ${
-                    done
-                      ? icon(
-                          "check",
-                        )
-                      : String(
-                          index +
-                            1,
-                        ).padStart(
-                          2,
-                          "0",
-                        )
-                  }
+                  ${done ? icon("check") : String(index + 1).padStart(2, "0")}
                 </span>
 
                 <div>
@@ -3562,11 +2798,7 @@ function dashboardGuideHtml() {
                     ${copy}
                   </p>
 
-                  ${link(
-                    href,
-                    "Open",
-                    "inline-link",
-                  )}
+                  ${link(href, "Open", "inline-link")}
                 </div>
               </li>
             `,
@@ -3577,10 +2809,7 @@ function dashboardGuideHtml() {
   `;
 }
 
-function seriesPickerHtml(
-  groups,
-  activeGroup,
-) {
+function seriesPickerHtml(groups, activeGroup) {
   if (!groups.length) {
     return "";
   }
@@ -3595,33 +2824,19 @@ function seriesPickerHtml(
           (group) => `
             <button
               type="button"
-              data-series-key="${esc(
-                group.key,
-              )}"
-              class="${
-                group.key ===
-                activeGroup?.key
-                  ? "active"
-                  : ""
-              }"
+              data-series-key="${esc(group.key)}"
+              class="${group.key === activeGroup?.key ? "active" : ""}"
             >
               <span>
-                ${esc(
-                  group.dataKind,
-                )}
+                ${esc(group.dataKind)}
               </span>
 
               <strong>
-                ${esc(
-                  group.name,
-                )}
+                ${esc(group.name)}
               </strong>
 
               <small>
-                ${
-                  group.points
-                    .length
-                }
+                ${group.points.length}
                 period(s)
               </small>
             </button>
@@ -3633,99 +2848,54 @@ function seriesPickerHtml(
 }
 
 function bindSeriesPicker() {
-  document
-    .querySelectorAll(
-      "[data-series-key]",
-    )
-    .forEach((button) => {
-      button.onclick = () => {
-        activeSeriesKey =
-          button.dataset
-            .seriesKey;
+  document.querySelectorAll("[data-series-key]").forEach((button) => {
+    button.onclick = () => {
+      activeSeriesKey = button.dataset.seriesKey;
 
-        overview();
-      };
-    });
+      overview();
+    };
+  });
 }
 
 function overview() {
-  const profile =
-    dashboard?.profile ||
-    {};
+  const profile = dashboard?.profile || {};
 
-  const uploads =
-    Array.isArray(
-      dashboard?.uploads,
-    )
-      ? dashboard.uploads
-      : [];
+  const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
-  const reports =
-    Array.isArray(
-      dashboard?.evidenceReports,
-    )
-      ? dashboard.evidenceReports
-      : [];
+  const reports = Array.isArray(dashboard?.evidenceReports)
+    ? dashboard.evidenceReports
+    : [];
 
-  const metricSeries =
-    Array.isArray(
-      dashboard?.series,
-    )
-      ? dashboard.series
-          .filter(
-            (item) =>
-              item &&
-              Array.isArray(
-                item.points,
-              ) &&
-              item.points.length,
-          )
-          .map(
-            (item) => ({
-              ...item,
-              points: [
-                ...item.points,
-              ].sort(
-                (left, right) => {
-                  const leftTime =
-                    new Date(
-                      left?.periodStart ||
-                        left?.createdAt ||
-                        0,
-                    ).getTime();
+  const metricSeries = Array.isArray(dashboard?.series)
+    ? dashboard.series
+        .filter(
+          (item) => item && Array.isArray(item.points) && item.points.length,
+        )
+        .map((item) => ({
+          ...item,
+          points: [...item.points].sort((left, right) => {
+            const leftTime = new Date(
+              left?.periodStart || left?.createdAt || 0,
+            ).getTime();
 
-                  const rightTime =
-                    new Date(
-                      right?.periodStart ||
-                        right?.createdAt ||
-                        0,
-                    ).getTime();
+            const rightTime = new Date(
+              right?.periodStart || right?.createdAt || 0,
+            ).getTime();
 
-                  return (
-                    leftTime -
-                    rightTime
-                  );
-                },
-              ),
-            }),
-          )
-      : [];
+            return leftTime - rightTime;
+          }),
+        }))
+    : [];
 
   const organization =
-    dashboard?.shell
-      ?.activeOrganization ||
-    session?.shell
-      ?.activeOrganization ||
+    dashboard?.shell?.activeOrganization ||
+    session?.shell?.activeOrganization ||
     null;
 
   const businessName =
-    organization?.name ||
-    profile.legalName ||
-    "Your business";
+    organization?.name || profile.legalName || "Your business";
 
-  const currency =
-    profile.primaryCurrency ||
-    "USD";
+  const currency = profile.primaryCurrency || "USD";
 
   const preferredMetricColumns = [
     "net_revenue",
@@ -3739,527 +2909,240 @@ function overview() {
     "quantity",
   ];
 
-  const metricPriority = (
-    item,
-  ) => {
-    const sourceColumn =
-      String(
-        item?.sourceColumn ||
-          "",
-      )
-        .trim()
-        .toLowerCase();
+  const metricPriority = (item) => {
+    const sourceColumn = String(item?.sourceColumn || "")
+      .trim()
+      .toLowerCase();
 
-    const index =
-      preferredMetricColumns.indexOf(
-        sourceColumn,
-      );
+    const index = preferredMetricColumns.indexOf(sourceColumn);
 
-    return index === -1
-      ? preferredMetricColumns.length
-      : index;
+    return index === -1 ? preferredMetricColumns.length : index;
   };
 
-  const orderedSeries = [
-    ...metricSeries,
-  ].sort(
+  const orderedSeries = [...metricSeries].sort(
     (left, right) =>
-      metricPriority(left) -
-        metricPriority(right) ||
-      String(
-        left?.dataStream
-          ?.displayName ||
-          "",
-      ).localeCompare(
-        String(
-          right?.dataStream
-            ?.displayName ||
-            "",
-        ),
+      metricPriority(left) - metricPriority(right) ||
+      String(left?.dataStream?.displayName || "").localeCompare(
+        String(right?.dataStream?.displayName || ""),
       ) ||
-      String(
-        left?.label ||
-          "",
-      ).localeCompare(
-        String(
-          right?.label ||
-            "",
-        ),
-      ),
+      String(left?.label || "").localeCompare(String(right?.label || "")),
   );
 
   const activeMetric =
-    orderedSeries.find(
-      (item) =>
-        item.id ===
-        activeSeriesKey,
-    ) ||
+    orderedSeries.find((item) => item.id === activeSeriesKey) ||
     orderedSeries[0] ||
     null;
 
-  activeSeriesKey =
-    activeMetric?.id ||
-    null;
+  activeSeriesKey = activeMetric?.id || null;
 
-  const points =
-    activeMetric?.points ||
-    [];
+  const points = activeMetric?.points || [];
 
-  const latest =
-    points.at(-1) ||
-    null;
+  const latest = points.at(-1) || null;
 
-  const previous =
-    points.at(-2) ||
-    null;
+  const previous = points.at(-2) || null;
 
-  const numericValue = (
-    value,
-  ) => {
-    const parsed =
-      Number(value);
+  const numericValue = (value) => {
+    const parsed = Number(value);
 
-    return Number.isFinite(
-      parsed,
-    )
-      ? parsed
-      : null;
+    return Number.isFinite(parsed) ? parsed : null;
   };
 
-  const isCurrencyMetric = (
-    item,
-  ) =>
+  const isCurrencyMetric = (item) =>
     /\b(revenue|sales|income|profit|cost|amount|price|refund|spend|expense|value)\b/i.test(
-      String(
-        item?.sourceColumn ||
-          item?.label ||
-          "",
-      ).replaceAll(
-        "_",
-        " ",
-      ),
+      String(item?.sourceColumn || item?.label || "").replaceAll("_", " "),
     );
 
-  const formatMetricValue = (
-    value,
-    item = activeMetric,
-  ) => {
-    const parsed =
-      numericValue(value);
+  const formatMetricValue = (value, item = activeMetric) => {
+    const parsed = numericValue(value);
 
     if (parsed === null) {
       return "—";
     }
 
-    if (
-      item?.unit ===
-      "percent"
-    ) {
-      return `${numberValue(
-        parsed,
-      )}%`;
+    if (item?.unit === "percent") {
+      return `${numberValue(parsed)}%`;
     }
 
-    if (
-      item?.unit ===
-        "count" ||
-      !isCurrencyMetric(
-        item,
-      )
-    ) {
-      return numberValue(
-        parsed,
-      );
+    if (item?.unit === "count" || !isCurrencyMetric(item)) {
+      return numberValue(parsed);
     }
 
     try {
-      return new Intl.NumberFormat(
-        undefined,
-        {
-          style:
-            "currency",
-          currency,
-          maximumFractionDigits:
-            2,
-        },
-      ).format(
-        parsed,
-      );
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+      }).format(parsed);
     } catch {
-      return `${currency} ${numberValue(
-        parsed,
-      )}`;
+      return `${currency} ${numberValue(parsed)}`;
     }
   };
 
-  const formatPeriod = (
-    point,
-  ) => {
-    if (
-      point?.periodLabel
-    ) {
-      return String(
-        point.periodLabel,
-      );
+  const formatPeriod = (point) => {
+    if (point?.periodLabel) {
+      return String(point.periodLabel);
     }
 
-    const raw =
-      String(
-        point?.periodStart ||
-          "",
-      );
+    const raw = String(point?.periodStart || "");
 
     if (!raw) {
       return "Period";
     }
 
-    const monthlyMatch =
-      raw.match(
-        /^(\d{4})-(\d{2})/,
-      );
+    const monthlyMatch = raw.match(/^(\d{4})-(\d{2})/);
 
-    if (
-      monthlyMatch
-    ) {
-      const year =
-        Number(
-          monthlyMatch[1],
-        );
+    if (monthlyMatch) {
+      const year = Number(monthlyMatch[1]);
 
-      const month =
-        Number(
-          monthlyMatch[2],
-        );
+      const month = Number(monthlyMatch[2]);
 
-      if (
-        Number.isInteger(
-          year,
-        ) &&
-        month >= 1 &&
-        month <= 12
-      ) {
-        return new Intl.DateTimeFormat(
-          undefined,
-          {
-            month:
-              "short",
-            year:
-              "numeric",
-            timeZone:
-              "UTC",
-          },
-        ).format(
-          new Date(
-            Date.UTC(
-              year,
-              month - 1,
-              1,
-            ),
-          ),
-        );
+      if (Number.isInteger(year) && month >= 1 && month <= 12) {
+        return new Intl.DateTimeFormat(undefined, {
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(new Date(Date.UTC(year, month - 1, 1)));
       }
     }
 
-    return raw.slice(
-      0,
-      10,
-    );
+    return raw.slice(0, 10);
   };
 
-  const latestValue =
-    numericValue(
-      latest?.value,
-    );
+  const latestValue = numericValue(latest?.value);
 
-  const previousValue =
-    numericValue(
-      previous?.value,
-    );
+  const previousValue = numericValue(previous?.value);
 
   const changePercent =
-    latestValue !==
-      null &&
-    previousValue !==
-      null &&
-    previousValue !==
-      0
-      ? ((latestValue -
-          previousValue) /
-          Math.abs(
-            previousValue,
-          )) *
-        100
+    latestValue !== null && previousValue !== null && previousValue !== 0
+      ? ((latestValue - previousValue) / Math.abs(previousValue)) * 100
       : null;
 
-  const acceptedUploadStatuses =
-    new Set([
-      "validated",
-      "confirmed",
-      "processed",
-      "ready",
-    ]);
+  const acceptedUploadStatuses = new Set([
+    "validated",
+    "confirmed",
+    "processed",
+    "ready",
+  ]);
 
-  const validatedUploads =
-    uploads.filter(
-      (upload) =>
-        acceptedUploadStatuses.has(
-          upload?.status,
+  const validatedUploads = uploads.filter((upload) =>
+    acceptedUploadStatuses.has(upload?.status),
+  ).length;
+
+  const rejectedUploads = uploads.filter(
+    (upload) => upload?.status === "rejected",
+  ).length;
+
+  const schemaWarnings = uploads.filter((upload) =>
+    Boolean(upload?.schemaDrift),
+  ).length;
+
+  const verifiedPeriods = new Set(
+    metricSeries.flatMap((item) =>
+      item.points.map((point) =>
+        String(
+          point?.reportingPeriodId ||
+            point?.periodStart ||
+            point?.periodLabel ||
+            "",
         ),
-    ).length;
-
-  const rejectedUploads =
-    uploads.filter(
-      (upload) =>
-        upload?.status ===
-        "rejected",
-    ).length;
-
-  const schemaWarnings =
-    uploads.filter(
-      (upload) =>
-        Boolean(
-          upload?.schemaDrift,
-        ),
-    ).length;
-
-  const verifiedPeriods =
-    new Set(
-      metricSeries.flatMap(
-        (item) =>
-          item.points.map(
-            (point) =>
-              String(
-                point?.reportingPeriodId ||
-                  point?.periodStart ||
-                  point?.periodLabel ||
-                  "",
-              ),
-          ),
       ),
-    ).size;
+    ),
+  ).size;
 
-  const latestSourceRows =
-    Number.isFinite(
-      Number(
-        latest?.sourceRowCount,
-      ),
-    )
-      ? Number(
-          latest
-            .sourceRowCount,
-        )
-      : null;
+  const latestSourceRows = Number.isFinite(Number(latest?.sourceRowCount))
+    ? Number(latest.sourceRowCount)
+    : null;
 
   const findingCollections = [
-    [
-      "Focus",
-      "focus",
-      dashboard?.focusAreas,
-    ],
-    [
-      "Opportunity",
-      "opportunity",
-      dashboard?.opportunities,
-    ],
-    [
-      "Signal",
-      "signal",
-      dashboard?.signals,
-    ],
-    [
-      "Risk",
-      "risk",
-      dashboard?.risks,
-    ],
+    ["Focus", "focus", dashboard?.focusAreas],
+    ["Opportunity", "opportunity", dashboard?.opportunities],
+    ["Signal", "signal", dashboard?.signals],
+    ["Risk", "risk", dashboard?.risks],
   ];
 
-  const findings =
-    findingCollections
-      .flatMap(
-        ([
-          label,
-          kind,
-          items,
-        ]) =>
-          Array.isArray(
-            items,
-          )
-            ? items.map(
-                (item) => ({
-                  label,
-                  kind,
-                  item,
-                }),
-              )
-            : [],
-      )
-      .filter(
-        (entry) =>
-          entry.item &&
-          (entry.item.title ||
-            entry.item
-              .summary),
-      );
+  const findings = findingCollections
+    .flatMap(([label, kind, items]) =>
+      Array.isArray(items)
+        ? items.map((item) => ({
+            label,
+            kind,
+            item,
+          }))
+        : [],
+    )
+    .filter((entry) => entry.item && (entry.item.title || entry.item.summary));
 
-  const primaryFinding =
-    findings[0] ||
-    null;
+  const primaryFinding = findings[0] || null;
 
-  const trendChartHtml =
-    points.length
-      ? (() => {
-          const width =
-            820;
-          const height =
-            270;
-          const padX =
-            44;
-          const padTop =
-            24;
-          const padBottom =
-            54;
+  const trendChartHtml = points.length
+    ? (() => {
+        const width = 820;
+        const height = 270;
+        const padX = 44;
+        const padTop = 24;
+        const padBottom = 54;
 
-          const chartPoints =
-            points
-              .map(
-                (
-                  point,
-                  index,
-                ) => ({
-                  point,
-                  value:
-                    numericValue(
-                      point?.value,
-                    ),
-                  index,
-                }),
-              )
-              .filter(
-                (item) =>
-                  item.value !==
-                  null,
-              );
+        const chartPoints = points
+          .map((point, index) => ({
+            point,
+            value: numericValue(point?.value),
+            index,
+          }))
+          .filter((item) => item.value !== null);
 
-          if (
-            !chartPoints.length
-          ) {
-            return "";
-          }
+        if (!chartPoints.length) {
+          return "";
+        }
 
-          const values =
-            chartPoints.map(
-              (item) =>
-                item.value,
-            );
+        const values = chartPoints.map((item) => item.value);
 
-          const min =
-            Math.min(
-              ...values,
-            );
+        const min = Math.min(...values);
 
-          const max =
-            Math.max(
-              ...values,
-            );
+        const max = Math.max(...values);
 
-          const span =
-            max - min ||
-            Math.abs(max) ||
-            1;
+        const span = max - min || Math.abs(max) || 1;
 
-          const plotted =
-            chartPoints.map(
-              (
-                item,
-                index,
-              ) => {
-                const x =
-                  chartPoints.length ===
-                  1
-                    ? width /
-                      2
-                    : padX +
-                      (index *
-                        (width -
-                          padX *
-                            2)) /
-                        (chartPoints.length -
-                          1);
+        const plotted = chartPoints.map((item, index) => {
+          const x =
+            chartPoints.length === 1
+              ? width / 2
+              : padX + (index * (width - padX * 2)) / (chartPoints.length - 1);
 
-                const y =
-                  padTop +
-                  ((max -
-                    item.value) /
-                    span) *
-                    (height -
-                      padTop -
-                      padBottom);
+          const y =
+            padTop +
+            ((max - item.value) / span) * (height - padTop - padBottom);
 
-                return {
-                  ...item,
-                  x,
-                  y,
-                };
-              },
-            );
+          return {
+            ...item,
+            x,
+            y,
+          };
+        });
 
-          const linePath =
-            plotted
-              .map(
-                (
-                  point,
-                  index,
-                ) =>
-                  `${
-                    index ===
-                    0
-                      ? "M"
-                      : "L"
-                  } ${point.x.toFixed(
-                    2,
-                  )} ${point.y.toFixed(
-                    2,
-                  )}`,
-              )
-              .join(
-                " ",
-              );
-
-          const areaPath =
-            `${linePath} ` +
-            `L ${plotted
-              .at(-1)
-              .x.toFixed(
+        const linePath = plotted
+          .map(
+            (point, index) =>
+              `${index === 0 ? "M" : "L"} ${point.x.toFixed(
                 2,
-              )} ${(
-              height -
-              padBottom
-            ).toFixed(
-              2,
-            )} ` +
-            `L ${plotted[0].x.toFixed(
-              2,
-            )} ${(
-              height -
-              padBottom
-            ).toFixed(
-              2,
-            )} Z`;
+              )} ${point.y.toFixed(2)}`,
+          )
+          .join(" ");
 
-          return `
+        const areaPath =
+          `${linePath} ` +
+          `L ${plotted.at(-1).x.toFixed(2)} ${(height - padBottom).toFixed(
+            2,
+          )} ` +
+          `L ${plotted[0].x.toFixed(2)} ${(height - padBottom).toFixed(2)} Z`;
+
+        return `
             <div
               class="overview-trend-chart"
               role="img"
               aria-label="${esc(
-                activeMetric?.label ||
-                  "Business metric",
-              )} over ${
-                plotted.length
-              } verified period${
-                plotted.length ===
-                1
-                  ? ""
-                  : "s"
+                activeMetric?.label || "Business metric",
+              )} over ${plotted.length} verified period${
+                plotted.length === 1 ? "" : "s"
               }"
             >
               <svg
@@ -4280,19 +3163,13 @@ function overview() {
                   .map(
                     (point) => `
                       <circle
-                        cx="${point.x.toFixed(
-                          2,
-                        )}"
-                        cy="${point.y.toFixed(
-                          2,
-                        )}"
+                        cx="${point.x.toFixed(2)}"
+                        cy="${point.y.toFixed(2)}"
                         r="5"
                       ></circle>
                     `,
                   )
-                  .join(
-                    "",
-                  )}
+                  .join("")}
               </svg>
 
               <div
@@ -4303,88 +3180,45 @@ function overview() {
                     (point) => `
                       <div>
                         <span>
-                          ${esc(
-                            formatPeriod(
-                              point.point,
-                            ),
-                          )}
+                          ${esc(formatPeriod(point.point))}
                         </span>
 
                         <strong>
-                          ${esc(
-                            formatMetricValue(
-                              point.value,
-                            ),
-                          )}
+                          ${esc(formatMetricValue(point.value))}
                         </strong>
                       </div>
                     `,
                   )
-                  .join(
-                    "",
-                  )}
+                  .join("")}
               </div>
             </div>
           `;
-        })()
-      : "";
+      })()
+    : "";
 
   const businessContext = [
-    profile.industry
-      ? [
-          "Industry",
-          profile.industry,
-        ]
-      : null,
+    profile.industry ? ["Industry", profile.industry] : null,
 
-    profile.businessModel
-      ? [
-          "Business model",
-          profile.businessModel,
-        ]
-      : null,
+    profile.businessModel ? ["Business model", profile.businessModel] : null,
 
-    [
-      "Currency",
-      currency,
-    ],
+    ["Currency", currency],
 
-    [
-      "Verified periods",
-      String(
-        verifiedPeriods,
-      ),
-    ],
-  ].filter(
-    Boolean,
-  );
+    ["Verified periods", String(verifiedPeriods)],
+  ].filter(Boolean);
 
   const heroSummary =
-    primaryFinding
-      ?.item?.summary ||
-    (
-      latest
-        ? `${activeMetric?.label || "Performance"} is ${formatMetricValue(
-            latest.value,
-          )} for ${formatPeriod(
-            latest,
-          )}${
-            changePercent ===
-            null
-              ? "."
-              : `, ${
-                  changePercent >=
-                  0
-                    ? "up"
-                    : "down"
-                } ${Math.abs(
-                  changePercent,
-                ).toFixed(
-                  1,
-                )}% from the previous verified period.`
-          }`
-        : "No verified performance history is available yet. Add comparable business data to establish the first baseline."
-    );
+    primaryFinding?.item?.summary ||
+    (latest
+      ? `${activeMetric?.label || "Performance"} is ${formatMetricValue(
+          latest.value,
+        )} for ${formatPeriod(latest)}${
+          changePercent === null
+            ? "."
+            : `, ${changePercent >= 0 ? "up" : "down"} ${Math.abs(
+                changePercent,
+              ).toFixed(1)}% from the previous verified period.`
+        }`
+      : "No verified performance history is available yet. Add comparable business data to establish the first baseline.");
 
   shell(
     `
@@ -4400,38 +3234,26 @@ function overview() {
             </p>
 
             <h1>
-              ${esc(
-                businessName,
-              )}
+              ${esc(businessName)}
             </h1>
 
             <p
               class="overview-v2-summary"
             >
-              ${esc(
-                heroSummary,
-              )}
+              ${esc(heroSummary)}
             </p>
           </div>
 
           <div
             class="overview-v2-actions"
           >
-            ${link(
-              "/data",
-              `${icon(
-                "plus",
-              )} Add data`,
-              "button primary",
-            )}
+            ${link("/data", `${icon("plus")} Add data`, "button primary")}
 
             ${
               reports.length
                 ? link(
                     "/reports",
-                    `Evidence ${icon(
-                      "arrow-right",
-                    )}`,
+                    `Evidence ${icon("arrow-right")}`,
                     "button secondary",
                   )
                 : ""
@@ -4440,17 +3262,12 @@ function overview() {
         </header>
 
         ${
-          !profile ||
-          !Object.keys(
-            profile,
-          ).length
+          !profile || !Object.keys(profile).length
             ? `
               <div
                 class="notice"
               >
-                ${icon(
-                  "building-2",
-                )}
+                ${icon("building-2")}
 
                 <div>
                   <strong>
@@ -4464,11 +3281,7 @@ function overview() {
                   </p>
                 </div>
 
-                ${link(
-                  "/business",
-                  "Complete profile",
-                  "button secondary",
-                )}
+                ${link("/business", "Complete profile", "button secondary")}
               </div>
             `
             : ""
@@ -4483,39 +3296,18 @@ function overview() {
           >
             <div>
               <span>
-                ${esc(
-                  activeMetric?.label ||
-                    "Primary metric",
-                )}
+                ${esc(activeMetric?.label || "Primary metric")}
               </span>
 
-              ${icon(
-                "activity",
-              )}
+              ${icon("activity")}
             </div>
 
             <strong>
-              ${
-                latest
-                  ? esc(
-                      formatMetricValue(
-                        latest.value,
-                      ),
-                    )
-                  : "—"
-              }
+              ${latest ? esc(formatMetricValue(latest.value)) : "—"}
             </strong>
 
             <small>
-              ${
-                latest
-                  ? esc(
-                      formatPeriod(
-                        latest,
-                      ),
-                    )
-                  : "No verified period"
-              }
+              ${latest ? esc(formatPeriod(latest)) : "No verified period"}
             </small>
           </article>
 
@@ -4528,10 +3320,7 @@ function overview() {
               </span>
 
               ${icon(
-                changePercent !==
-                    null &&
-                  changePercent <
-                    0
+                changePercent !== null && changePercent < 0
                   ? "trending-down"
                   : "trending-up",
               )}
@@ -4539,25 +3328,17 @@ function overview() {
 
             <strong
               class="${
-                changePercent ===
-                null
+                changePercent === null
                   ? ""
-                  : changePercent <
-                      0
+                  : changePercent < 0
                     ? "negative"
                     : "positive"
               }"
             >
               ${
-                changePercent ===
-                null
+                changePercent === null
                   ? "—"
-                  : `${
-                      changePercent >
-                      0
-                        ? "+"
-                        : ""
-                    }${changePercent.toFixed(
+                  : `${changePercent > 0 ? "+" : ""}${changePercent.toFixed(
                       1,
                     )}%`
               }
@@ -4566,11 +3347,7 @@ function overview() {
             <small>
               ${
                 previous
-                  ? `vs ${esc(
-                      formatPeriod(
-                        previous,
-                      ),
-                    )}`
+                  ? `vs ${esc(formatPeriod(previous))}`
                   : "Needs two periods"
               }
             </small>
@@ -4584,9 +3361,7 @@ function overview() {
                 Evidence reports
               </span>
 
-              ${icon(
-                "file-check-2",
-              )}
+              ${icon("file-check-2")}
             </div>
 
             <strong>
@@ -4610,30 +3385,16 @@ function overview() {
                 Source rows
               </span>
 
-              ${icon(
-                "rows-3",
-              )}
+              ${icon("rows-3")}
             </div>
 
             <strong>
-              ${
-                latestSourceRows ===
-                null
-                  ? "—"
-                  : numberValue(
-                      latestSourceRows,
-                    )
-              }
+              ${latestSourceRows === null ? "—" : numberValue(latestSourceRows)}
             </strong>
 
             <small>
               ${validatedUploads}
-              validated upload${
-                validatedUploads ===
-                1
-                  ? ""
-                  : "s"
-              }
+              validated upload${validatedUploads === 1 ? "" : "s"}
             </small>
           </article>
         </section>
@@ -4653,20 +3414,13 @@ function overview() {
                 </p>
 
                 <h2>
-                  ${esc(
-                    activeMetric?.label ||
-                      "Verified performance",
-                  )}
+                  ${esc(activeMetric?.label || "Verified performance")}
                 </h2>
 
                 <p>
                   ${esc(
-                    activeMetric
-                      ?.dataStream
-                      ?.displayName ||
-                      activeMetric
-                        ?.dataStream
-                        ?.name ||
+                    activeMetric?.dataStream?.displayName ||
+                      activeMetric?.dataStream?.name ||
                       "Primary performance",
                   )}
                 </p>
@@ -4676,53 +3430,33 @@ function overview() {
                 class="overview-v2-period-count"
               >
                 ${points.length}
-                period${
-                  points.length ===
-                  1
-                    ? ""
-                    : "s"
-                }
+                period${points.length === 1 ? "" : "s"}
               </span>
             </div>
 
             ${
-              orderedSeries.length >
-              1
+              orderedSeries.length > 1
                 ? `
                   <div
                     class="overview-v2-metric-tabs"
                     aria-label="Choose metric"
                   >
                     ${orderedSeries
-                      .slice(
-                        0,
-                        8,
-                      )
+                      .slice(0, 8)
                       .map(
                         (item) => `
                           <button
                             type="button"
-                            data-overview-series="${esc(
-                              item.id,
-                            )}"
+                            data-overview-series="${esc(item.id)}"
                             class="${
-                              item.id ===
-                              activeMetric?.id
-                                ? "active"
-                                : ""
+                              item.id === activeMetric?.id ? "active" : ""
                             }"
                           >
-                            ${esc(
-                              item.label ||
-                                item.sourceColumn ||
-                                "Metric",
-                            )}
+                            ${esc(item.label || item.sourceColumn || "Metric")}
                           </button>
                         `,
                       )
-                      .join(
-                        "",
-                      )}
+                      .join("")}
                   </div>
                 `
                 : ""
@@ -4734,9 +3468,7 @@ function overview() {
                 <div
                   class="overview-v2-empty"
                 >
-                  ${icon(
-                    "chart-no-axes-combined",
-                  )}
+                  ${icon("chart-no-axes-combined")}
 
                   <h3>
                     No verified trend yet.
@@ -4748,11 +3480,7 @@ function overview() {
                     will appear here.
                   </p>
 
-                  ${link(
-                    "/data",
-                    "Open data workspace",
-                    "inline-link",
-                  )}
+                  ${link("/data", "Open data workspace", "inline-link")}
                 </div>
               `
             }
@@ -4773,9 +3501,7 @@ function overview() {
                   ${
                     primaryFinding
                       ? esc(
-                          primaryFinding
-                            .item
-                            .title ||
+                          primaryFinding.item.title ||
                             "What deserves attention",
                         )
                       : "What deserves attention"
@@ -4783,28 +3509,19 @@ function overview() {
                 </h2>
               </div>
 
-              ${icon(
-                "scan-search",
-              )}
+              ${icon("scan-search")}
             </div>
 
             <p
               class="overview-v2-reading-copy"
             >
               ${esc(
-                primaryFinding
-                  ?.item
-                  ?.summary ||
-                  (
-                    latest
-                      ? `BIZNORYX has verified ${points.length} period${
-                          points.length ===
-                          1
-                            ? ""
-                            : "s"
-                        } for ${activeMetric?.label || "this metric"}. Add more comparable periods to strengthen the business reading.`
-                      : "There is not enough verified history to identify a movement yet."
-                  ),
+                primaryFinding?.item?.summary ||
+                  (latest
+                    ? `BIZNORYX has verified ${points.length} period${
+                        points.length === 1 ? "" : "s"
+                      } for ${activeMetric?.label || "this metric"}. Add more comparable periods to strengthen the business reading.`
+                    : "There is not enough verified history to identify a movement yet."),
               )}
             </p>
 
@@ -4815,30 +3532,18 @@ function overview() {
                     class="overview-v2-findings"
                   >
                     ${findings
-                      .slice(
-                        0,
-                        3,
-                      )
+                      .slice(0, 3)
                       .map(
-                        ({
-                          label,
-                          kind,
-                          item,
-                        }) => `
+                        ({ label, kind, item }) => `
                           <article
                             class="overview-v2-finding ${kind}"
                           >
                             <span>
-                              ${esc(
-                                label,
-                              )}
+                              ${esc(label)}
                             </span>
 
                             <strong>
-                              ${esc(
-                                item.title ||
-                                  label,
-                              )}
+                              ${esc(item.title || label)}
                             </strong>
 
                             <p>
@@ -4850,18 +3555,14 @@ function overview() {
                           </article>
                         `,
                       )
-                      .join(
-                        "",
-                      )}
+                      .join("")}
                   </div>
                 `
                 : `
                   <div
                     class="overview-v2-no-findings"
                   >
-                    ${icon(
-                      "shield-check",
-                    )}
+                    ${icon("shield-check")}
 
                     <p>
                       No evidence-backed signal, risk or
@@ -4892,9 +3593,7 @@ function overview() {
                 </h2>
               </div>
 
-              ${icon(
-                "building-2",
-              )}
+              ${icon("building-2")}
             </div>
 
             <dl
@@ -4902,28 +3601,19 @@ function overview() {
             >
               ${businessContext
                 .map(
-                  ([
-                    label,
-                    value,
-                  ]) => `
+                  ([label, value]) => `
                     <div>
                       <dt>
-                        ${esc(
-                          label,
-                        )}
+                        ${esc(label)}
                       </dt>
 
                       <dd>
-                        ${esc(
-                          value,
-                        )}
+                        ${esc(value)}
                       </dd>
                     </div>
                   `,
                 )
-                .join(
-                  "",
-                )}
+                .join("")}
             </dl>
           </article>
 
@@ -4940,8 +3630,7 @@ function overview() {
 
                 <h2>
                   ${
-                    rejectedUploads ||
-                    schemaWarnings
+                    rejectedUploads || schemaWarnings
                       ? "Review needed"
                       : "Sources in good standing"
                   }
@@ -4949,8 +3638,7 @@ function overview() {
               </div>
 
               ${icon(
-                rejectedUploads ||
-                  schemaWarnings
+                rejectedUploads || schemaWarnings
                   ? "circle-alert"
                   : "circle-check",
               )}
@@ -5006,22 +3694,13 @@ function overview() {
     "/dashboard",
   );
 
-  document
-    .querySelectorAll(
-      "[data-overview-series]",
-    )
-    .forEach(
-      (button) => {
-        button.onclick =
-          () => {
-            activeSeriesKey =
-              button.dataset
-                .overviewSeries;
+  document.querySelectorAll("[data-overview-series]").forEach((button) => {
+    button.onclick = () => {
+      activeSeriesKey = button.dataset.overviewSeries;
 
-            overview();
-          };
-      },
-    );
+      overview();
+    };
+  });
 }
 
 let reportOptions = {};
@@ -5030,25 +3709,17 @@ let reportRequestVersion = 0;
 let currentReport;
 
 async function reports() {
-  const organizationId =
-    dashboard.shell
-      .activeOrganization?.id;
+  const organizationId = dashboard.shell.activeOrganization?.id;
 
-  if (
-    organizationId !==
-    reportOrganizationId
-  ) {
-    reportOrganizationId =
-      organizationId;
+  if (organizationId !== reportOrganizationId) {
+    reportOrganizationId = organizationId;
 
     reportOptions = {};
   }
 
-  const requestVersion =
-    ++reportRequestVersion;
+  const requestVersion = ++reportRequestVersion;
 
-  const routeVersion =
-    navigationVersion;
+  const routeVersion = navigationVersion;
 
   shell(
     reportPageHeader() +
@@ -5064,25 +3735,18 @@ async function reports() {
   );
 
   try {
-    const result =
-      await api(
-        "evidence-report?" +
-          new URLSearchParams(
-            reportOptions,
-          ),
-      );
+    const result = await api(
+      "evidence-report?" + new URLSearchParams(reportOptions),
+    );
 
     if (
-      requestVersion !==
-        reportRequestVersion ||
-      routeVersion !==
-        navigationVersion
+      requestVersion !== reportRequestVersion ||
+      routeVersion !== navigationVersion
     ) {
       return;
     }
 
-    currentReport =
-      result.report;
+    currentReport = result.report;
 
     if (!currentReport) {
       shell(
@@ -5098,11 +3762,7 @@ async function reports() {
                 column to begin.
               </p>
 
-              ${link(
-                "/data",
-                "Upload business data",
-                "button dark",
-              )}
+              ${link("/data", "Upload business data", "button dark")}
             </section>
           `,
         "/reports",
@@ -5111,39 +3771,26 @@ async function reports() {
       return;
     }
 
-    const report =
-      currentReport;
+    const report = currentReport;
 
     reportOptions = {
-      source:
-        report.sourceId,
+      source: report.sourceId,
 
-      metric:
-        report.metric.column,
+      metric: report.metric.column,
 
-      period:
-        report.current.period,
+      period: report.current.period,
 
-      compare:
-        report.previous
-          ?.period ||
-        "none",
+      compare: report.previous?.period || "none",
 
-      ...(report.controls
-        .dateColumn
+      ...(report.controls.dateColumn
         ? {
-            dateColumn:
-              report.controls
-                .dateColumn,
+            dateColumn: report.controls.dateColumn,
           }
         : {}),
 
-      ...(report.controls
-        .dimension
+      ...(report.controls.dimension
         ? {
-            dimension:
-              report.controls
-                .dimension,
+            dimension: report.controls.dimension,
           }
         : {}),
     };
@@ -5158,19 +3805,15 @@ async function reports() {
             aria-live="polite"
           ></p>
         ` +
-        renderEvidenceReport(
-          report,
-        ),
+        renderEvidenceReport(report),
       "/reports",
     );
 
     bindReportControls();
   } catch (error) {
     if (
-      requestVersion !==
-        reportRequestVersion ||
-      routeVersion !==
-        navigationVersion
+      requestVersion !== reportRequestVersion ||
+      routeVersion !== navigationVersion
     ) {
       return;
     }
@@ -5183,9 +3826,7 @@ async function reports() {
             role="alert"
           >
             <p>
-              ${esc(
-                error.message,
-              )}
+              ${esc(error.message)}
             </p>
 
             <button
@@ -5199,10 +3840,7 @@ async function reports() {
       "/reports",
     );
 
-    const retry =
-      document.querySelector(
-        "#report-retry",
-      );
+    const retry = document.querySelector("#report-retry");
 
     if (retry) {
       retry.onclick = () => {
@@ -5213,9 +3851,7 @@ async function reports() {
   }
 }
 
-function reportPageHeader(
-  ready = false,
-) {
+function reportPageHeader(ready = false) {
   return `
     <header class="er-workspace-header">
       <div>
@@ -5239,9 +3875,7 @@ function reportPageHeader(
                 title="Refresh report"
                 aria-label="Refresh report"
               >
-                ${icon(
-                  "refresh-cw",
-                )}
+                ${icon("refresh-cw")}
               </button>
 
               <button
@@ -5251,9 +3885,7 @@ function reportPageHeader(
                 title="Metric definition"
                 aria-label="Metric definition"
               >
-                ${icon(
-                  "settings-2",
-                )}
+                ${icon("settings-2")}
               </button>
 
               <button
@@ -5263,9 +3895,7 @@ function reportPageHeader(
                 title="Print report"
                 aria-label="Print report"
               >
-                ${icon(
-                  "printer",
-                )}
+                ${icon("printer")}
               </button>
 
               <button
@@ -5275,9 +3905,7 @@ function reportPageHeader(
                 title="Export comparison CSV"
                 aria-label="Export comparison CSV"
               >
-                ${icon(
-                  "table-2",
-                )}
+                ${icon("table-2")}
               </button>
 
               <button
@@ -5285,9 +3913,7 @@ function reportPageHeader(
                 type="button"
                 data-report-export="pdf"
               >
-                ${icon(
-                  "download",
-                )}
+                ${icon("download")}
                 Export PDF
               </button>
 
@@ -5296,9 +3922,7 @@ function reportPageHeader(
                 type="button"
                 data-report-export="html"
               >
-                ${icon(
-                  "file-code",
-                )}
+                ${icon("file-code")}
                 Shareable report
               </button>
             </div>
@@ -5311,103 +3935,62 @@ function reportPageHeader(
 
 function bindReportControls() {
   document
-    .querySelector(
-      "#report-controls",
-    )
-    ?.addEventListener(
-      "change",
-      async (event) => {
-        const key =
-          event.target.name;
+    .querySelector("#report-controls")
+    ?.addEventListener("change", async (event) => {
+      const key = event.target.name;
 
-        const value =
-          event.target.value;
+      const value = event.target.value;
 
-        if (key === "source") {
-          reportOptions = {
-            source: value,
-          };
-        } else if (
-          key === "metric"
-        ) {
-          reportOptions = {
-            source:
-              reportOptions.source,
+      if (key === "source") {
+        reportOptions = {
+          source: value,
+        };
+      } else if (key === "metric") {
+        reportOptions = {
+          source: reportOptions.source,
 
-            metric: value,
-          };
-        } else if (
-          key === "dateColumn"
-        ) {
-          reportOptions = {
-            source:
-              reportOptions.source,
+          metric: value,
+        };
+      } else if (key === "dateColumn") {
+        reportOptions = {
+          source: reportOptions.source,
 
-            metric:
-              reportOptions.metric,
+          metric: reportOptions.metric,
 
-            dateColumn:
-              value,
-          };
-        } else {
-          reportOptions[key] =
-            value;
+          dateColumn: value,
+        };
+      } else {
+        reportOptions[key] = value;
 
-          if (
-            key === "period"
-          ) {
-            delete reportOptions.compare;
-          }
+        if (key === "period") {
+          delete reportOptions.compare;
         }
+      }
 
-        await reports();
+      await reports();
 
-        document
-          .querySelector(
-            '#report-controls [name="' +
-              key +
-              '"]',
-          )
-          ?.focus();
-      },
-    );
+      document.querySelector('#report-controls [name="' + key + '"]')?.focus();
+    });
 
-  const refresh =
-    document.querySelector(
-      "[data-report-refresh]",
-    );
+  const refresh = document.querySelector("[data-report-refresh]");
 
   if (refresh) {
-    refresh.onclick = () =>
-      reports();
+    refresh.onclick = () => reports();
   }
 
-  const print =
-    document.querySelector(
-      "[data-report-print]",
-    );
+  const print = document.querySelector("[data-report-print]");
 
   if (print) {
     print.onclick = () => {
       const closed = [
-        ...document.querySelectorAll(
-          ".evidence-report details:not([open])",
-        ),
+        ...document.querySelectorAll(".evidence-report details:not([open])"),
       ];
 
-      closed.forEach(
-        (details) =>
-          (details.open = true),
-      );
+      closed.forEach((details) => (details.open = true));
 
       window.addEventListener(
         "afterprint",
-        () =>
-          closed.forEach(
-            (details) =>
-              (details.open =
-                false),
-          ),
+        () => closed.forEach((details) => (details.open = false)),
         {
           once: true,
         },
@@ -5417,226 +4000,125 @@ function bindReportControls() {
     };
   }
 
-  document
-    .querySelectorAll(
-      "[data-evidence]",
-    )
-    .forEach((button) => {
-      button.onclick = () =>
-        openReportDialog(
-          evidenceDialog(
-            currentReport,
-            button.dataset
-              .evidence,
-          ),
-          button,
-        );
-    });
+  document.querySelectorAll("[data-evidence]").forEach((button) => {
+    button.onclick = () =>
+      openReportDialog(
+        evidenceDialog(currentReport, button.dataset.evidence),
+        button,
+      );
+  });
 
-  document
-    .querySelectorAll(
-      "[data-definition]",
-    )
-    .forEach((button) => {
-      button.onclick = () => {
-        openReportDialog(
-          definitionDialog(
-            currentReport,
-          ),
-          button,
-        );
+  document.querySelectorAll("[data-definition]").forEach((button) => {
+    button.onclick = () => {
+      openReportDialog(definitionDialog(currentReport), button);
 
-        bindForm(
-          "#report-definition",
-          async (form) => {
-            await api(
-              "evidence-report/definition",
-              {
-                ...form,
+      bindForm("#report-definition", async (form) => {
+        await api("evidence-report/definition", {
+          ...form,
 
-                source:
-                  currentReport
-                    .sourceId,
+          source: currentReport.sourceId,
 
-                metric:
-                  currentReport
-                    .metric
-                    .column,
+          metric: currentReport.metric.column,
 
-                expectedVersion:
-                  currentReport
-                    .metric
-                    .policy
-                    ?.version ??
-                  0,
-              },
-            );
+          expectedVersion: currentReport.metric.policy?.version ?? 0,
+        });
 
-            document
-              .querySelector(
-                "#definition-dialog",
-              )
-              ?.close();
+        document.querySelector("#definition-dialog")?.close();
 
-            await reports();
+        await reports();
 
-            const status =
-              document.querySelector(
-                ".er-status",
-              );
+        const status = document.querySelector(".er-status");
 
-            if (status) {
-              status.textContent =
-                "Metric definition approved. The report has been recalculated.";
-            }
+        if (status) {
+          status.textContent =
+            "Metric definition approved. The report has been recalculated.";
+        }
+      });
+    };
+  });
+
+  document.querySelectorAll("[data-report-export]").forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+
+      const status = document.querySelector(".er-status");
+
+      if (status) {
+        status.textContent = "Preparing the report...";
+      }
+
+      try {
+        const format = button.dataset.reportExport;
+
+        const response = await fetch(
+          "/api/evidence-report?" +
+            new URLSearchParams({
+              ...reportOptions,
+              format,
+            }),
+          {
+            credentials: "same-origin",
           },
         );
-      };
-    });
 
-  document
-    .querySelectorAll(
-      "[data-report-export]",
-    )
-    .forEach((button) => {
-      button.onclick =
-        async () => {
-          button.disabled =
-            true;
-
-          const status =
-            document.querySelector(
-              ".er-status",
-            );
-
-          if (status) {
-            status.textContent =
-              "Preparing the report...";
-          }
+        if (!response.ok) {
+          let payload = {};
 
           try {
-            const format =
-              button.dataset
-                .reportExport;
-
-            const response =
-              await fetch(
-                "/api/evidence-report?" +
-                  new URLSearchParams(
-                    {
-                      ...reportOptions,
-                      format,
-                    },
-                  ),
-                {
-                  credentials:
-                    "same-origin",
-                },
-              );
-
-            if (
-              !response.ok
-            ) {
-              let payload = {};
-
-              try {
-                payload =
-                  await response.json();
-              } catch {
-                payload = {};
-              }
-
-              throw new Error(
-                payload.message ||
-                  "Export failed. Try again.",
-              );
-            }
-
-            const blob =
-              await response.blob();
-
-            const url =
-              URL.createObjectURL(
-                blob,
-              );
-
-            const anchor =
-              document.createElement(
-                "a",
-              );
-
-            anchor.href = url;
-
-            anchor.download =
-              "biznoryx-evidence-" +
-              currentReport
-                .current.period +
-              "." +
-              format;
-
-            anchor.click();
-
-            setTimeout(
-              () =>
-                URL.revokeObjectURL(
-                  url,
-                ),
-              30000,
-            );
-
-            if (status) {
-              status.textContent =
-                "Report downloaded.";
-            }
-          } catch (error) {
-            if (status) {
-              status.textContent =
-                error.message;
-            }
-          } finally {
-            button.disabled =
-              false;
+            payload = await response.json();
+          } catch {
+            payload = {};
           }
-        };
-    });
+
+          throw new Error(payload.message || "Export failed. Try again.");
+        }
+
+        const blob = await response.blob();
+
+        const url = URL.createObjectURL(blob);
+
+        const anchor = document.createElement("a");
+
+        anchor.href = url;
+
+        anchor.download =
+          "biznoryx-evidence-" + currentReport.current.period + "." + format;
+
+        anchor.click();
+
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+        if (status) {
+          status.textContent = "Report downloaded.";
+        }
+      } catch (error) {
+        if (status) {
+          status.textContent = error.message;
+        }
+      } finally {
+        button.disabled = false;
+      }
+    };
+  });
 }
 
-function openReportDialog(
-  html,
-  trigger,
-) {
-  document
-    .querySelectorAll(
-      ".er-dialog",
-    )
-    .forEach((dialog) =>
-      dialog.remove(),
-    );
+function openReportDialog(html, trigger) {
+  document.querySelectorAll(".er-dialog").forEach((dialog) => dialog.remove());
 
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    html,
-  );
+  document.body.insertAdjacentHTML("beforeend", html);
 
   window.lucide?.createIcons();
 
-  const dialog =
-    document.querySelector(
-      ".er-dialog",
-    );
+  const dialog = document.querySelector(".er-dialog");
 
   if (!dialog) {
     return;
   }
 
-  const close =
-    dialog.querySelector(
-      "[data-close-dialog]",
-    );
+  const close = dialog.querySelector("[data-close-dialog]");
 
   if (close) {
-    close.onclick = () =>
-      dialog.close();
+    close.onclick = () => dialog.close();
   }
 
   dialog.addEventListener(
@@ -5691,7 +4173,9 @@ function renderBillingHistory(payments) {
           </tr>
         </thead>
         <tbody>
-          ${payments.map((payment) => `
+          ${payments
+            .map(
+              (payment) => `
             <tr>
               <td><time datetime="${esc(payment.paidAt)}">${esc(new Date(payment.paidAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }))}</time></td>
               <td><span class="billing-payment-status">${esc(payment.status === "success" ? "Paid" : payment.status)}</span></td>
@@ -5699,7 +4183,9 @@ function renderBillingHistory(payments) {
               <td class="billing-payment-reference">${esc(payment.reference)}</td>
               <td class="billing-payment-amount">${esc(formatBillingPaymentAmount(payment.amountMinor, payment.currency))}</td>
             </tr>
-          `).join("")}
+          `,
+            )
+            .join("")}
         </tbody>
       </table>
     </div>
@@ -5720,228 +4206,137 @@ function formatBillingPaymentAmount(amountMinor, currency) {
 
 function billingPage() {
   const paymentHistoryRequest = api("billing/history");
-  const subscription =
-    dashboard?.subscription ?? null;
+  const subscription = dashboard?.subscription ?? null;
 
-  const uploads =
-    Array.isArray(dashboard?.uploads)
-      ? dashboard.uploads
-      : [];
+  const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
-  const evidenceReports =
-    Array.isArray(
-      dashboard?.evidenceReports,
-    )
-      ? dashboard.evidenceReports
-      : [];
+  const evidenceReports = Array.isArray(dashboard?.evidenceReports)
+    ? dashboard.evidenceReports
+    : [];
 
-  const status =
-    subscription?.status ||
-    "not_started";
+  const status = subscription?.status || "not_started";
 
-  const isActive =
-    status === "active";
+  const isActive = status === "active";
 
-  const isPending =
-    status === "pending_checkout";
+  const isPending = status === "pending_checkout";
 
-  const isNonRenewing =
-    status === "non_renewing";
+  const isNonRenewing = status === "non_renewing";
 
-  const providerConfigured =
-    Boolean(
-      subscription?.providerConfigured,
-    );
+  const providerConfigured = Boolean(subscription?.providerConfigured);
 
-  const isLocalReviewHost =
-    [
-      "localhost",
-      "127.0.0.1",
-      "::1",
-    ].includes(
-      location.hostname,
-    );
+  const isLocalReviewHost = ["localhost", "127.0.0.1", "::1"].includes(
+    location.hostname,
+  );
 
-  const canStartCheckout =
-    providerConfigured ||
-    isLocalReviewHost;
+  const canStartCheckout = providerConfigured || isLocalReviewHost;
 
-  const canCancelSubscription =
-    Boolean(
-      subscription?.canCancel,
-    );
+  const canCancelSubscription = Boolean(subscription?.canCancel);
 
-  const priceLabel =
-    subscription?.priceLabel ||
-    "₦40,000/mo";
+  const priceLabel = subscription?.priceLabel || "₦40,000/mo";
 
-  const planName =
-    subscription?.planName ||
-    "BIZNORYX Monthly";
+  const planName = subscription?.planName || "BIZNORYX Monthly";
 
-  const statusDetails =
-    {
-      active: {
-        label: "Active",
-        tone: "active",
-        description:
-          "Your BIZNORYX subscription is active and your paid workspace is enabled.",
-      },
-
-      pending_checkout: {
-        label: "Payment pending",
-        tone: "pending",
-        description:
-          "Your checkout has started. Complete payment to activate the subscription.",
-      },
-
-      trialing: {
-        label: "Trial",
-        tone: "trial",
-        description:
-          "Your workspace is currently using trial access.",
-      },
-
-      past_due: {
-        label: "Past due",
-        tone: "danger",
-        description:
-          "A subscription payment needs attention before paid access can continue.",
-      },
-
-      non_renewing: {
-        label: "Non-renewing",
-        tone: "warning",
-        description:
-          "Your subscription remains available until the current billing period ends.",
-      },
-
-      canceled: {
-        label: "Canceled",
-        tone: "neutral",
-        description:
-          "This subscription is no longer renewing.",
-      },
-
-      not_started: {
-        label: "Not active",
-        tone: "neutral",
-        description:
-          "Activate BIZNORYX when billing is available for this workspace.",
-      },
-    }[status] || {
-      label:
-        String(status).replaceAll(
-          "_",
-          " ",
-        ),
-
-      tone: "neutral",
-
+  const statusDetails = {
+    active: {
+      label: "Active",
+      tone: "active",
       description:
-        "Review the current subscription status.",
-    };
+        "Your BIZNORYX subscription is active and your paid workspace is enabled.",
+    },
 
-  const renewalLabel =
-    subscription?.currentPeriodEnd
-      ? new Date(
-          subscription.currentPeriodEnd,
-        ).toLocaleDateString(
-          undefined,
-          {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          },
-        )
-      : isActive
-        ? "Current period active"
-        : "After activation";
+    pending_checkout: {
+      label: "Payment pending",
+      tone: "pending",
+      description:
+        "Your checkout has started. Complete payment to activate the subscription.",
+    },
 
-  const retainedBytes =
-    uploads.reduce(
-      (total, upload) => {
-        const size =
-          Number(
-            upload?.sourceSizeBytes ??
-              upload?.sizeBytes ??
-              0,
-          );
+    trialing: {
+      label: "Trial",
+      tone: "trial",
+      description: "Your workspace is currently using trial access.",
+    },
 
-        return Number.isFinite(
-          size,
-        ) &&
-          size > 0
-          ? total + size
-          : total;
-      },
-      0,
-    );
+    past_due: {
+      label: "Past due",
+      tone: "danger",
+      description:
+        "A subscription payment needs attention before paid access can continue.",
+    },
 
-  const formatBytes =
-    (bytes) => {
-      if (
-        !Number.isFinite(
-          bytes,
-        ) ||
-        bytes <= 0
-      ) {
-        return "—";
-      }
+    non_renewing: {
+      label: "Non-renewing",
+      tone: "warning",
+      description:
+        "Your subscription remains available until the current billing period ends.",
+    },
 
-      const units = [
-        "B",
-        "KB",
-        "MB",
-        "GB",
-        "TB",
-      ];
+    canceled: {
+      label: "Canceled",
+      tone: "neutral",
+      description: "This subscription is no longer renewing.",
+    },
 
-      let value = bytes;
-      let index = 0;
+    not_started: {
+      label: "Not active",
+      tone: "neutral",
+      description:
+        "Activate BIZNORYX when billing is available for this workspace.",
+    },
+  }[status] || {
+    label: String(status).replaceAll("_", " "),
 
-      while (
-        value >= 1024 &&
-        index <
-          units.length - 1
-      ) {
-        value /= 1024;
-        index += 1;
-      }
+    tone: "neutral",
 
-      return `${
-        value >= 10 ||
-        index === 0
-          ? value.toFixed(0)
-          : value.toFixed(1)
-      } ${units[index]}`;
-    };
+    description: "Review the current subscription status.",
+  };
+
+  const renewalLabel = subscription?.currentPeriodEnd
+    ? new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : isActive
+      ? "Current period active"
+      : "After activation";
+
+  const retainedBytes = uploads.reduce((total, upload) => {
+    const size = Number(upload?.sourceSizeBytes ?? upload?.sizeBytes ?? 0);
+
+    return Number.isFinite(size) && size > 0 ? total + size : total;
+  }, 0);
+
+  const formatBytes = (bytes) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+      return "—";
+    }
+
+    const units = ["B", "KB", "MB", "GB", "TB"];
+
+    let value = bytes;
+    let index = 0;
+
+    while (value >= 1024 && index < units.length - 1) {
+      value /= 1024;
+      index += 1;
+    }
+
+    return `${
+      value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)
+    } ${units[index]}`;
+  };
 
   const featureRows = [
-    [
-      "database",
-      "Recurring business-data processing",
-    ],
+    ["database", "Recurring business-data processing"],
 
-    [
-      "line-chart",
-      "Verified metrics and historical comparisons",
-    ],
+    ["line-chart", "Verified metrics and historical comparisons"],
 
-    [
-      "file-check-2",
-      "Evidence reports backed by source data",
-    ],
+    ["file-check-2", "Evidence reports backed by source data"],
 
-    [
-      "download",
-      "Professional report exports",
-    ],
+    ["download", "Professional report exports"],
 
-    [
-      "history",
-      "Persistent business performance history",
-    ],
+    ["history", "Persistent business performance history"],
   ];
 
   shell(
@@ -5965,17 +4360,13 @@ function billingPage() {
           </div>
 
           <span
-            class="billing-status ${esc(
-              statusDetails.tone,
-            )}"
+            class="billing-status ${esc(statusDetails.tone)}"
           >
             <span
               aria-hidden="true"
             ></span>
 
-            ${esc(
-              statusDetails.label,
-            )}
+            ${esc(statusDetails.label)}
           </span>
         </header>
 
@@ -5988,9 +4379,7 @@ function billingPage() {
                 </p>
 
                 <h2>
-                  ${esc(
-                    planName,
-                  )}
+                  ${esc(planName)}
                 </h2>
               </div>
 
@@ -6001,12 +4390,7 @@ function billingPage() {
 
             <div class="billing-price-row">
               <strong>
-                ${esc(
-                  priceLabel.replace(
-                    /\/mo$/i,
-                    "",
-                  ),
-                )}
+                ${esc(priceLabel.replace(/\/mo$/i, ""))}
               </strong>
 
               <span>
@@ -6023,21 +4407,14 @@ function billingPage() {
             <div class="billing-feature-list">
               ${featureRows
                 .map(
-                  ([
-                    featureIcon,
-                    label,
-                  ]) => `
+                  ([featureIcon, label]) => `
                     <div class="billing-feature-row">
                       <span>
-                        ${icon(
-                          featureIcon,
-                        )}
+                        ${icon(featureIcon)}
                       </span>
 
                       <p>
-                        ${esc(
-                          label,
-                        )}
+                        ${esc(label)}
                       </p>
                     </div>
                   `,
@@ -6050,9 +4427,7 @@ function billingPage() {
                 isActive
                   ? `
                     <div class="billing-active-confirmation">
-                      ${icon(
-                        "circle-check",
-                      )}
+                      ${icon("circle-check")}
 
                       <div>
                         <strong>
@@ -6069,15 +4444,9 @@ function billingPage() {
                       id="cancel-billing-subscription"
                       class="secondary billing-secondary-action"
                       type="button"
-                      ${
-                        canCancelSubscription
-                          ? ""
-                          : "disabled"
-                      }
+                      ${canCancelSubscription ? "" : "disabled"}
                     >
-                      ${icon(
-                        "x-circle",
-                      )}
+                      ${icon("x-circle")}
 
                       Cancel subscription
                     </button>
@@ -6085,9 +4454,7 @@ function billingPage() {
                   : isNonRenewing
                     ? `
                       <div class="billing-active-confirmation billing-nonrenewing-confirmation">
-                        ${icon(
-                          "calendar-x",
-                        )}
+                        ${icon("calendar-x")}
 
                         <div>
                           <strong>
@@ -6099,18 +4466,23 @@ function billingPage() {
                           </span>
                         </div>
                       </div>
+
+                      <button
+                        id="renew-billing-subscription"
+                        class="primary billing-primary-action"
+                        type="button"
+                      >
+                        Resume renewal
+                      </button>
                     `
-                  : subscription &&
-                      canStartCheckout
-                    ? `
+                    : subscription && canStartCheckout
+                      ? `
                       <button
                         id="open-billing-checkout"
                         class="primary billing-primary-action"
                         type="button"
                       >
-                        ${icon(
-                          "credit-card",
-                        )}
+                        ${icon("credit-card")}
 
                         ${
                           isPending
@@ -6119,15 +4491,13 @@ function billingPage() {
                         }
                       </button>
                     `
-                    : `
+                      : `
                       <button
                         class="primary billing-primary-action"
                         type="button"
                         disabled
                       >
-                        ${icon(
-                          "lock",
-                        )}
+                        ${icon("lock")}
 
                         ${
                           subscription
@@ -6139,15 +4509,12 @@ function billingPage() {
               }
 
               <p class="billing-security-note">
-                ${icon(
-                  "shield-check",
-                )}
+                ${icon("shield-check")}
 
                 Secure checkout powered by Paystack.
                 BIZNORYX does not store your card details.
                 ${
-                  isActive &&
-                  !canCancelSubscription
+                  isActive && !canCancelSubscription
                     ? " Live support can help cancel this subscription while Paystack identity sync completes."
                     : ""
                 }
@@ -6168,15 +4535,11 @@ function billingPage() {
                   </h2>
                 </div>
 
-                ${icon(
-                  "credit-card",
-                )}
+                ${icon("credit-card")}
               </div>
 
               <p class="billing-status-description">
-                ${esc(
-                  statusDetails.description,
-                )}
+                ${esc(statusDetails.description)}
               </p>
 
               <dl class="billing-summary-list">
@@ -6186,9 +4549,7 @@ function billingPage() {
                   </dt>
 
                   <dd>
-                    ${esc(
-                      statusDetails.label,
-                    )}
+                    ${esc(statusDetails.label)}
                   </dd>
                 </div>
 
@@ -6214,9 +4575,7 @@ function billingPage() {
                   </dt>
 
                   <dd>
-                    ${esc(
-                      renewalLabel,
-                    )}
+                    ${esc(renewalLabel)}
                   </dd>
                 </div>
 
@@ -6226,10 +4585,7 @@ function billingPage() {
                   </dt>
 
                   <dd>
-                    ${esc(
-                      subscription?.interval ||
-                        "monthly",
-                    )}
+                    ${esc(subscription?.interval || "monthly")}
                   </dd>
                 </div>
               </dl>
@@ -6247,9 +4603,7 @@ function billingPage() {
                   </h2>
                 </div>
 
-                ${icon(
-                  "bar-chart-3",
-                )}
+                ${icon("bar-chart-3")}
               </div>
 
               <div class="billing-usage-grid">
@@ -6287,11 +4641,7 @@ function billingPage() {
                   </span>
 
                   <strong>
-                    ${esc(
-                      formatBytes(
-                        retainedBytes,
-                      ),
-                    )}
+                    ${esc(formatBytes(retainedBytes))}
                   </strong>
 
                   <small>
@@ -6315,9 +4665,7 @@ function billingPage() {
               </h2>
             </div>
 
-            ${icon(
-              "receipt",
-            )}
+            ${icon("receipt")}
           </div>
 
           <div id="billing-history-content" aria-live="polite">
@@ -6334,8 +4682,7 @@ function billingPage() {
         ${
           isLocalReviewHost &&
           !providerConfigured &&
-          subscription
-            ?.checkoutReference &&
+          subscription?.checkoutReference &&
           !isActive
             ? `
               <section class="billing-test-panel">
@@ -6360,9 +4707,7 @@ function billingPage() {
                   class="secondary"
                   type="button"
                 >
-                  ${icon(
-                    "check",
-                  )}
+                  ${icon("check")}
 
                   Complete test checkout
                 </button>
@@ -6393,9 +4738,7 @@ function billingPage() {
                 <h2
                   id="billing-dialog-title"
                 >
-                  Activate ${esc(
-                    planName,
-                  )}
+                  Activate ${esc(planName)}
                 </h2>
               </div>
 
@@ -6405,9 +4748,7 @@ function billingPage() {
                 data-billing-dialog-close
                 aria-label="Close billing confirmation"
               >
-                ${icon(
-                  "x",
-                )}
+                ${icon("x")}
               </button>
             </div>
 
@@ -6418,33 +4759,22 @@ function billingPage() {
                 </span>
 
                 <strong>
-                  ${esc(
-                    priceLabel,
-                  )}
+                  ${esc(priceLabel)}
                 </strong>
               </div>
 
-              ${icon(
-                "shield-check",
-              )}
+              ${icon("shield-check")}
             </div>
 
             <div class="billing-dialog-features">
               ${featureRows
                 .map(
-                  ([
-                    ,
-                    label,
-                  ]) => `
+                  ([, label]) => `
                     <div>
-                      ${icon(
-                        "check",
-                      )}
+                      ${icon("check")}
 
                       <span>
-                        ${esc(
-                          label,
-                        )}
+                        ${esc(label)}
                       </span>
                     </div>
                   `,
@@ -6480,9 +4810,7 @@ function billingPage() {
                 class="primary"
                 type="button"
               >
-                ${icon(
-                  "lock",
-                )}
+                ${icon("lock")}
 
                 Continue to payment
               </button>
@@ -6494,9 +4822,7 @@ function billingPage() {
     "/billing",
   );
 
-  const historyContent = document.querySelector(
-    "#billing-history-content",
-  );
+  const historyContent = document.querySelector("#billing-history-content");
 
   paymentHistoryRequest
     .then(({ payments }) => {
@@ -6513,299 +4839,226 @@ function billingPage() {
       }
     });
 
-  const dialog =
-    document.querySelector(
-      "#billing-checkout-dialog",
-    );
+  const dialog = document.querySelector("#billing-checkout-dialog");
 
-  const openCheckout =
-    document.querySelector(
-      "#open-billing-checkout",
-    );
+  const openCheckout = document.querySelector("#open-billing-checkout");
 
-  const confirmCheckout =
-    document.querySelector(
-      "#confirm-billing-checkout",
-    );
+  const confirmCheckout = document.querySelector("#confirm-billing-checkout");
 
-  const cancelSubscription =
-    document.querySelector(
-      "#cancel-billing-subscription",
-    );
+  const cancelSubscription = document.querySelector(
+    "#cancel-billing-subscription",
+  );
 
-  const pageMessage =
-    document.querySelector(
-      "#billing-page-message",
-    );
+  const renewSubscription = document.querySelector(
+    "#renew-billing-subscription",
+  );
 
-  const checkoutMessage =
-    () =>
-      document.querySelector(
-        "#billing-checkout-message",
-      );
+  const pageMessage = document.querySelector("#billing-page-message");
 
-  const closeDialog =
-    () => {
-      if (
-        dialog?.open
-      ) {
-        dialog.close();
-      }
-    };
+  const checkoutMessage = () =>
+    document.querySelector("#billing-checkout-message");
 
-  document
-    .querySelectorAll(
-      "[data-billing-dialog-close]",
-    )
-    .forEach(
-      (button) => {
-        button.onclick =
-          closeDialog;
-      },
-    );
+  const closeDialog = () => {
+    if (dialog?.open) {
+      dialog.close();
+    }
+  };
+
+  document.querySelectorAll("[data-billing-dialog-close]").forEach((button) => {
+    button.onclick = closeDialog;
+  });
 
   if (dialog) {
-    dialog.addEventListener(
-      "click",
-      (event) => {
-        if (
-          event.target ===
-          dialog
-        ) {
-          closeDialog();
-        }
-      },
-    );
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) {
+        closeDialog();
+      }
+    });
   }
 
-  if (
-    openCheckout &&
-    dialog
-  ) {
-    openCheckout.onclick =
-      () => {
-        const output =
-          checkoutMessage();
+  if (openCheckout && dialog) {
+    openCheckout.onclick = () => {
+      const output = checkoutMessage();
 
-        if (output) {
-          output.textContent =
-            "";
+      if (output) {
+        output.textContent = "";
 
-          output.classList.remove(
-            "error-text",
-          );
-        }
+        output.classList.remove("error-text");
+      }
 
-        if (
-          !dialog.open
-        ) {
-          dialog.showModal();
-        }
-      };
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    };
   }
 
   if (confirmCheckout) {
-    confirmCheckout.onclick =
-      async () => {
-        const output =
-          checkoutMessage();
+    confirmCheckout.onclick = async () => {
+      const output = checkoutMessage();
 
-        confirmCheckout.disabled =
-          true;
+      confirmCheckout.disabled = true;
 
-        if (output) {
-          output.textContent =
-            "Preparing secure checkout...";
+      if (output) {
+        output.textContent = "Preparing secure checkout...";
 
-          output.classList.remove(
-            "error-text",
-          );
+        output.classList.remove("error-text");
+      }
+
+      try {
+        const result = await api("billing/checkout", {});
+
+        if (!result?.checkout?.reference) {
+          throw new Error("Billing checkout did not return a valid reference.");
         }
 
-        try {
-          const result =
-            await api(
-              "billing/checkout",
-              {},
-            );
+        billingCheckoutReference = result.checkout.reference;
 
-          if (
-            !result?.checkout
-              ?.reference
-          ) {
-            throw new Error(
-              "Billing checkout did not return a valid reference.",
-            );
+        if (result.checkout.provider === "paystack") {
+          if (!result.checkout.authorizationUrl) {
+            throw new Error("Paystack checkout did not return a payment URL.");
           }
 
-          billingCheckoutReference =
-            result.checkout.reference;
-
-          if (
-            result.checkout
-              .provider ===
-            "paystack"
-          ) {
-            if (
-              !result.checkout
-                .authorizationUrl
-            ) {
-              throw new Error(
-                "Paystack checkout did not return a payment URL.",
-              );
-            }
-
-            if (output) {
-              output.textContent =
-                "Redirecting to secure payment...";
-            }
-
-            location.href =
-              result.checkout
-                .authorizationUrl;
-
-            return;
-          }
-
-          closeDialog();
-
-          dashboard =
-            await api(
-              "dashboard",
-            );
-
-          billingPage();
-        } catch (error) {
           if (output) {
-            output.textContent =
-              error?.message ||
-              "Checkout could not be started.";
-
-            output.classList.add(
-              "error-text",
-            );
+            output.textContent = "Redirecting to secure payment...";
           }
-        } finally {
-          confirmCheckout.disabled =
-            false;
-        }
-      };
-  }
 
-  if (cancelSubscription) {
-    cancelSubscription.onclick =
-      async () => {
-        const confirmed =
-          window.confirm(
-            "Cancel this BIZNORYX subscription? Paid access remains available until the current billing period ends.",
-          );
+          location.href = result.checkout.authorizationUrl;
 
-        if (!confirmed) {
           return;
         }
 
-        cancelSubscription.disabled =
-          true;
+        closeDialog();
 
-        if (pageMessage) {
-          pageMessage.textContent =
-            "Canceling subscription...";
+        dashboard = await api("dashboard");
 
-          pageMessage.classList.remove(
-            "error-text",
-          );
+        billingPage();
+      } catch (error) {
+        if (output) {
+          output.textContent =
+            error?.message || "Checkout could not be started.";
+
+          output.classList.add("error-text");
         }
-
-        try {
-          await api(
-            "billing/cancel",
-            {},
-          );
-
-          dashboard =
-            await api(
-              "dashboard",
-            );
-
-          billingPage();
-        } catch (error) {
-          if (pageMessage) {
-            pageMessage.textContent =
-              error?.message ||
-              "Subscription could not be canceled.";
-
-            pageMessage.classList.add(
-              "error-text",
-            );
-          }
-        } finally {
-          cancelSubscription.disabled =
-            false;
-        }
-      };
+      } finally {
+        confirmCheckout.disabled = false;
+      }
+    };
   }
 
-  const complete =
-    document.querySelector(
-      "#complete-review-checkout",
-    );
+  if (renewSubscription) {
+    renewSubscription.onclick = async () => {
+      const confirmed = window.confirm(
+        "Resume automatic renewal for this BIZNORYX subscription?",
+      );
 
-  if (complete) {
-    complete.onclick =
-      async () => {
-        complete.disabled =
-          true;
+      if (!confirmed) {
+        return;
+      }
+
+      renewSubscription.disabled = true;
+
+      if (pageMessage) {
+        pageMessage.textContent =
+          "Restoring automatic renewal with Paystack...";
+
+        pageMessage.classList.remove("error-text");
+      }
+
+      try {
+        await api("billing/renew", {});
+
+        dashboard = await api("dashboard");
+
+        billingPage();
+      } catch (error) {
+        renewSubscription.disabled = false;
 
         if (pageMessage) {
           pageMessage.textContent =
-            "Completing test checkout...";
+            error?.message || "Subscription renewal could not be restored.";
 
-          pageMessage.classList.remove(
-            "error-text",
-          );
+          pageMessage.classList.add("error-text");
+        }
+      }
+    };
+  }
+
+  if (cancelSubscription) {
+    cancelSubscription.onclick = async () => {
+      const confirmed = window.confirm(
+        "Cancel this BIZNORYX subscription? Paid access remains available until the current billing period ends.",
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      cancelSubscription.disabled = true;
+
+      if (pageMessage) {
+        pageMessage.textContent = "Canceling subscription...";
+
+        pageMessage.classList.remove("error-text");
+      }
+
+      try {
+        await api("billing/cancel", {});
+
+        dashboard = await api("dashboard");
+
+        billingPage();
+      } catch (error) {
+        if (pageMessage) {
+          pageMessage.textContent =
+            error?.message || "Subscription could not be canceled.";
+
+          pageMessage.classList.add("error-text");
+        }
+      } finally {
+        cancelSubscription.disabled = false;
+      }
+    };
+  }
+
+  const complete = document.querySelector("#complete-review-checkout");
+
+  if (complete) {
+    complete.onclick = async () => {
+      complete.disabled = true;
+
+      if (pageMessage) {
+        pageMessage.textContent = "Completing test checkout...";
+
+        pageMessage.classList.remove("error-text");
+      }
+
+      try {
+        const reference =
+          billingCheckoutReference ||
+          dashboard?.subscription?.checkoutReference;
+
+        if (!reference) {
+          throw new Error("No checkout reference is available.");
         }
 
-        try {
-          const reference =
-            billingCheckoutReference ||
-            dashboard
-              ?.subscription
-              ?.checkoutReference;
+        await api("billing/review-complete", {
+          reference,
+        });
 
-          if (!reference) {
-            throw new Error(
-              "No checkout reference is available.",
-            );
-          }
+        dashboard = await api("dashboard");
 
-          await api(
-            "billing/review-complete",
-            {
-              reference,
-            },
-          );
+        billingPage();
+      } catch (error) {
+        if (pageMessage) {
+          pageMessage.textContent =
+            error?.message || "Test checkout could not be completed.";
 
-          dashboard =
-            await api(
-              "dashboard",
-            );
-
-          billingPage();
-        } catch (error) {
-          if (pageMessage) {
-            pageMessage.textContent =
-              error?.message ||
-              "Test checkout could not be completed.";
-
-            pageMessage.classList.add(
-              "error-text",
-            );
-          }
-        } finally {
-          complete.disabled =
-            false;
+          pageMessage.classList.add("error-text");
         }
-      };
+      } finally {
+        complete.disabled = false;
+      }
+    };
   }
 }
 
@@ -6831,41 +5084,21 @@ async function activity() {
     "/activity",
   );
 
-  let auditTrail =
-    [];
+  let auditTrail = [];
 
-  let loadError =
-    null;
+  let loadError = null;
 
   try {
-    const result =
-      await api(
-        "activity",
-      );
+    const result = await api("activity");
 
-    auditTrail =
-      Array.isArray(
-        result?.events,
-      )
-        ? result.events
-        : [];
+    auditTrail = Array.isArray(result?.events) ? result.events : [];
   } catch (error) {
-    loadError =
-      error;
+    loadError = error;
   }
 
-  const currentPath =
-    (
-      location.hash
-        .slice(1)
-        .split("?")[0] ||
-      "/"
-    );
+  const currentPath = location.hash.slice(1).split("?")[0] || "/";
 
-  if (
-    currentPath !==
-    "/activity"
-  ) {
+  if (currentPath !== "/activity") {
     return;
   }
 
@@ -6927,23 +5160,15 @@ async function activity() {
                         (item) => `
                           <tr>
                             <td>
-                              ${esc(
-                                item.label,
-                              )}
+                              ${esc(item.label)}
                             </td>
 
                             <td>
-                              ${esc(
-                                item.detail,
-                              )}
+                              ${esc(item.detail)}
                             </td>
 
                             <td>
-                              ${esc(
-                                new Date(
-                                  item.createdAt,
-                                ).toLocaleString(),
-                              )}
+                              ${esc(new Date(item.createdAt).toLocaleString())}
                             </td>
                           </tr>
                         `,
@@ -6971,16 +5196,12 @@ async function activity() {
     "/activity",
   );
 
-  const retry =
-    document.querySelector(
-      "#retry-activity",
-    );
+  const retry = document.querySelector("#retry-activity");
 
   if (retry) {
-    retry.onclick =
-      () => {
-        activity();
-      };
+    retry.onclick = () => {
+      activity();
+    };
   }
 }
 
@@ -6996,10 +5217,7 @@ function showError(error) {
       </h1>
 
       <p>
-        ${esc(
-          error?.message ||
-            "An unexpected error occurred.",
-        )}
+        ${esc(error?.message || "An unexpected error occurred.")}
       </p>
 
       <button
@@ -7010,51 +5228,28 @@ function showError(error) {
         Try again
       </button>
 
-      ${link(
-        "/sign-in",
-        "Return to sign in",
-        "quiet-link",
-      )}
+      ${link("/sign-in", "Return to sign in", "quiet-link")}
     </main>
   `);
 
-  const retry =
-    document.querySelector(
-      "#retry",
-    );
+  const retry = document.querySelector("#retry");
 
   if (retry) {
-    retry.onclick = () =>
-      route();
+    retry.onclick = () => route();
   }
 }
 
 async function route() {
-  const version =
-    ++navigationVersion;
+  const version = ++navigationVersion;
 
-  const rawPath =
-    location.hash.slice(1) ||
-    "/";
+  const rawPath = location.hash.slice(1) || "/";
 
-  const [
-    path,
-    hashQuery = "",
-  ] =
-    rawPath.split("?");
+  const [path, hashQuery = ""] = rawPath.split("?");
 
-  const params =
-    new URLSearchParams(
-      hashQuery,
-    );
+  const params = new URLSearchParams(hashQuery);
 
-  if (
-    params.get("checkout")
-  ) {
-    billingCheckoutReference =
-      params.get(
-        "checkout",
-      );
+  if (params.get("checkout")) {
+    billingCheckoutReference = params.get("checkout");
   }
 
   try {
@@ -7077,10 +5272,7 @@ async function route() {
       return publicPage(path);
     }
 
-    if (
-      path ===
-      "/verify-email"
-    ) {
+    if (path === "/verify-email") {
       return verifyEmail();
     }
 
@@ -7088,129 +5280,69 @@ async function route() {
       return passwordReset();
     }
 
-    if (
-      path ===
-        "/sign-in" ||
-      path ===
-        "/register"
-    ) {
-      return auth(
-        path ===
-          "/register",
-      );
+    if (path === "/sign-in" || path === "/register") {
+      return auth(path === "/register");
     }
 
-    if (
-      !session
-        ?.authenticated
-    ) {
-      return go(
-        "/sign-in",
-      );
+    if (!session?.authenticated) {
+      return go("/sign-in");
     }
 
-    if (
-      session.shell
-        .state ===
-      "empty"
-    ) {
+    if (session.shell.state === "empty") {
       return business();
     }
 
-    app.setAttribute(
-      "aria-busy",
-      "true",
-    );
+    app.setAttribute("aria-busy", "true");
 
-    const nextDashboard =
-      await api(
-        "dashboard",
-      );
+    const nextDashboard = await api("dashboard");
 
-    if (
-      version !==
-      navigationVersion
-    ) {
+    if (version !== navigationVersion) {
       return;
     }
 
-    dashboard =
-      nextDashboard;
+    dashboard = nextDashboard;
 
-    if (
-      path ===
-      "/business"
-    ) {
+    if (path === "/business") {
       business();
-    } else if (
-      path ===
-      "/data"
-    ) {
+    } else if (path === "/data") {
       dataPage();
-    } else if (
-      path ===
-      "/reports"
-    ) {
+    } else if (path === "/reports") {
       await reports();
-    } else if (
-      path ===
-      "/billing"
-    ) {
+    } else if (path === "/billing") {
       billingPage();
-    } else if (
-      path ===
-      "/activity"
-    ) {
+    } else if (path === "/activity") {
       await activity();
     } else {
       overview();
     }
 
-    window.scrollTo(
-      0,
-      0,
-    );
+    window.scrollTo(0, 0);
   } catch (error) {
-    if (
-      version !==
-      navigationVersion
-    ) {
+    if (version !== navigationVersion) {
       return;
     }
 
-    if (
-      error.status ===
-      401
-    ) {
+    if (error.status === 401) {
       session = null;
       dashboard = null;
       validation = null;
       csrfToken = null;
 
-      return go(
-        "/sign-in",
-      );
+      return go("/sign-in");
     }
 
     showError(error);
   } finally {
-    app.removeAttribute(
-      "aria-busy",
-    );
+    app.removeAttribute("aria-busy");
   }
 }
 
-window.addEventListener(
-  "hashchange",
-  route,
-);
+window.addEventListener("hashchange", route);
 
 try {
-  session =
-    await api("session");
+  session = await api("session");
 
-  csrfToken =
-    session.csrfToken;
+  csrfToken = session.csrfToken;
 } catch {
   session = null;
 }

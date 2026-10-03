@@ -49,6 +49,7 @@ import {
   monthlyPlanFromEnv,
   planLabel,
   disablePaystackSubscription,
+  enablePaystackSubscription,
   resolvePaystackSubscriptionIdentity,
   verifyPaystackTransaction,
   verifyPaystackWebhookSignature,
@@ -312,6 +313,55 @@ async function routeRequest({ request, response, runtime }) {
 
   applySecurityHeaders(response, runtime.production);
 
+  const forwardedProto = String(request.headers["x-forwarded-proto"] ?? "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+
+  if (runtime.production && forwardedProto === "http") {
+    const configuredOrigin =
+      cleanEnvironmentValue(process.env.BIZNORYX_PUBLIC_URL) ??
+      cleanEnvironmentValue(process.env.PUBLIC_APP_URL);
+
+    let secureBase;
+
+    if (configuredOrigin) {
+      secureBase = new URL(configuredOrigin);
+
+      secureBase.protocol = "https:";
+
+      secureBase.pathname = "/";
+
+      secureBase.search = "";
+      secureBase.hash = "";
+    } else {
+      const forwardedHost = String(
+        request.headers["x-forwarded-host"] ?? request.headers.host ?? "",
+      )
+        .split(",")[0]
+        .trim();
+
+      if (!/^[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(forwardedHost)) {
+        throw new AuthError(
+          "A valid public host is required.",
+          "VALIDATION_FAILED",
+        );
+      }
+
+      secureBase = new URL("https://" + forwardedHost);
+    }
+
+    const target = new URL(request.url ?? "/", secureBase);
+
+    response.writeHead(308, {
+      Location: target.toString(),
+    });
+
+    response.end();
+
+    return;
+  }
+
   if (url.pathname === "/healthz" && request.method === "GET") {
     const health = runtime.healthChecks.liveness();
 
@@ -546,9 +596,7 @@ async function routeRequest({ request, response, runtime }) {
         throw error;
       }
 
-      process.stderr.write(
-        "Password reset email delivery failed.\n",
-      );
+      process.stderr.write("Password reset email delivery failed.\n");
     }
 
     sendJson(response, 202, {
@@ -970,10 +1018,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  if (
-    url.pathname === "/api/billing/history" &&
-    request.method === "GET"
-  ) {
+  if (url.pathname === "/api/billing/history" && request.method === "GET") {
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1002,7 +1047,10 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
-    if (!runtime.billing || typeof runtime.billing.listPayments !== "function") {
+    if (
+      !runtime.billing ||
+      typeof runtime.billing.listPayments !== "function"
+    ) {
       throw new AuthError(
         "Billing history is not available.",
         "SERVICE_UNAVAILABLE",
@@ -1022,10 +1070,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  if (
-    url.pathname === "/api/billing/cancel" &&
-    request.method === "POST"
-  ) {
+  if (url.pathname === "/api/billing/cancel" && request.method === "POST") {
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1041,8 +1086,7 @@ async function routeRequest({ request, response, runtime }) {
       runtime,
       organizationId,
       actorUserId: context.user.id,
-      message:
-        "Organization owner access is required to cancel billing.",
+      message: "Organization owner access is required to cancel billing.",
     });
 
     if (
@@ -1077,47 +1121,138 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
-    let subscriptionCode =
-      subscription.providerSubscriptionCode;
+    let subscriptionCode = subscription.providerSubscriptionCode;
 
-    let emailToken =
-      subscription.providerEmailToken;
+    let emailToken = subscription.providerEmailToken;
 
-    if (
-      !subscriptionCode ||
-      !emailToken
-    ) {
-      const recovered =
-        await resolvePaystackSubscriptionIdentity({
-          reference:
-            subscription.checkoutReference,
+    if (!subscriptionCode || !emailToken) {
+      const recovered = await resolvePaystackSubscriptionIdentity({
+        reference: subscription.checkoutReference,
 
-          organizationId,
+        organizationId,
 
-          planCode:
-            monthlyPlanFromEnv().planCode,
+        planCode: monthlyPlanFromEnv().planCode,
 
-          fetchImpl:
-            runtime.paystackFetch,
-        });
+        fetchImpl: runtime.paystackFetch,
+      });
 
-      subscriptionCode =
-        recovered.subscriptionCode;
+      subscriptionCode = recovered.subscriptionCode;
 
-      emailToken =
-        recovered.emailToken;
+      emailToken = recovered.emailToken;
     }
 
     await disablePaystackSubscription({
       subscriptionCode,
       emailToken,
 
-      fetchImpl:
-        runtime.paystackFetch,
+      fetchImpl: runtime.paystackFetch,
     });
 
     const updated = await runtime.billing.cancelSubscription({
       organizationId,
+      actorUserId: context.user.id,
+    });
+
+    sendJson(response, 200, {
+      subscription: publicSubscription(updated),
+    });
+
+    return;
+  }
+
+  /*
+   * ==================================================
+   * BILLING — RESUME RENEWAL
+   * ==================================================
+   */
+
+  if (url.pathname === "/api/billing/renew" && request.method === "POST") {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: true,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select an organization before renewing billing.",
+    );
+
+    await requireOrganizationManager({
+      runtime,
+      organizationId,
+
+      actorUserId: context.user.id,
+
+      message: "Organization owner access is required to renew billing.",
+    });
+
+    if (
+      !runtime.billing ||
+      typeof runtime.billing.ensureSubscription !== "function" ||
+      typeof runtime.billing.renewSubscription !== "function"
+    ) {
+      throw new AuthError(
+        "Billing renewal is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const subscription = await runtime.billing.ensureSubscription({
+      organizationId,
+
+      actorUserId: context.user.id,
+
+      provider: "paystack",
+    });
+
+    if (subscription.status === "active") {
+      sendJson(response, 200, {
+        subscription: publicSubscription(subscription),
+      });
+
+      return;
+    }
+
+    if (subscription.status !== "non_renewing") {
+      throw new AuthError(
+        "Only a non-renewing subscription can resume automatic renewal.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    let subscriptionCode = subscription.providerSubscriptionCode;
+
+    let emailToken = subscription.providerEmailToken;
+
+    if (!subscriptionCode || !emailToken) {
+      const recovered = await resolvePaystackSubscriptionIdentity({
+        reference: subscription.checkoutReference,
+
+        organizationId,
+
+        planCode: monthlyPlanFromEnv().planCode,
+
+        includeInactive: true,
+
+        fetchImpl: runtime.paystackFetch,
+      });
+
+      subscriptionCode = recovered.subscriptionCode;
+
+      emailToken = recovered.emailToken;
+    }
+
+    await enablePaystackSubscription({
+      subscriptionCode,
+      emailToken,
+
+      fetchImpl: runtime.paystackFetch,
+    });
+
+    const updated = await runtime.billing.renewSubscription({
+      organizationId,
+
       actorUserId: context.user.id,
     });
 
@@ -2111,6 +2246,10 @@ function sessionTokenFromRequest(request) {
 function applySecurityHeaders(response, production) {
   response.setHeader("Referrer-Policy", "same-origin");
 
+  if (production) {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
+
   response.setHeader("X-Frame-Options", "DENY");
 
   response.setHeader("X-Content-Type-Options", "nosniff");
@@ -2231,9 +2370,7 @@ async function requireOrganizationManager({
     );
   }
 
-  const memberships = await runtime.identity.activeMemberships(
-    actorUserId,
-  );
+  const memberships = await runtime.identity.activeMemberships(actorUserId);
 
   const activeMembership = memberships.find(
     (membership) => membership.organizationId === organizationId,
@@ -2245,8 +2382,7 @@ async function requireOrganizationManager({
     )
   ) {
     throw new AuthError(
-      message ||
-        "Organization owner access is required.",
+      message || "Organization owner access is required.",
       "ORG_ACCESS_DENIED",
     );
   }
@@ -2301,20 +2437,13 @@ function publicSubscription(subscription) {
     canCancel:
       ["active", "past_due"].includes(subscription.status) &&
       Boolean(
-        (
-          subscription.providerSubscriptionCode &&
-          subscription.providerEmailToken
-        ) ||
-          (
-            subscription.checkoutReference &&
-            isProductionPaystackConfigured(
-              configuredPlan,
-            )
-          ),
+        (subscription.providerSubscriptionCode &&
+          subscription.providerEmailToken) ||
+        (subscription.checkoutReference &&
+          isProductionPaystackConfigured(configuredPlan)),
       ),
 
-    cancellationRequestedAt:
-      subscription.cancellationRequestedAt,
+    cancellationRequestedAt: subscription.cancellationRequestedAt,
 
     checkoutReference: subscription.checkoutReference,
 
@@ -2574,10 +2703,7 @@ async function verifyAndActivateBillingCheckout({
       actorUserId,
     },
     async (client) => {
-      const providerIdentity =
-        paystackSubscriptionIdentity(
-          verified,
-        );
+      const providerIdentity = paystackSubscriptionIdentity(verified);
 
       await runtime.billing.applySubscriptionAction(client, {
         organizationId,
@@ -2726,10 +2852,7 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
 
     action,
 
-    ...paystackSubscriptionIdentity(
-      data,
-      verified,
-    ),
+    ...paystackSubscriptionIdentity(data, verified),
   });
 
   return {
@@ -2772,40 +2895,35 @@ function paystackSubscriptionIdentity(...sources) {
     }
 
     const subscription =
-      source.subscription &&
-      typeof source.subscription === "object"
+      source.subscription && typeof source.subscription === "object"
         ? source.subscription
         : {};
 
     const customer =
-      source.customer &&
-      typeof source.customer === "object"
+      source.customer && typeof source.customer === "object"
         ? source.customer
         : {};
 
-    const providerSubscriptionCode =
-      cleanEnvironmentValue(
-        source.subscription_code ??
-          subscription.subscription_code ??
-          source.subscriptionCode ??
-          subscription.subscriptionCode,
-      );
+    const providerSubscriptionCode = cleanEnvironmentValue(
+      source.subscription_code ??
+        subscription.subscription_code ??
+        source.subscriptionCode ??
+        subscription.subscriptionCode,
+    );
 
-    const providerEmailToken =
-      cleanEnvironmentValue(
-        source.email_token ??
-          subscription.email_token ??
-          source.emailToken ??
-          subscription.emailToken,
-      );
+    const providerEmailToken = cleanEnvironmentValue(
+      source.email_token ??
+        subscription.email_token ??
+        source.emailToken ??
+        subscription.emailToken,
+    );
 
-    const providerCustomerCode =
-      cleanEnvironmentValue(
-        source.customer_code ??
-          customer.customer_code ??
-          source.customerCode ??
-          customer.customerCode,
-      );
+    const providerCustomerCode = cleanEnvironmentValue(
+      source.customer_code ??
+        customer.customer_code ??
+        source.customerCode ??
+        customer.customerCode,
+    );
 
     if (
       providerSubscriptionCode ||
@@ -3238,11 +3356,8 @@ function objectStorageFromEnvironment(env = process.env) {
   });
 }
 
-function mapIngestionResult(result, {
-  dataKind = "",
-} = {}) {
-  const validationResults =
-    result.validationResults ?? [];
+function mapIngestionResult(result, { dataKind = "" } = {}) {
+  const validationResults = result.validationResults ?? [];
 
   return {
     id: result.ingestionRun.id,
@@ -3257,12 +3372,9 @@ function mapIngestionResult(result, {
 
     dataSeries: result.dataStream.displayName,
 
-    dataKind:
-      dataKind ||
-      result.dataStream.displayName,
+    dataKind: dataKind || result.dataStream.displayName,
 
-    sourceFormat:
-      "CSV file",
+    sourceFormat: "CSV file",
 
     status: result.ingestionRun.status,
 
@@ -3283,15 +3395,11 @@ function mapIngestionResult(result, {
     issues: validationResults.map((item) => ({
       row: null,
 
-      severity:
-        item.severity,
+      severity: item.severity,
 
-      code:
-        item.code,
+      code: item.code,
 
-      message:
-        item.message ||
-        "Validation issue",
+      message: item.message || "Validation issue",
     })),
 
     createdAt: result.ingestionRun.createdAt,
@@ -3310,8 +3418,7 @@ function mapDashboardUpload(upload) {
 
     dataSeries: upload.dataStream.displayName,
 
-    dataKind:
-      upload.dataStream.displayName,
+    dataKind: upload.dataStream.displayName,
 
     sourceFormat:
       upload.rawObject.contentType === "text/csv"
@@ -3342,24 +3449,15 @@ function mapDashboardUpload(upload) {
   };
 }
 
-function normalizeUploadDataSeries({
-  dataSeries,
-  dataKind,
-}) {
-  const series =
-    cleanRequestText(dataSeries);
+function normalizeUploadDataSeries({ dataSeries, dataKind }) {
+  const series = cleanRequestText(dataSeries);
 
-  const kind =
-    cleanRequestText(dataKind);
+  const kind = cleanRequestText(dataKind);
 
   if (
     kind &&
     kind !== "Sales performance" &&
-    [
-      "",
-      "primary performance",
-      "business data",
-    ].includes(series.toLowerCase())
+    ["", "primary performance", "business data"].includes(series.toLowerCase())
   ) {
     return kind || "Business data";
   }

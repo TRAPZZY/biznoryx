@@ -1,187 +1,333 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-  <title>Help & Support | BIZNORYX</title>
+  <head>
+    <meta charset="utf-8" />
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    body {
-      margin: 0;
-      color: #17211b;
-      background: #f5f8f5;
-      font-family:
-        Arial,
-        sans-serif;
-    }
+    <meta
+      name="description"
+      content="BIZNORYX Help Center for uploads, evidence reports, billing, account access and workspace troubleshooting."
+    />
 
-    main {
-      width: min(1040px, calc(100% - 32px));
-      margin: auto;
-      padding: 52px 0 80px;
-    }
+    <title>Help Center | BIZNORYX</title>
 
-    .brand {
-      color: #17211b;
-      font-size: 26px;
-      font-weight: 800;
-      text-decoration: none;
-    }
+    <link rel="stylesheet" href="/help.css" />
+  </head>
 
-    .brand span,
-    .eyebrow {
-      color: #19764f;
-    }
+  <body>
+    <header class="help-header">
+      <a class="brand" href="/#/dashboard"> BIZNORYX<span>.</span> </a>
 
-    .back {
-      display: block;
-      width: fit-content;
-      margin: 30px 0;
-      color: #19764f;
-      font-weight: 700;
-      text-decoration: none;
-    }
+      <a class="back-link" href="/#/dashboard"> Back to workspace </a>
+    </header>
 
-    .hero,
-    .card {
-      background: #fff;
-      border: 1px solid #dce5dd;
-      border-radius: 18px;
-    }
+    <main class="help-shell">
+      <section class="hero">
+        <p class="eyebrow">BIZNORYX SUPPORT</p>
 
-    .hero {
-      padding: 42px;
-    }
+        <h1>How can we help?</h1>
 
-    .eyebrow {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: .08em;
-    }
+        <p class="hero-copy">
+          Search guides for uploads, validation, evidence reports,
+          subscriptions, billing, account access and workspace troubleshooting.
+        </p>
 
-    h1 {
-      margin: 12px 0;
-      font-size: clamp(34px, 7vw, 56px);
-    }
+        <label class="search-box" for="help-search">
+          <span aria-hidden="true"> ⌕ </span>
 
-    .hero > p:last-child {
-      max-width: 680px;
-      color: #66716a;
-      font-size: 17px;
-      line-height: 1.7;
-    }
+          <input
+            id="help-search"
+            type="search"
+            autocomplete="off"
+            placeholder="Search the Help Center..."
+          />
+        </label>
 
-    .grid {
-      display: grid;
-      grid-template-columns:
-        repeat(auto-fit, minmax(230px, 1fr));
-      gap: 18px;
-      margin-top: 22px;
-    }
+        <p
+          id="result-status"
+          class="result-status"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </section>
 
-    .card {
-      padding: 26px;
-    }
+      <section class="live-support" id="live-support">
+        <div>
+          <p class="eyebrow">LIVE SUPPORT</p>
 
-    .card h2 {
-      margin-top: 0;
-    }
+          <h2>Talk directly to BIZNORYX support</h2>
 
-    .card p {
-      color: #66716a;
-      line-height: 1.6;
-    }
+          <p>
+            Use the official 3CX chat bubble in the bottom-right corner to start
+            a live conversation.
+          </p>
+        </div>
 
-    .status {
-      color: #19764f !important;
-      font-weight: 800;
-    }
-  </style>
-</head>
+        <div class="live-support-state">
+          <span class="status-dot" aria-hidden="true"></span>
 
-<body>
-  <main>
-    <a
-      class="brand"
-      href="/#/dashboard"
-    >
-      BIZNORYX<span>.</span>
-    </a>
+          <span id="threecx-status"> Connecting to 3CX... </span>
+        </div>
+      </section>
 
-    <a
-      class="back"
-      href="/#/dashboard"
-    >
-      ← Back to workspace
-    </a>
+      <nav class="filters" aria-label="Help categories">
+        <button type="button" class="filter active" data-filter="all">
+          All topics
+        </button>
 
-    <section class="hero">
-      <p class="eyebrow">
-        BIZNORYX SUPPORT
-      </p>
+        <button type="button" class="filter" data-filter="uploads">
+          Data & uploads
+        </button>
 
-      <h1>Help & Support</h1>
+        <button type="button" class="filter" data-filter="reports">
+          Evidence reports
+        </button>
 
-      <p>
-        Get assistance with billing, subscriptions,
-        data uploads, validation, evidence reports,
-        account access and your BIZNORYX workspace.
-        Live support is available through 3CX.
-      </p>
-    </section>
+        <button type="button" class="filter" data-filter="billing">
+          Billing
+        </button>
 
-    <section class="grid">
-      <article class="card">
-        <h2>Live support</h2>
+        <button type="button" class="filter" data-filter="account">
+          Account
+        </button>
+      </nav>
+
+      <section id="articles" class="articles" aria-label="Help articles">
+        <details
+          class="article"
+          data-category="uploads"
+          data-keywords="csv upload transaction sales bank statement different data types series"
+        >
+          <summary>Can I upload different types of business data?</summary>
+
+          <div>
+            <p>
+              Yes. Different business datasets should use separate named data
+              series.
+            </p>
+
+            <p>
+              For example, use one series for Monthly Sales and another for
+              Transaction History. This lets BIZNORYX preserve each dataset's
+              structure and historical comparisons independently.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="uploads"
+          data-keywords="rejected validation validation failed schema columns upload"
+        >
+          <summary>Why was my upload rejected?</summary>
+
+          <div>
+            <p>
+              A file can be rejected when its structure does not match the
+              selected data series or required validation rules.
+            </p>
+
+            <ol>
+              <li>Review the validation message.</li>
+
+              <li>Confirm the correct data series was selected.</li>
+
+              <li>
+                Confirm recurring files use a compatible column structure.
+              </li>
+
+              <li>Correct the file and upload it again.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="uploads"
+          data-keywords="metric amount revenue numeric column zero auto detected"
+        >
+          <summary>What is the metric column?</summary>
+
+          <div>
+            <p>
+              The metric column is the numeric business value BIZNORYX uses to
+              calculate performance for that dataset, such as revenue, amount or
+              units.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="reports"
+          data-keywords="evidence report verified rejected history"
+        >
+          <summary>When does data appear in Evidence Reports?</summary>
+
+          <div>
+            <p>
+              Data should enter evidence history only after the required
+              processing and verification path succeeds. Rejected data should
+              not be shown as verified evidence.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="reports"
+          data-keywords="historical comparison months trend previous period"
+        >
+          <summary>How do historical comparisons work?</summary>
+
+          <div>
+            <p>
+              BIZNORYX compares compatible confirmed periods from the same data
+              series. Keeping recurring datasets in the correct series builds a
+              consistent performance history.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="billing"
+          data-keywords="cancel subscription non renewing stop auto renewal paystack"
+        >
+          <summary>What happens after I cancel my subscription?</summary>
+
+          <div>
+            <p>
+              Cancellation stops automatic renewal. When the subscription is
+              Non-renewing, the current paid period remains available until it
+              ends.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="billing"
+          data-keywords="resume renew renewal paystack canceled cancel subscription"
+        >
+          <summary>How do I resume subscription renewal?</summary>
+
+          <div>
+            <p>
+              Open Billing and select
+              <strong>Resume renewal</strong>.
+            </p>
+
+            <p>
+              BIZNORYX securely asks Paystack to enable the existing
+              subscription again. You do not need to create a second
+              subscription while the existing paid period is still active.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="billing"
+          data-keywords="payment billing history missing charge paystack"
+        >
+          <summary>Why is a payment missing from Billing History?</summary>
+
+          <div>
+            <p>
+              Billing History contains confirmed provider payments. A new
+              payment can take a short time to appear while provider
+              verification and webhook processing complete.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="account"
+          data-keywords="sign in login password verification email reset account"
+        >
+          <summary>I cannot sign in. What should I check?</summary>
+
+          <div>
+            <ol>
+              <li>Confirm the email address.</li>
+
+              <li>Complete email verification if requested.</li>
+
+              <li>Use password reset if necessary.</li>
+
+              <li>
+                If the problem continues, contact live support through 3CX.
+              </li>
+            </ol>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="account"
+          data-keywords="workspace organization wrong business switch tenant"
+        >
+          <summary>Why am I seeing the wrong workspace?</summary>
+
+          <div>
+            <p>
+              Use the organization selector in the sidebar. Uploads, reports,
+              billing and activity are scoped to the currently selected
+              organization.
+            </p>
+          </div>
+        </details>
+
+        <details
+          class="article"
+          data-category="account"
+          data-keywords="page not loading error retry refresh browser"
+        >
+          <summary>A page is not loading correctly.</summary>
+
+          <div>
+            <ol>
+              <li>Retry the request once.</li>
+
+              <li>Hard-refresh the browser.</li>
+
+              <li>Confirm the correct workspace is selected.</li>
+
+              <li>If the problem remains, contact live support.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+
+      <section id="no-results" class="no-results" hidden>
+        <h2>No matching article</h2>
 
         <p>
-          Use the 3CX chat widget on this page to
-          speak with BIZNORYX support.
+          Try another search or contact BIZNORYX live support using the 3CX
+          bubble.
         </p>
+      </section>
+    </main>
 
-        <p class="status">
-          3CX live chat enabled
-        </p>
-      </article>
+    <!--
+    Exact real-time 3CX integration supplied
+    from the BIZNORYX 3CX configuration.
+  -->
+    <call-us-selector
+      phonesystem-url="https://1637.3cx.cloud"
+      party="LiveChat519580"
+    ></call-us-selector>
 
-      <article class="card">
-        <h2>Billing</h2>
+    <script defer src="/help.js"></script>
 
-        <p>
-          Get help with subscriptions,
-          cancellations, payment history and Paystack.
-        </p>
-      </article>
-
-      <article class="card">
-        <h2>Product support</h2>
-
-        <p>
-          Get assistance with uploads, reports,
-          business data and workspace features.
-        </p>
-      </article>
-    </section>
-  </main>
-
-  <call-us-selector
-    phonesystem-url="https://1637.3cx.cloud"
-    party="LiveChat519580"
-  ></call-us-selector>
-
-  <script
-    defer
-    src="https://downloads-global.3cx.com/downloads/livechatandtalk/v1/callus.js"
-    id="tcx-callus-js"
-    charset="utf-8"
-  ></script>
-</body>
+    <script
+      defer
+      src="https://downloads-global.3cx.com/downloads/livechatandtalk/v1/callus.js"
+      id="tcx-callus-js"
+      charset="utf-8"
+    ></script>
+  </body>
 </html>
