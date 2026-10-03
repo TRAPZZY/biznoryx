@@ -1,5 +1,15 @@
 import { test, expect } from "@playwright/test";
 
+async function openWorkspaceMenuIfNeeded(page) {
+  const toggle = page.getByRole("button", {
+    name: "Open workspace menu",
+  });
+
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  }
+}
+
 async function signIn(page) {
   await page.goto("/#/sign-in");
   await page.getByLabel("Work email").fill("owner@biznoryx.local");
@@ -7,28 +17,35 @@ async function signIn(page) {
     .getByLabel("Password", { exact: true })
     .fill("ReviewPassphrase2026!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(
-    page.locator(".overview-v2"),
-  ).toBeVisible();
+  await expect(page.locator(".overview-v2")).toBeVisible();
 }
 
 async function navigate(page, name, path, heading) {
+  await openWorkspaceMenuIfNeeded(page);
+
   await page
-    .getByRole("navigation", { name: "Workspace", exact: true })
-    .getByRole("link", { name, exact: true })
+    .locator("#workspace-sidebar")
+    .getByRole("link", {
+      name,
+      exact: true,
+    })
     .click();
+
   await expect(page).toHaveURL(new RegExp(`#/${path}$`));
+
   if (path === "dashboard") {
     await expect(page.locator(".overview-v2")).toBeVisible();
   } else {
     await expect(
-      page.getByRole("heading", { name: heading, exact: true }),
+      page.getByRole("heading", {
+        name: heading,
+        exact: true,
+      }),
     ).toBeVisible();
   }
+
   await expect(
-    page
-      .getByRole("navigation", { name: "Workspace", exact: true })
-      .getByRole("link", { name, exact: true }),
+    page.locator(`#workspace-sidebar a[href="#/${path}"]`),
   ).toHaveClass(/active/);
 }
 
@@ -40,10 +57,26 @@ for (const viewport of [
     test.use({ viewport });
 
     for (const [name, path, heading] of [
-      ["Product", "product", "A business performance system, not a spreadsheet wrapper."],
-      ["Solutions", "solutions", "Built for owners who need to understand what changed."],
-      ["Pricing", "pricing", "₦40,000 per month for the BIZNORYX business workspace."],
-      ["Security", "security", "Tenant isolation and auditability are part of the product."],
+      [
+        "Product",
+        "product",
+        "A business performance system, not a spreadsheet wrapper.",
+      ],
+      [
+        "Solutions",
+        "solutions",
+        "Built for owners who need to understand what changed.",
+      ],
+      [
+        "Pricing",
+        "pricing",
+        "₦40,000 per month for the BIZNORYX business workspace.",
+      ],
+      [
+        "Security",
+        "security",
+        "Tenant isolation and auditability are part of the product.",
+      ],
       ["Resources", "resources", "How teams build a useful business memory."],
     ]) {
       test(`landing link: ${name}`, async ({ page }) => {
@@ -123,9 +156,7 @@ for (const viewport of [
         .fill("ReviewPassphrase2026!");
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page).toHaveURL(/#\/dashboard$/);
-      await expect(
-        page.locator(".overview-v2"),
-      ).toBeVisible();
+      await expect(page.locator(".overview-v2")).toBeVisible();
       await expect(page.getByLabel("Business", { exact: true })).toContainText(
         "Acme Retail Group",
       );
@@ -135,12 +166,7 @@ for (const viewport of [
       page,
     }) => {
       await signIn(page);
-      await navigate(
-        page,
-        "Business profile",
-        "business",
-        "Business profile",
-      );
+      await navigate(page, "Business profile", "business", "Business profile");
       await expect(page.getByLabel("Industry", { exact: true })).toBeVisible();
       await navigate(page, "Data & uploads", "data", "Upload business data");
       await navigate(
@@ -154,12 +180,7 @@ for (const viewport of [
       await expect(
         page.getByRole("heading", { name: "Workspace activity" }),
       ).toBeVisible();
-      await navigate(
-        page,
-        "Overview",
-        "dashboard",
-        "Acme Retail Group",
-      );
+      await navigate(page, "Overview", "dashboard", "Acme Retail Group");
       for (const [path, heading] of [
         ["activity", "Workspace activity"],
         ["billing", "Manage your BIZNORYX plan."],
@@ -190,8 +211,14 @@ for (const viewport of [
       await page.route("**/api/dashboard", (route) => route.abort("failed"), {
         times: 1,
       });
+      await openWorkspaceMenuIfNeeded(page);
+
       await page
-        .getByRole("link", { name: "Data & uploads", exact: true })
+        .locator("#workspace-sidebar")
+        .getByRole("link", {
+          name: "Data & uploads",
+          exact: true,
+        })
         .click();
       await expect(
         page.getByRole("heading", {
@@ -232,13 +259,11 @@ test("organization switching isolates uploads, validation, metrics and activity"
     "Acme Retail Group",
   );
   await navigate(page, "Data & uploads", "data", "Upload business data");
-  await page
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "acme-navigation.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from("product,revenue\nNavigation,1234.56\n"),
-    });
+  await page.locator("input[type=file]").setInputFiles({
+    name: "acme-navigation.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("product,revenue\nNavigation,1234.56\n"),
+  });
   await page.getByLabel("Reporting month").fill("2026-01");
   await page.getByRole("button", { name: "Validate files" }).click();
   await expect(page.locator(".validation-summary")).toContainText("$1,234.56");
@@ -253,16 +278,11 @@ test("organization switching isolates uploads, validation, metrics and activity"
   ).toBeVisible();
   await navigate(page, "Activity", "activity", "Workspace activity");
   await expect(page.getByRole("main")).not.toContainText("Data file validated");
-  await navigate(
-    page,
-    "Overview",
-    "dashboard",
-    "Acme Retail Group",
+  await navigate(page, "Overview", "dashboard", "Acme Retail Group");
+  await expect(page.locator(".overview-v2-stats")).toContainText(
+    "No verified period",
   );
-  await expect(page.locator(".overview-v2-stats")).toContainText("No verified period");
-  await expect(
-    page.locator(".overview-v2"),
-  ).toBeVisible();
+  await expect(page.locator(".overview-v2")).toBeVisible();
   await page
     .getByLabel("Business", { exact: true })
     .selectOption({ label: "Acme Retail Group" });
@@ -279,25 +299,29 @@ test("organization switching isolates uploads, validation, metrics and activity"
   await page
     .getByRole("button", { name: "Confirm and add to dashboard" })
     .click();
-  await expect(page.locator(".overview-v2-stats")).toContainText("Source-backed reports ready");
+  await expect(page.locator(".overview-v2-stats")).toContainText(
+    "Source-backed reports ready",
+  );
   await page
     .getByLabel("Business", { exact: true })
     .selectOption({ label: "Northstar Foods" });
   await expect(page.locator(".workspace-top")).toContainText("Northstar Foods");
-  await expect(page.locator(".overview-v2-stats")).toContainText("No verified period");
+  await expect(page.locator(".overview-v2-stats")).toContainText(
+    "No verified period",
+  );
   await expect(page.getByRole("main")).not.toContainText("acme-navigation.csv");
   await page.reload();
   await expect(page.locator(".workspace-top")).toContainText("Northstar Foods");
-  await expect(
-    page.locator(".overview-v2"),
-  ).toBeVisible();
+  await expect(page.locator(".overview-v2")).toBeVisible();
   await page
     .getByLabel("Business", { exact: true })
     .selectOption({ label: "Acme Retail Group" });
   await expect(page.locator(".workspace-top")).toContainText(
     "Acme Retail Group",
   );
-  await expect(page.locator(".overview-v2-stats")).toContainText("Source-backed reports ready");
+  await expect(page.locator(".overview-v2-stats")).toContainText(
+    "Source-backed reports ready",
+  );
   await navigate(
     page,
     "Evidence reports",

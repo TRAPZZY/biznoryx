@@ -1,13 +1,62 @@
 import { test, expect } from "@playwright/test";
 
+async function openWorkspaceMenuIfNeeded(page) {
+  const toggle = page.getByRole("button", {
+    name: "Open workspace menu",
+  });
+
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  }
+}
+
+async function clickWorkspaceLink(page, name) {
+  await openWorkspaceMenuIfNeeded(page);
+
+  await page
+    .locator("#workspace-sidebar")
+    .getByRole("link", {
+      name,
+      exact: true,
+    })
+    .click();
+}
+
+async function signOutWorkspace(page) {
+  const toggle = page.getByRole("button", {
+    name: "Open workspace menu",
+  });
+
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+
+    await page
+      .locator("#workspace-sidebar")
+      .getByRole("button", {
+        name: "Sign out",
+        exact: true,
+      })
+      .click();
+
+    return;
+  }
+
+  await page
+    .getByRole("banner")
+    .getByRole("button", {
+      name: "Sign out",
+      exact: true,
+    })
+    .click();
+}
+
 for (const viewport of [
   { width: 1440, height: 1000 },
   { width: 390, height: 844 },
 ]) {
-  test(`customer journey at ${viewport.width}px`, async (
-    { page },
-    testInfo,
-  ) => {
+  test(`customer journey at ${viewport.width}px`, async ({
+    page,
+  }, testInfo) => {
     await page.setViewportSize(viewport);
 
     const errors = [];
@@ -62,9 +111,7 @@ for (const viewport of [
 
     await page.getByLabel("Verification code").fill(code.trim());
 
-    await page
-      .getByRole("button", { name: "Verify and continue" })
-      .click();
+    await page.getByRole("button", { name: "Verify and continue" }).click();
 
     await expect(
       page.getByRole("heading", {
@@ -101,14 +148,10 @@ for (const viewport of [
     await page.locator("input[type=file]").setInputFiles({
       name: "sales.csv",
       mimeType: "text/csv",
-      buffer: Buffer.from(
-        "product,revenue\nA,1250.10\nB,750.20\n",
-      ),
+      buffer: Buffer.from("product,revenue\nA,1250.10\nB,750.20\n"),
     });
 
-    await page
-      .getByRole("button", { name: "Validate files" })
-      .click();
+    await page.getByRole("button", { name: "Validate files" }).click();
 
     await expect(
       page.getByRole("heading", {
@@ -138,16 +181,7 @@ for (const viewport of [
       "Source-backed reports ready",
     );
 
-    await page
-      .getByRole("navigation", {
-        name: "Workspace",
-        exact: true,
-      })
-      .getByRole("link", {
-        name: "Evidence reports",
-        exact: true,
-      })
-      .click();
+    await clickWorkspaceLink(page, "Evidence reports");
 
     await expect(
       page.getByRole("heading", {
@@ -158,7 +192,7 @@ for (const viewport of [
     await expect(page.getByRole("main")).toContainText("sum(revenue)");
     await expect(page.getByRole("main")).toContainText("VERIFIED FACT");
 
-    await page.getByRole("link", { name: "Overview" }).click();
+    await clickWorkspaceLink(page, "Overview");
 
     await page.reload();
 
@@ -177,9 +211,7 @@ for (const viewport of [
       ),
     ).toBe(true);
 
-    await page
-      .getByRole("link", { name: "Data & uploads" })
-      .click();
+    await clickWorkspaceLink(page, "Data & uploads");
 
     await page.locator("input[type=file]").setInputFiles({
       name: "invalid.csv",
@@ -187,9 +219,7 @@ for (const viewport of [
       buffer: Buffer.from("revenue\nnot-money\n"),
     });
 
-    await page
-      .getByRole("button", { name: "Validate files" })
-      .click();
+    await page.getByRole("button", { name: "Validate files" }).click();
 
     await expect(
       page.getByRole("heading", {
@@ -205,18 +235,10 @@ for (const viewport of [
 
     await Promise.all([
       page.waitForResponse(
-        (response) =>
-          response.url().endsWith("/api/sign-out") &&
-          response.ok(),
+        (response) => response.url().endsWith("/api/sign-out") && response.ok(),
       ),
 
-      page
-        .getByRole("banner")
-        .getByRole("button", {
-          name: "Sign out",
-          exact: true,
-        })
-        .click(),
+      signOutWorkspace(page),
     ]);
 
     await expect(

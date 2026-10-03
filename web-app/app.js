@@ -1349,6 +1349,8 @@ function shell(content, active) {
 
   const sidebarCollapsed = isSidebarCollapsed();
 
+  const mobileSidebar = !window.matchMedia(SIDEBAR_DESKTOP_QUERY).matches;
+
   const navigationItems = [
     ["/dashboard", "layout-dashboard", "Overview"],
 
@@ -1388,13 +1390,31 @@ function shell(content, active) {
             class="sidebar-toggle"
             type="button"
             aria-controls="workspace-sidebar"
-            aria-expanded="${sidebarCollapsed ? "false" : "true"}"
-            aria-label="${
-              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            aria-expanded="${
+              mobileSidebar || sidebarCollapsed ? "false" : "true"
             }"
-            title="${sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}"
+            aria-label="${
+              mobileSidebar
+                ? "Open workspace menu"
+                : sidebarCollapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+            }"
+            title="${
+              mobileSidebar
+                ? "Open workspace menu"
+                : sidebarCollapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+            }"
           >
-            ${icon(sidebarCollapsed ? "panel-left-open" : "panel-left-close")}
+            ${icon(
+              mobileSidebar
+                ? "menu"
+                : sidebarCollapsed
+                  ? "panel-left-open"
+                  : "panel-left-close",
+            )}
           </button>
         </div>
 
@@ -1576,7 +1596,33 @@ function shell(content, active) {
   sidebarToggle?.addEventListener("click", () => {
     const workspace = document.querySelector(".workspace");
 
-    if (!workspace) return;
+    if (!workspace) {
+      return;
+    }
+
+    const isMobile = !window.matchMedia(SIDEBAR_DESKTOP_QUERY).matches;
+
+    if (isMobile) {
+      const open = workspace.classList.toggle("mobile-nav-open");
+
+      sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+
+      sidebarToggle.setAttribute(
+        "aria-label",
+        open ? "Close workspace menu" : "Open workspace menu",
+      );
+
+      sidebarToggle.setAttribute(
+        "title",
+        open ? "Close workspace menu" : "Open workspace menu",
+      );
+
+      sidebarToggle.innerHTML = icon(open ? "x" : "menu");
+
+      window.lucide?.createIcons();
+
+      return;
+    }
 
     const collapsed = workspace.classList.toggle("sidebar-collapsed");
 
