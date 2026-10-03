@@ -4472,8 +4472,15 @@ function billingPage() {
                         class="primary billing-primary-action"
                         type="button"
                       >
-                        Resume renewal
+                        Resume automatic renewal
                       </button>
+
+                      <p
+                        id="billing-renewal-message"
+                        class="form-message"
+                        role="status"
+                        aria-live="polite"
+                      ></p>
                     `
                     : subscription && canStartCheckout
                       ? `
@@ -4853,6 +4860,8 @@ function billingPage() {
     "#renew-billing-subscription",
   );
 
+  const renewalMessage = document.querySelector("#billing-renewal-message");
+
   const pageMessage = document.querySelector("#billing-page-message");
 
   const checkoutMessage = () =>
@@ -4948,34 +4957,66 @@ function billingPage() {
   if (renewSubscription) {
     renewSubscription.onclick = async () => {
       const confirmed = window.confirm(
-        "Resume automatic renewal for this BIZNORYX subscription?",
+        "Resume automatic renewal? Paystack will restore your existing subscription. No payment is taken today; the next charge remains on your normal billing date.",
       );
 
       if (!confirmed) {
         return;
       }
 
+      const originalLabel = renewSubscription.textContent.trim();
+
       renewSubscription.disabled = true;
 
-      if (pageMessage) {
-        pageMessage.textContent =
-          "Restoring automatic renewal with Paystack...";
+      renewSubscription.textContent = "Connecting to Paystack...";
 
-        pageMessage.classList.remove("error-text");
+      if (renewalMessage) {
+        renewalMessage.textContent =
+          "Connecting securely to Paystack to restore automatic renewal...";
+
+        renewalMessage.classList.remove("error-text");
       }
 
       try {
         await api("billing/renew", {});
 
+        /*
+         * A successful response means the server-side
+         * Paystack enable call completed successfully.
+         */
+        renewSubscription.textContent = "Renewal restored";
+
+        if (renewalMessage) {
+          renewalMessage.textContent =
+            "Paystack confirmed automatic renewal. No payment was taken today. Your subscription will charge again on its normal next billing date.";
+        }
+
         dashboard = await api("dashboard");
 
-        billingPage();
+        /*
+         * Give the customer enough time to see the
+         * provider confirmation before the billing
+         * screen refreshes into Active status.
+         */
+        window.setTimeout(() => {
+          billingPage();
+        }, 2200);
       } catch (error) {
         renewSubscription.disabled = false;
 
+        renewSubscription.textContent = originalLabel;
+
+        const providerMessage =
+          error?.message || "Paystack could not restore automatic renewal.";
+
+        if (renewalMessage) {
+          renewalMessage.textContent = providerMessage;
+
+          renewalMessage.classList.add("error-text");
+        }
+
         if (pageMessage) {
-          pageMessage.textContent =
-            error?.message || "Subscription renewal could not be restored.";
+          pageMessage.textContent = providerMessage;
 
           pageMessage.classList.add("error-text");
         }

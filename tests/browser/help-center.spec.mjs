@@ -23,13 +23,31 @@ test("Help Center searches and filters troubleshooting articles", async ({
 
   const search = page.getByPlaceholder("Search the Help Center...");
 
-  await search.fill("renew");
+  /*
+   * Search must support natural multi-word queries,
+   * not only exact contiguous phrases.
+   */
+  await page
+    .getByRole("button", {
+      name: "Billing",
+    })
+    .click();
+
+  await search.fill("upload rejected");
+
+  const rejectedArticle = page.locator("details.article").filter({
+    hasText: "Why was my upload rejected?",
+  });
+
+  await expect(rejectedArticle).toBeVisible();
+
+  await expect(rejectedArticle).toHaveAttribute("open", "");
 
   await expect(
-    page.getByText("How do I resume subscription renewal?"),
+    rejectedArticle.getByText(/A file can be rejected/),
   ).toBeVisible();
 
-  await expect(page.getByText(/matching article/)).toBeVisible();
+  await expect(page.getByText("1 matching article")).toBeVisible();
 
   await search.fill("");
 
