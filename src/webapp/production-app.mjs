@@ -48,6 +48,7 @@ import {
   initializePaystackTransaction,
   monthlyPlanFromEnv,
   planLabel,
+  disablePaystackSubscription,
   verifyPaystackTransaction,
   verifyPaystackWebhookSignature,
 } from "../billing/paystack.mjs";
@@ -124,6 +125,7 @@ export function createProductionApp({
   activityRepository,
   objectStorage,
   ingestionService,
+  paystackFetch = fetch,
   healthChecks,
   publicDir = join(process.cwd(), "web-app"),
   production = process.env.NODE_ENV === "production",
@@ -270,6 +272,8 @@ export function createProductionApp({
     objectStorage: storage,
 
     ingestion,
+
+    paystackFetch,
 
     healthChecks: checks,
 
@@ -1017,6 +1021,94 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (
+    url.pathname === "/api/billing/cancel" &&
+    request.method === "POST"
+  ) {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: true,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select an organization before canceling billing.",
+    );
+
+    await requireOrganizationManager({
+      runtime,
+      organizationId,
+      actorUserId: context.user.id,
+      message:
+        "Organization owner access is required to cancel billing.",
+    });
+
+    if (
+      !runtime.billing ||
+      typeof runtime.billing.ensureSubscription !== "function" ||
+      typeof runtime.billing.cancelSubscription !== "function"
+    ) {
+      throw new AuthError(
+        "Billing cancellation is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const subscription = await runtime.billing.ensureSubscription({
+      organizationId,
+      actorUserId: context.user.id,
+      provider: "paystack",
+    });
+
+    if (subscription.status === "non_renewing") {
+      sendJson(response, 200, {
+        subscription: publicSubscription(subscription),
+      });
+
+      return;
+    }
+
+    if (!["active", "past_due"].includes(subscription.status)) {
+      throw new AuthError(
+        "Only an active subscription can be canceled.",
+        "VALIDATION_FAILED",
+      );
+    }
+
+    if (
+      !subscription.providerSubscriptionCode ||
+      !subscription.providerEmailToken
+    ) {
+      throw new AuthError(
+        "This subscription cannot be canceled automatically yet. Contact BIZNORYX support so we can cancel it with Paystack.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    await disablePaystackSubscription({
+      subscriptionCode:
+        subscription.providerSubscriptionCode,
+
+      emailToken:
+        subscription.providerEmailToken,
+
+      fetchImpl:
+        runtime.paystackFetch,
+    });
+
+    const updated = await runtime.billing.cancelSubscription({
+      organizationId,
+      actorUserId: context.user.id,
+    });
+
+    sendJson(response, 200, {
+      subscription: publicSubscription(updated),
+    });
+
+    return;
+  }
+
   /*
    * ==================================================
    * BILLING — CHECKOUT
@@ -1301,6 +1393,11 @@ async function routeRequest({ request, response, runtime }) {
     }
 
     const body = await readJson(request);
+    const dataKind = cleanRequestText(body.dataKind);
+    const dataSeries = normalizeUploadDataSeries({
+      dataSeries: body.dataSeries,
+      dataKind,
+    });
 
     if (Array.isArray(body.files)) {
       const results = await runtime.ingestion.uploadBatch({
@@ -1312,11 +1409,15 @@ async function routeRequest({ request, response, runtime }) {
 
         period: body.period,
 
-        dataSeries: body.dataSeries ?? "Business data",
+        dataSeries,
       });
 
       sendJson(response, 200, {
-        uploads: results.map(mapIngestionResult),
+        uploads: results.map((result) =>
+          mapIngestionResult(result, {
+            dataKind,
+          }),
+        ),
       });
 
       return;
@@ -1333,11 +1434,13 @@ async function routeRequest({ request, response, runtime }) {
 
       period: body.period,
 
-      dataSeries: body.dataSeries ?? "Business data",
+      dataSeries,
     });
 
     sendJson(response, 200, {
-      upload: mapIngestionResult(result),
+      upload: mapIngestionResult(result, {
+        dataKind,
+      }),
     });
 
     return;
@@ -2090,6 +2193,45 @@ function isAuthEndpoint(pathname) {
   ].includes(pathname);
 }
 
+async function requireOrganizationManager({
+  runtime,
+  organizationId,
+  actorUserId,
+  message,
+}) {
+  if (
+    !runtime.identity ||
+    typeof runtime.identity.activeMemberships !== "function"
+  ) {
+    throw new AuthError(
+      "Organization authorization is not available.",
+      "SERVICE_UNAVAILABLE",
+    );
+  }
+
+  const memberships = await runtime.identity.activeMemberships(
+    actorUserId,
+  );
+
+  const activeMembership = memberships.find(
+    (membership) => membership.organizationId === organizationId,
+  );
+
+  if (
+    !ROLE_CAPABILITIES[activeMembership?.role]?.includes(
+      CAPABILITIES.MANAGE_ORGANIZATION,
+    )
+  ) {
+    throw new AuthError(
+      message ||
+        "Organization owner access is required.",
+      "ORG_ACCESS_DENIED",
+    );
+  }
+
+  return activeMembership;
+}
+
 function createProductionBillingReference() {
   return `bnx-${Date.now()}-${randomBytes(8).toString("hex")}`;
 }
@@ -2133,6 +2275,16 @@ function publicSubscription(subscription) {
     provider: subscription.provider,
 
     providerConfigured: isProductionPaystackConfigured(configuredPlan),
+
+    canCancel:
+      ["active", "past_due"].includes(subscription.status) &&
+      Boolean(
+        subscription.providerSubscriptionCode &&
+          subscription.providerEmailToken,
+      ),
+
+    cancellationRequestedAt:
+      subscription.cancellationRequestedAt,
 
     checkoutReference: subscription.checkoutReference,
 
@@ -2392,6 +2544,11 @@ async function verifyAndActivateBillingCheckout({
       actorUserId,
     },
     async (client) => {
+      const providerIdentity =
+        paystackSubscriptionIdentity(
+          verified,
+        );
+
       await runtime.billing.applySubscriptionAction(client, {
         organizationId,
         reference,
@@ -2400,6 +2557,8 @@ async function verifyAndActivateBillingCheckout({
           currentSubscription.status === "active"
             ? "subscription_renewed"
             : "subscription_activated",
+
+        ...providerIdentity,
       });
     },
   );
@@ -2536,6 +2695,11 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
     payload: rawBody,
 
     action,
+
+    ...paystackSubscriptionIdentity(
+      data,
+      verified,
+    ),
   });
 
   return {
@@ -2569,6 +2733,64 @@ function billingActionForPaystackEvent(eventName, data) {
   }
 
   return "ignored";
+}
+
+function paystackSubscriptionIdentity(...sources) {
+  for (const source of sources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+
+    const subscription =
+      source.subscription &&
+      typeof source.subscription === "object"
+        ? source.subscription
+        : {};
+
+    const customer =
+      source.customer &&
+      typeof source.customer === "object"
+        ? source.customer
+        : {};
+
+    const providerSubscriptionCode =
+      cleanEnvironmentValue(
+        source.subscription_code ??
+          subscription.subscription_code ??
+          source.subscriptionCode ??
+          subscription.subscriptionCode,
+      );
+
+    const providerEmailToken =
+      cleanEnvironmentValue(
+        source.email_token ??
+          subscription.email_token ??
+          source.emailToken ??
+          subscription.emailToken,
+      );
+
+    const providerCustomerCode =
+      cleanEnvironmentValue(
+        source.customer_code ??
+          customer.customer_code ??
+          source.customerCode ??
+          customer.customerCode,
+      );
+
+    if (
+      providerSubscriptionCode ||
+      providerEmailToken ||
+      providerCustomerCode
+    ) {
+      return {
+        providerCustomerCode,
+        providerSubscriptionCode,
+        providerEmailToken,
+      };
+    }
+  }
+
+  return {};
 }
 
 function paystackOrganizationId(data, verified) {
@@ -2986,7 +3208,12 @@ function objectStorageFromEnvironment(env = process.env) {
   });
 }
 
-function mapIngestionResult(result) {
+function mapIngestionResult(result, {
+  dataKind = "",
+} = {}) {
+  const validationResults =
+    result.validationResults ?? [];
+
   return {
     id: result.ingestionRun.id,
 
@@ -2999,6 +3226,13 @@ function mapIngestionResult(result) {
     periodLabel: result.reportingPeriod.label,
 
     dataSeries: result.dataStream.displayName,
+
+    dataKind:
+      dataKind ||
+      result.dataStream.displayName,
+
+    sourceFormat:
+      "CSV file",
 
     status: result.ingestionRun.status,
 
@@ -3014,7 +3248,21 @@ function mapIngestionResult(result) {
 
     checksumSha256: result.rawObject.checksumSha256,
 
-    validationResults: result.validationResults ?? [],
+    validationResults,
+
+    issues: validationResults.map((item) => ({
+      row: null,
+
+      severity:
+        item.severity,
+
+      code:
+        item.code,
+
+      message:
+        item.message ||
+        "Validation issue",
+    })),
 
     createdAt: result.ingestionRun.createdAt,
   };
@@ -3031,6 +3279,14 @@ function mapDashboardUpload(upload) {
     periodLabel: upload.reportingPeriod.label,
 
     dataSeries: upload.dataStream.displayName,
+
+    dataKind:
+      upload.dataStream.displayName,
+
+    sourceFormat:
+      upload.rawObject.contentType === "text/csv"
+        ? "CSV file"
+        : upload.rawObject.contentType,
 
     status: upload.status,
 
@@ -3054,6 +3310,35 @@ function mapDashboardUpload(upload) {
 
     dataStream: upload.dataStream,
   };
+}
+
+function normalizeUploadDataSeries({
+  dataSeries,
+  dataKind,
+}) {
+  const series =
+    cleanRequestText(dataSeries);
+
+  const kind =
+    cleanRequestText(dataKind);
+
+  if (
+    kind &&
+    kind !== "Sales performance" &&
+    [
+      "",
+      "primary performance",
+      "business data",
+    ].includes(series.toLowerCase())
+  ) {
+    return kind || "Business data";
+  }
+
+  return series || "Business data";
+}
+
+function cleanRequestText(value) {
+  return String(value ?? "").trim();
 }
 
 function buildDashboardSeriesGroups(series) {

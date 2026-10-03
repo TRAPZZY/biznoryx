@@ -823,11 +823,11 @@ footer p{width:100%;order:3;}
 
 .workspace.sidebar-collapsed .sidebar-bottom p{display:none;}
 
-.workspace.sidebar-collapsed .sidebar-sign-out{display:grid;place-items:center;width:42px;height:42px;padding:0;}
+.workspace.sidebar-collapsed .sidebar-help,.workspace.sidebar-collapsed .sidebar-sign-out{display:grid;place-items:center;width:42px;height:42px;padding:0;}
 
-.workspace.sidebar-collapsed .sidebar-sign-out span{display:none;}
+.workspace.sidebar-collapsed .sidebar-help span,.workspace.sidebar-collapsed .sidebar-sign-out span{display:none;}
 
-.workspace.sidebar-collapsed .sidebar-sign-out svg{width:18px;height:18px;}
+.workspace.sidebar-collapsed .sidebar-help svg,.workspace.sidebar-collapsed .sidebar-sign-out svg{width:18px;height:18px;}
 
 @media (max-width:700px){
 
@@ -863,9 +863,9 @@ footer p{width:100%;order:3;}
 
 .workspace.sidebar-collapsed .sidebar-bottom{display:block;padding:0;}
 
-.workspace.sidebar-collapsed .sidebar-sign-out{display:inline-flex;width:auto;height:auto;min-height:30px;padding:4px 0;}
+.workspace.sidebar-collapsed .sidebar-help,.workspace.sidebar-collapsed .sidebar-sign-out{display:inline-flex;width:auto;height:auto;min-height:30px;padding:4px 0;}
 
-.workspace.sidebar-collapsed .sidebar-sign-out span{display:inline;}
+.workspace.sidebar-collapsed .sidebar-help span,.workspace.sidebar-collapsed .sidebar-sign-out span{display:inline;}
 
 }
 
@@ -1324,6 +1324,12 @@ footer p{width:100%;order:3;}
   width: 100%;
   justify-content: center;
   min-height: 46px;
+}
+
+.billing-secondary-action {
+  width: 100%;
+  justify-content: center;
+  min-height: 42px;
 }
 
 .billing-active-confirmation {
@@ -1978,4 +1984,10 @@ footer p{width:100%;order:3;}
     padding-inline: 4px;
     font-size: 9.5px;
   }
+}
+
+.billing-nonrenewing-confirmation {
+  border-color: #ead9b3;
+  background: #fffaf0;
+  color: #856315;
 }

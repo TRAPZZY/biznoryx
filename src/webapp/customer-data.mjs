@@ -110,8 +110,12 @@ function validatePreparedUpload({ body, organizationId, source }) {
     rows.length === 0
       ? 0n
       : divideRounded(metricValidation.cents, BigInt(rows.length));
-  const dataSeries = clean(body.dataSeries) || "Primary performance";
-  const dataKind = clean(body.dataKind) || inferDataKind(columns);
+  const requestedDataKind = clean(body.dataKind);
+  const dataKind = requestedDataKind || inferDataKind(columns);
+  const dataSeries = normalizeDataSeries({
+    dataSeries: body.dataSeries,
+    dataKind: requestedDataKind,
+  });
   return {
     id: randomUUID(),
     organizationId,
@@ -1226,6 +1230,19 @@ function stableSeriesKey(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80);
+}
+
+function normalizeDataSeries({ dataSeries, dataKind }) {
+  const series = clean(dataSeries);
+  const kind = clean(dataKind);
+  if (
+    kind &&
+    kind !== "Sales performance" &&
+    ["", "primary performance", "business data"].includes(series.toLowerCase())
+  ) {
+    return kind || "Primary performance";
+  }
+  return series || "Primary performance";
 }
 
 function isValidDate(value) {

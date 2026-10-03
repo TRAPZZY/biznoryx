@@ -586,3 +586,151 @@ test("billing history is owner-only and returns sanitized payment records", asyn
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("billing cancellation is owner-only, calls Paystack and returns sanitized state", async () => {
+  const originalSecret =
+    process.env.PAYSTACK_SECRET_KEY;
+
+  const originalPlan =
+    process.env.PAYSTACK_PLAN_CODE;
+
+  process.env.PAYSTACK_SECRET_KEY =
+    "sk_test_cancel";
+
+  process.env.PAYSTACK_PLAN_CODE =
+    "PLN_cancel";
+
+  let membershipRole = "owner";
+  const calls = [];
+
+  const activeSubscription = {
+    id: "subscription-1",
+    organizationId: "org-1",
+    provider: "paystack",
+    providerSubscriptionCode: "SUB_live",
+    providerEmailToken: "email-token",
+    planId: "biznoryx_monthly_ngn_40000",
+    planName: "BIZNORYX Monthly",
+    currency: "NGN",
+    amountMinor: 4_000_000,
+    interval: "monthly",
+    status: "active",
+    checkoutReference: "checkout-ref",
+    trialEndsAt: null,
+    activeAt: new Date("2026-10-01T00:00:00.000Z"),
+    currentPeriodEnd: new Date("2026-11-01T00:00:00.000Z"),
+    createdAt: new Date("2026-10-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-10-01T00:00:00.000Z"),
+  };
+
+  const { server } = createProductionApp({
+    identityRepository: {
+      async authenticate({ token, csrfToken, requireCsrf }) {
+        assert.equal(token, "billing-cancel-session");
+        assert.equal(requireCsrf, true);
+        assert.equal(csrfToken, "csrf-token");
+        return {
+          user: { id: "user-1", email: "owner@example.com" },
+          session: { id: "session-1", activeOrganizationId: "org-1" },
+        };
+      },
+      async activeMemberships(userId) {
+        assert.equal(userId, "user-1");
+        return [{ organizationId: "org-1", role: membershipRole }];
+      },
+    },
+    emailVerificationRepository: {},
+    billingRepository: {
+      async ensureSubscription(input) {
+        calls.push({ operation: "ensure", input });
+        return activeSubscription;
+      },
+      async cancelSubscription(input) {
+        calls.push({ operation: "cancel", input });
+        return {
+          ...activeSubscription,
+          status: "non_renewing",
+          cancellationRequestedAt: new Date("2026-10-03T12:00:00.000Z"),
+        };
+      },
+    },
+    async paystackFetch(url, options) {
+      calls.push({
+        operation: "paystack",
+        url,
+        body: JSON.parse(options.body),
+        authorization: options.headers.Authorization,
+      });
+      return Response.json({ status: true, data: { disabled: true } });
+    },
+    production: false,
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const response = await fetch(`${base}/api/billing/cancel`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "bnx_session=billing-cancel-session",
+        "x-csrf-token": "csrf-token",
+      },
+      body: "{}",
+    });
+
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.subscription.status, "non_renewing");
+    assert.equal(body.subscription.canCancel, false);
+    assert.equal(Object.hasOwn(body.subscription, "providerEmailToken"), false);
+    assert.equal(Object.hasOwn(body.subscription, "providerSubscriptionCode"), false);
+    assert.deepEqual(calls.map((call) => call.operation), [
+      "ensure",
+      "paystack",
+      "cancel",
+    ]);
+    assert.deepEqual(calls[1], {
+      operation: "paystack",
+      url: "https://api.paystack.co/subscription/disable",
+      body: {
+        code: "SUB_live",
+        token: "email-token",
+      },
+      authorization: "Bearer sk_test_cancel",
+    });
+    assert.deepEqual(calls[2].input, {
+      organizationId: "org-1",
+      actorUserId: "user-1",
+    });
+
+    membershipRole = "viewer";
+    const denied = await fetch(`${base}/api/billing/cancel`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "bnx_session=billing-cancel-session",
+        "x-csrf-token": "csrf-token",
+      },
+      body: "{}",
+    });
+    assert.equal(denied.status, 404);
+  } finally {
+    if (originalSecret === undefined) {
+      delete process.env.PAYSTACK_SECRET_KEY;
+    } else {
+      process.env.PAYSTACK_SECRET_KEY = originalSecret;
+    }
+
+    if (originalPlan === undefined) {
+      delete process.env.PAYSTACK_PLAN_CODE;
+    } else {
+      process.env.PAYSTACK_PLAN_CODE = originalPlan;
+    }
+
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

@@ -22,7 +22,10 @@ export class PostgresBillingRepository {
       { organizationId, actorUserId },
       async (client) => {
         const existing = await client.query(
-          `select id, organization_id, provider, plan_id, plan_name, currency,
+          `select id, organization_id, provider, provider_customer_code,
+                  provider_subscription_code, provider_email_token,
+                  cancellation_requested_at,
+                  plan_id, plan_name, currency,
                   amount_minor, billing_interval, status, checkout_reference,
                   trial_ends_at, active_at, current_period_end, created_at,
                   updated_at
@@ -71,6 +74,10 @@ export class PostgresBillingRepository {
                 where organization_id = $1
                   and status = 'trialing'
                 returning id, organization_id, provider,
+                          provider_customer_code,
+                          provider_subscription_code,
+                          provider_email_token,
+                          cancellation_requested_at,
                           plan_id, plan_name, currency,
                           amount_minor, billing_interval,
                           status, checkout_reference,
@@ -128,6 +135,10 @@ export class PostgresBillingRepository {
            returning id,
                      organization_id,
                      provider,
+                     provider_customer_code,
+                     provider_subscription_code,
+                     provider_email_token,
+                     cancellation_requested_at,
                      plan_id,
                      plan_name,
                      currency,
@@ -443,6 +454,9 @@ export class PostgresBillingRepository {
     reference = null,
     payload,
     action,
+    providerCustomerCode = null,
+    providerSubscriptionCode = null,
+    providerEmailToken = null,
   }) {
     const payloadSha256 = createHash(
       "sha256",
@@ -509,6 +523,9 @@ export class PostgresBillingRepository {
             organizationId,
             reference,
             action,
+            providerCustomerCode,
+            providerSubscriptionCode,
+            providerEmailToken,
           },
         );
 
@@ -521,12 +538,85 @@ export class PostgresBillingRepository {
     return result;
   }
 
+  async cancelSubscription({
+    organizationId,
+    actorUserId,
+  }) {
+    const result = await withBillingTenant(
+      this.pool,
+      { organizationId, actorUserId },
+      async (client) => {
+        const updated = await client.query(
+          `update organization_billing_subscriptions
+              set status = 'non_renewing',
+                  cancellation_requested_at = coalesce(cancellation_requested_at, $3),
+                  updated_by_user_id = coalesce($2, updated_by_user_id),
+                  updated_at = $3
+            where organization_id = $1
+              and status in ('active', 'past_due')
+            returning id, organization_id, provider,
+                      provider_customer_code,
+                      provider_subscription_code,
+                      provider_email_token,
+                      cancellation_requested_at,
+                      plan_id, plan_name, currency,
+                      amount_minor, billing_interval,
+                      status, checkout_reference,
+                      trial_ends_at, active_at,
+                      current_period_end, created_at,
+                      updated_at`,
+          [
+            organizationId,
+            actorUserId,
+            this.now(),
+          ],
+        );
+
+        if (updated.rows[0]) {
+          return updated.rows[0];
+        }
+
+        const current = await client.query(
+          `select id, organization_id, provider,
+                  provider_customer_code,
+                  provider_subscription_code,
+                  provider_email_token,
+                  cancellation_requested_at,
+                  plan_id, plan_name, currency,
+                  amount_minor, billing_interval,
+                  status, checkout_reference,
+                  trial_ends_at, active_at,
+                  current_period_end, created_at,
+                  updated_at
+             from organization_billing_subscriptions
+            where organization_id = $1
+            limit 1`,
+          [organizationId],
+        );
+
+        if (!current.rows[0]) {
+          throw new AuthError(
+            "Billing subscription was not found.",
+            "NOT_FOUND",
+          );
+        }
+
+        return current.rows[0];
+      },
+    );
+
+    return mapSubscription(result);
+  }
+
   async applySubscriptionAction(
     client,
     {
       organizationId,
       reference,
       action,
+      providerCustomerCode = null,
+      providerSubscriptionCode = null,
+      providerEmailToken = null,
     },
   ) {
     const status = new Map([
@@ -591,6 +681,24 @@ export class PostgresBillingRepository {
           set status =
                 $2::billing_subscription_status,
 
+              provider_customer_code =
+                coalesce(
+                  $6,
+                  provider_customer_code
+                ),
+
+              provider_subscription_code =
+                coalesce(
+                  $7,
+                  provider_subscription_code
+                ),
+
+              provider_email_token =
+                coalesce(
+                  $8,
+                  provider_email_token
+                ),
+
               checkout_reference =
                 coalesce(
                   $3,
@@ -638,6 +746,9 @@ export class PostgresBillingRepository {
               60 *
               1000,
         ),
+        providerCustomerCode,
+        providerSubscriptionCode,
+        providerEmailToken,
       ],
     );
 
@@ -707,6 +818,18 @@ function mapSubscription(row) {
 
     provider:
       row.provider,
+
+    providerCustomerCode:
+      row.provider_customer_code,
+
+    providerSubscriptionCode:
+      row.provider_subscription_code,
+
+    providerEmailToken:
+      row.provider_email_token,
+
+    cancellationRequestedAt:
+      row.cancellation_requested_at,
 
     planId:
       row.plan_id,

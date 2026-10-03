@@ -11,6 +11,11 @@ let activeSeriesKey;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
+const DEFAULT_UPLOAD_SERIES = new Set([
+  "",
+  "Primary performance",
+  "Business data",
+]);
 
 function isSidebarCollapsed() {
   if (!window.matchMedia(SIDEBAR_DESKTOP_QUERY).matches) return false;
@@ -83,6 +88,11 @@ const metricAmount = (item) =>
         item?.metricValue ??
           Number(item?.metricCents ?? 0) / 100,
       );
+
+const hasMetricAmount = (item) =>
+  item?.metricCents !== undefined ||
+  item?.revenueCents !== undefined ||
+  item?.metricValue !== undefined;
 
 const metricChangePercent = (latest, previous) => {
   if (!latest || !previous) return null;
@@ -1680,6 +1690,20 @@ function shell(content, active) {
           </p>
 
           <button
+            id="sidebar-help"
+            class="text-button sidebar-help"
+            type="button"
+            title="Open live support"
+            aria-label="Open live support"
+          >
+            ${icon("life-buoy")}
+
+            <span>
+              Help
+            </span>
+          </button>
+
+          <button
             data-sign-out
             class="text-button sidebar-sign-out"
             type="button"
@@ -1780,6 +1804,32 @@ function shell(content, active) {
   const sidebarToggle =
     document.querySelector(
       "#sidebar-toggle",
+    );
+
+  document
+    .querySelector(
+      "#sidebar-help",
+    )
+    ?.addEventListener(
+      "click",
+      () => {
+        const widget =
+          document.querySelector(
+            "call-us-selector, call-us, #wp-live-chat-by-3CX",
+          );
+
+        if (
+          widget &&
+          typeof widget.click === "function"
+        ) {
+          widget.click();
+        }
+
+        widget?.scrollIntoView?.({
+          block: "end",
+          inline: "end",
+        });
+      },
     );
 
   sidebarToggle?.addEventListener(
@@ -2572,6 +2622,34 @@ function dataPage() {
     };
   }
 
+  const dataKindSelect =
+    document.querySelector(
+      '[name="dataKind"]',
+    );
+
+  const dataSeriesInput =
+    document.querySelector(
+      '[name="dataSeries"]',
+    );
+
+  if (
+    dataKindSelect &&
+    dataSeriesInput
+  ) {
+    dataKindSelect.onchange = () => {
+      if (
+        dataKindSelect.value !==
+          "Sales performance" &&
+        DEFAULT_UPLOAD_SERIES.has(
+          dataSeriesInput.value.trim(),
+        )
+      ) {
+        dataSeriesInput.value =
+          dataKindSelect.value;
+      }
+    };
+  }
+
   const drop =
     document.querySelector(
       "#dropzone",
@@ -2959,18 +3037,33 @@ function validationHtml(u) {
               </span>
 
               <span>
-                ${esc(
-                  u.metricLabel ||
-                    "Metric",
-                )}
-                total
+                ${
+                  hasMetricAmount(u)
+                    ? `${esc(
+                        u.metricLabel ||
+                          "Metric",
+                      )} total`
+                    : "Processing status"
+                }
 
                 <strong>
-                  ${esc(
-                    metricAmount(
-                      u,
-                    ),
-                  )}
+                  ${
+                    hasMetricAmount(u)
+                      ? esc(
+                          metricAmount(
+                            u,
+                          ),
+                        )
+                      : esc(
+                          String(
+                            u.status ||
+                              "validated",
+                          ).replaceAll(
+                            "_",
+                            " ",
+                          ),
+                        )
+                  }
                 </strong>
               </span>
 
@@ -3059,7 +3152,11 @@ function validationHtml(u) {
 
                         <span>
                           Verified processing adds this source
-                          to the business evidence history.
+                          to the business evidence history${
+                            hasMetricAmount(u)
+                              ? "."
+                              : " after the worker derives metrics."
+                          }
                         </span>
                       </li>
                     </ul>
@@ -5648,6 +5745,9 @@ function billingPage() {
   const isPending =
     status === "pending_checkout";
 
+  const isNonRenewing =
+    status === "non_renewing";
+
   const providerConfigured =
     Boolean(
       subscription?.providerConfigured,
@@ -5665,6 +5765,11 @@ function billingPage() {
   const canStartCheckout =
     providerConfigured ||
     isLocalReviewHost;
+
+  const canCancelSubscription =
+    Boolean(
+      subscription?.canCancel,
+    );
 
   const priceLabel =
     subscription?.priceLabel ||
@@ -5959,7 +6064,42 @@ function billingPage() {
                         </span>
                       </div>
                     </div>
+
+                    <button
+                      id="cancel-billing-subscription"
+                      class="secondary billing-secondary-action"
+                      type="button"
+                      ${
+                        canCancelSubscription
+                          ? ""
+                          : "disabled"
+                      }
+                    >
+                      ${icon(
+                        "x-circle",
+                      )}
+
+                      Cancel subscription
+                    </button>
                   `
+                  : isNonRenewing
+                    ? `
+                      <div class="billing-active-confirmation billing-nonrenewing-confirmation">
+                        ${icon(
+                          "calendar-x",
+                        )}
+
+                        <div>
+                          <strong>
+                            Subscription will not renew
+                          </strong>
+
+                          <span>
+                            Paid access remains available until the current period ends.
+                          </span>
+                        </div>
+                      </div>
+                    `
                   : subscription &&
                       canStartCheckout
                     ? `
@@ -6005,6 +6145,12 @@ function billingPage() {
 
                 Secure checkout powered by Paystack.
                 BIZNORYX does not store your card details.
+                ${
+                  isActive &&
+                  !canCancelSubscription
+                    ? " Live support can help cancel this subscription while Paystack identity sync completes."
+                    : ""
+                }
               </p>
             </div>
           </article>
@@ -6382,6 +6528,11 @@ function billingPage() {
       "#confirm-billing-checkout",
     );
 
+  const cancelSubscription =
+    document.querySelector(
+      "#cancel-billing-subscription",
+    );
+
   const pageMessage =
     document.querySelector(
       "#billing-page-message",
@@ -6536,6 +6687,59 @@ function billingPage() {
           }
         } finally {
           confirmCheckout.disabled =
+            false;
+        }
+      };
+  }
+
+  if (cancelSubscription) {
+    cancelSubscription.onclick =
+      async () => {
+        const confirmed =
+          window.confirm(
+            "Cancel this BIZNORYX subscription? Paid access remains available until the current billing period ends.",
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        cancelSubscription.disabled =
+          true;
+
+        if (pageMessage) {
+          pageMessage.textContent =
+            "Canceling subscription...";
+
+          pageMessage.classList.remove(
+            "error-text",
+          );
+        }
+
+        try {
+          await api(
+            "billing/cancel",
+            {},
+          );
+
+          dashboard =
+            await api(
+              "dashboard",
+            );
+
+          billingPage();
+        } catch (error) {
+          if (pageMessage) {
+            pageMessage.textContent =
+              error?.message ||
+              "Subscription could not be canceled.";
+
+            pageMessage.classList.add(
+              "error-text",
+            );
+          }
+        } finally {
+          cancelSubscription.disabled =
             false;
         }
       };

@@ -400,6 +400,52 @@ test("generic transaction datasets create evidence reports without sales-specifi
   );
 });
 
+test("default upload series follows selected data type so unrelated schemas do not collide", () => {
+  const sales = validateCustomerUpload(
+    {
+      fileName: "sales.csv",
+      period: "2026-01",
+      dataSeries: "Primary performance",
+      dataKind: "Sales performance",
+      content:
+        "product,revenue,date\nA,125.50,2026-01-01\n",
+    },
+    "org",
+  );
+
+  const transactions = validateCustomerUpload(
+    {
+      fileName: "transactions.csv",
+      period: "2026-01",
+      dataSeries: "Primary performance",
+      dataKind: "Transaction history",
+      content:
+        "transaction_id,channel,amount,transaction_date\n1001,Online,125.50,2026-01-01\n",
+    },
+    "org",
+  );
+
+  assert.equal(
+    sales.dataSeries,
+    "Primary performance",
+  );
+
+  assert.equal(
+    transactions.dataSeries,
+    "Transaction history",
+  );
+
+  assert.notEqual(
+    sales.seriesKey,
+    transactions.seriesKey,
+  );
+
+  assert.equal(
+    transactions.status,
+    "awaiting_confirmation",
+  );
+});
+
 test("batch uploads validate multiple files and preserve individual review records", async () => {
   const { server } = createReviewApp();
 

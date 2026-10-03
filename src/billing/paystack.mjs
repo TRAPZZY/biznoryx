@@ -14,6 +14,9 @@ const PAYSTACK_INITIALIZE_URL =
 const PAYSTACK_VERIFY_URL =
   "https://api.paystack.co/transaction/verify";
 
+const PAYSTACK_DISABLE_SUBSCRIPTION_URL =
+  "https://api.paystack.co/subscription/disable";
+
 const BIZNORYX_MONTHLY_AMOUNT_MINOR =
   4_000_000;
 
@@ -478,6 +481,80 @@ export async function verifyPaystackTransaction({
   }
 
   return transaction;
+}
+
+export async function disablePaystackSubscription({
+  subscriptionCode,
+  emailToken,
+  env = process.env,
+  fetchImpl = fetch,
+}) {
+  const secretKey = String(
+    env.PAYSTACK_SECRET_KEY ?? "",
+  ).trim();
+
+  if (!secretKey) {
+    throw new AuthError(
+      "Paystack is not configured for this environment.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
+  }
+
+  const code = String(
+    subscriptionCode ?? "",
+  ).trim();
+
+  const token = String(
+    emailToken ?? "",
+  ).trim();
+
+  if (!code || !token) {
+    throw new AuthError(
+      "This subscription cannot be canceled automatically because its Paystack subscription identity is incomplete.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const response = await fetchImpl(
+    PAYSTACK_DISABLE_SUBSCRIPTION_URL,
+    {
+      method: "POST",
+
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+
+      body: JSON.stringify({
+        code,
+        token,
+      }),
+    },
+  );
+
+  let payload;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (
+    !response.ok ||
+    payload?.status !== true
+  ) {
+    throw new AuthError(
+      payload?.message ||
+        "Paystack could not cancel this subscription.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  return payload.data ?? {
+    disabled: true,
+  };
 }
 
 export function localReviewCheckout({
