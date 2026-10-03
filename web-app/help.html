@@ -33,16 +33,23 @@
           subscriptions, billing, account access and workspace troubleshooting.
         </p>
 
-        <label class="search-box" for="help-search">
-          <span aria-hidden="true"> ⌕ </span>
+        <form id="help-search-form" role="search">
+          <label class="search-box" for="help-search">
+            <span aria-hidden="true"> ⌕ </span>
 
-          <input
-            id="help-search"
-            type="search"
-            autocomplete="off"
-            placeholder="Search the Help Center..."
-          />
-        </label>
+            <input
+              id="help-search"
+              type="search"
+              autocomplete="off"
+              enterkeyhint="search"
+              placeholder="Search the Help Center..."
+            />
+          </label>
+
+          <button type="submit" hidden tabindex="-1" aria-hidden="true">
+            Search
+          </button>
+        </form>
 
         <p
           id="result-status"

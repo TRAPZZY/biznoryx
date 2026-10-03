@@ -33,7 +33,13 @@ test("Help Center searches and filters troubleshooting articles", async ({
     })
     .click();
 
-  await search.fill("upload rejected");
+  await search.fill("how do I fix an upload rejected problem");
+
+  /*
+   * This is the behaviour the real customer uses:
+   * type a normal question and press Enter.
+   */
+  await search.press("Enter");
 
   const rejectedArticle = page.locator("details.article").filter({
     hasText: "Why was my upload rejected?",

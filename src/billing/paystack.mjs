@@ -15,6 +15,62 @@ const PAYSTACK_ENABLE_SUBSCRIPTION_URL =
 
 const PAYSTACK_SUBSCRIPTIONS_URL = "https://api.paystack.co/subscription";
 
+const PAYSTACK_REQUEST_TIMEOUT_MS = 15_000;
+
+async function paystackFetchWithTimeout({
+  fetchImpl,
+  url,
+  options,
+  operation,
+}) {
+  const controller = new AbortController();
+
+  let timeoutId;
+
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+
+      reject(
+        new AuthError(
+          `Paystack did not respond while ${operation}. Please try again.`,
+          "BILLING_PROVIDER_FAILED",
+        ),
+      );
+    }, PAYSTACK_REQUEST_TIMEOUT_MS);
+  });
+
+  const request = Promise.resolve().then(() =>
+    fetchImpl(url, {
+      ...options,
+
+      signal: controller.signal,
+    }),
+  );
+
+  try {
+    return await Promise.race([request, timeout]);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw error;
+    }
+
+    if (controller.signal.aborted) {
+      throw new AuthError(
+        `Paystack did not respond while ${operation}. Please try again.`,
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    throw new AuthError(
+      `Paystack could not be reached while ${operation}. Please try again.`,
+      "BILLING_PROVIDER_FAILED",
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const BIZNORYX_MONTHLY_AMOUNT_MINOR = 4_000_000;
 
 const BIZNORYX_CURRENCY = "NGN";
@@ -256,9 +312,12 @@ export async function verifyPaystackTransaction({
     throw new AuthError("Billing reference is required.", "VALIDATION_FAILED");
   }
 
-  const response = await fetchImpl(
-    `${PAYSTACK_VERIFY_URL}/${encodeURIComponent(normalizedReference)}`,
-    {
+  const response = await paystackFetchWithTimeout({
+    fetchImpl,
+
+    url: `${PAYSTACK_VERIFY_URL}/${encodeURIComponent(normalizedReference)}`,
+
+    options: {
       method: "GET",
 
       headers: {
@@ -267,7 +326,9 @@ export async function verifyPaystackTransaction({
         Accept: "application/json",
       },
     },
-  );
+
+    operation: "verifying your billing transaction",
+  });
 
   let payload;
 
@@ -369,12 +430,22 @@ export async function resolvePaystackSubscriptionIdentity({
 
   listUrl.searchParams.set("perPage", "100");
 
-  const response = await fetchImpl(listUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${String(env.PAYSTACK_SECRET_KEY ?? "").trim()}`,
-      Accept: "application/json",
+  const response = await paystackFetchWithTimeout({
+    fetchImpl,
+
+    url: listUrl,
+
+    options: {
+      method: "GET",
+
+      headers: {
+        Authorization: `Bearer ${String(env.PAYSTACK_SECRET_KEY ?? "").trim()}`,
+
+        Accept: "application/json",
+      },
     },
+
+    operation: "finding your existing subscription",
   });
 
   let payload;
@@ -443,16 +514,25 @@ export async function resolvePaystackSubscriptionIdentity({
     );
   }
 
-  const detailResponse = await fetchImpl(
-    `${PAYSTACK_SUBSCRIPTIONS_URL}/${encodeURIComponent(subscriptionCode)}`,
-    {
+  const detailResponse = await paystackFetchWithTimeout({
+    fetchImpl,
+
+    url: `${PAYSTACK_SUBSCRIPTIONS_URL}/${encodeURIComponent(
+      subscriptionCode,
+    )}`,
+
+    options: {
       method: "GET",
+
       headers: {
         Authorization: `Bearer ${String(env.PAYSTACK_SECRET_KEY ?? "").trim()}`,
+
         Accept: "application/json",
       },
     },
-  );
+
+    operation: "loading your subscription details",
+  });
 
   let detailPayload;
 
@@ -580,21 +660,29 @@ export async function enablePaystackSubscription({
     );
   }
 
-  const response = await fetchImpl(PAYSTACK_ENABLE_SUBSCRIPTION_URL, {
-    method: "POST",
+  const response = await paystackFetchWithTimeout({
+    fetchImpl,
 
-    headers: {
-      Authorization: "Bearer " + secretKey,
+    url: PAYSTACK_ENABLE_SUBSCRIPTION_URL,
 
-      "Content-Type": "application/json",
+    options: {
+      method: "POST",
 
-      Accept: "application/json",
+      headers: {
+        Authorization: "Bearer " + secretKey,
+
+        "Content-Type": "application/json",
+
+        Accept: "application/json",
+      },
+
+      body: JSON.stringify({
+        code,
+        token,
+      }),
     },
 
-    body: JSON.stringify({
-      code,
-      token,
-    }),
+    operation: "restoring automatic renewal",
   });
 
   let payload;

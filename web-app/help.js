@@ -17,6 +17,8 @@ if (!localhost && location.protocol === "http:") {
 
 const input = document.querySelector("#help-search");
 
+const searchForm = document.querySelector("#help-search-form");
+
 const articles = [...document.querySelectorAll(".article")];
 
 const filters = [...document.querySelectorAll("[data-filter]")];
@@ -43,54 +45,116 @@ function articleText(article) {
   );
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "do",
+  "does",
+  "for",
+  "how",
+  "i",
+  "in",
+  "is",
+  "it",
+  "my",
+  "of",
+  "on",
+  "the",
+  "to",
+  "what",
+  "when",
+  "why",
+  "with",
+]);
+
 function searchTerms(value) {
   return normalized(value)
     .split(/[^a-z0-9]+/i)
-    .filter((term) => term.length > 1);
+    .filter((term) => term.length > 1 && !SEARCH_STOP_WORDS.has(term));
 }
 
-function updateArticles() {
+function searchScore(article, query, terms) {
+  const searchable = articleText(article);
+
+  const heading = normalized(article.querySelector("summary")?.textContent);
+
+  let score = 0;
+
+  if (query && searchable.includes(query)) {
+    score += 30;
+  }
+
+  for (const term of terms) {
+    if (heading.includes(term)) {
+      score += 8;
+      continue;
+    }
+
+    if (searchable.includes(term)) {
+      score += 3;
+    }
+  }
+
+  return score;
+}
+
+function resetSearchCategory() {
+  activeFilter = "all";
+
+  for (const filter of filters) {
+    filter.classList.toggle("active", filter.dataset.filter === "all");
+  }
+}
+
+function updateArticles({ focusFirst = false } = {}) {
   const query = normalized(input?.value);
 
   const terms = searchTerms(query);
 
+  const searching = query.length > 0;
+
   let visible = 0;
+  let bestArticle = null;
+  let bestScore = -1;
 
   for (const article of articles) {
-    const searchable = articleText(article);
+    const score = searching ? searchScore(article, query, terms) : 0;
 
     /*
-     * A typed search searches the entire Help Center,
-     * regardless of the category selected previously.
+     * Search uses relevance instead of requiring
+     * every word to occur.
+     *
+     * Example:
+     * "how do I renew my subscription"
+     * correctly finds the renewal article.
      */
+    const queryMatch = !searching || score > 0;
+
     const categoryMatch =
-      terms.length > 0 ||
+      searching ||
       activeFilter === "all" ||
       article.dataset.category === activeFilter;
 
-    /*
-     * Natural multi-word search.
-     *
-     * "upload rejected" now matches an article containing
-     * both words even when they are not adjacent.
-     */
-    const queryMatch =
-      terms.length === 0 || terms.every((term) => searchable.includes(term));
-
-    const show = categoryMatch && queryMatch;
+    const show = queryMatch && categoryMatch;
 
     article.hidden = !show;
 
-    /*
-     * Open matching articles automatically so the
-     * answer itself is immediately visible.
-     */
-    if (terms.length > 0) {
-      article.open = show;
+    if (searching) {
+      article.open = false;
     }
 
-    if (show) {
-      visible += 1;
+    if (!show) {
+      continue;
+    }
+
+    visible += 1;
+
+    if (searching && score > bestScore) {
+      bestScore = score;
+
+      bestArticle = article;
     }
   }
 
@@ -99,29 +163,52 @@ function updateArticles() {
   }
 
   if (resultStatus) {
-    resultStatus.textContent =
-      terms.length > 0
-        ? visible === 1
-          ? "1 matching article"
-          : visible + " matching articles"
-        : "";
-  }
-}
-
-input?.addEventListener("input", () => {
-  /*
-   * Searching should not remain trapped inside a
-   * category the customer selected earlier.
-   */
-  if (normalized(input.value)) {
-    activeFilter = "all";
-
-    for (const filter of filters) {
-      filter.classList.toggle("active", filter.dataset.filter === "all");
+    if (!searching) {
+      resultStatus.textContent = "";
+    } else if (visible === 0) {
+      resultStatus.textContent = "No matching articles found.";
+    } else {
+      resultStatus.textContent =
+        visible === 1 ? "1 matching article" : visible + " matching articles";
     }
   }
 
+  if (focusFirst && bestArticle) {
+    bestArticle.open = true;
+
+    window.requestAnimationFrame(() => {
+      bestArticle.scrollIntoView({
+        behavior: "smooth",
+
+        block: "center",
+      });
+    });
+  }
+
+  return {
+    visible,
+    bestArticle,
+  };
+}
+
+input?.addEventListener("input", () => {
+  if (normalized(input.value)) {
+    resetSearchCategory();
+  }
+
   updateArticles();
+});
+
+searchForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  if (normalized(input?.value)) {
+    resetSearchCategory();
+  }
+
+  updateArticles({
+    focusFirst: true,
+  });
 });
 
 for (const filter of filters) {
