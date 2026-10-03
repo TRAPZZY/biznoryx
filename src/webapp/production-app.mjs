@@ -50,6 +50,7 @@ import {
   planLabel,
   disablePaystackSubscription,
   enablePaystackSubscription,
+  createPaystackSubscription,
   resolvePaystackSubscriptionIdentity,
   verifyPaystackTransaction,
   verifyPaystackWebhookSignature,
@@ -1243,21 +1244,79 @@ async function routeRequest({ request, response, runtime }) {
       emailToken = recovered.emailToken;
     }
 
-    await enablePaystackSubscription({
-      subscriptionCode,
-      emailToken,
+    let renewalMode = "reactivated";
 
-      fetchImpl: runtime.paystackFetch,
-    });
+    let nextPaymentDate = subscription.currentPeriodEnd ?? null;
+
+    try {
+      await enablePaystackSubscription({
+        subscriptionCode,
+        emailToken,
+        fetchImpl: runtime.paystackFetch,
+      });
+    } catch (error) {
+      if (error?.code !== "BILLING_SUBSCRIPTION_RECREATE_REQUIRED") {
+        throw error;
+      }
+
+      /*
+       * Paystack has permanently closed the old
+       * subscription.
+       *
+       * Do NOT charge the customer again today.
+       * Create a replacement whose first debit begins
+       * at the end of the already-paid period.
+       */
+      const currentPeriodEnd = new Date(subscription.currentPeriodEnd ?? 0);
+
+      const minimumStart = new Date(Date.now() + 5 * 60 * 1000);
+
+      const replacementStart =
+        Number.isFinite(currentPeriodEnd.getTime()) &&
+        currentPeriodEnd > minimumStart
+          ? currentPeriodEnd
+          : minimumStart;
+
+      const plan = monthlyPlanFromEnv();
+
+      const replacement = await createPaystackSubscription({
+        customer: subscription.providerCustomerCode || context.user.email,
+
+        planCode: plan.planCode,
+
+        startDate: replacementStart,
+
+        fetchImpl: runtime.paystackFetch,
+      });
+
+      subscriptionCode = replacement.subscriptionCode;
+
+      emailToken = replacement.emailToken;
+
+      renewalMode = "replacement_scheduled";
+
+      nextPaymentDate =
+        replacement.nextPaymentDate ?? replacementStart.toISOString();
+    }
 
     const updated = await runtime.billing.renewSubscription({
       organizationId,
 
       actorUserId: context.user.id,
+
+      providerSubscriptionCode: subscriptionCode,
+
+      providerEmailToken: emailToken,
     });
 
     sendJson(response, 200, {
       subscription: publicSubscription(updated),
+
+      renewal: {
+        mode: renewalMode,
+
+        nextPaymentDate,
+      },
     });
 
     return;

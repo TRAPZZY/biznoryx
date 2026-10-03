@@ -573,7 +573,12 @@ export class PostgresBillingRepository {
     return mapSubscription(result);
   }
 
-  async renewSubscription({ organizationId, actorUserId }) {
+  async renewSubscription({
+    organizationId,
+    actorUserId,
+    providerSubscriptionCode = null,
+    providerEmailToken = null,
+  }) {
     const result = await withBillingTenant(
       this.pool,
       {
@@ -585,12 +590,22 @@ export class PostgresBillingRepository {
           `update organization_billing_subscriptions
                   set status = 'active',
                       cancellation_requested_at = null,
+                      provider_subscription_code =
+                        coalesce(
+                          $3,
+                          provider_subscription_code
+                        ),
+                      provider_email_token =
+                        coalesce(
+                          $4,
+                          provider_email_token
+                        ),
                       updated_by_user_id =
                         coalesce(
                           $2,
                           updated_by_user_id
                         ),
-                      updated_at = $3
+                      updated_at = $5
                 where organization_id = $1
                   and status = 'non_renewing'
                 returning id,
@@ -612,7 +627,13 @@ export class PostgresBillingRepository {
                           current_period_end,
                           created_at,
                           updated_at`,
-          [organizationId, actorUserId, this.now()],
+          [
+            organizationId,
+            actorUserId,
+            providerSubscriptionCode,
+            providerEmailToken,
+            this.now(),
+          ],
         );
 
         if (updated.rows[0]) {

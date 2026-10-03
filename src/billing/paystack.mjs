@@ -694,9 +694,22 @@ export async function enablePaystackSubscription({
   }
 
   if (!response.ok || payload?.status !== true) {
-    throw new AuthError(
+    const providerMessage = String(
       payload?.message || "Paystack could not resume this subscription.",
-      "BILLING_PROVIDER_FAILED",
+    ).trim();
+
+    const normalizedMessage = providerMessage.toLowerCase();
+
+    const requiresReplacement =
+      (normalizedMessage.includes("cancelled") ||
+        normalizedMessage.includes("canceled")) &&
+      normalizedMessage.includes("reactivat");
+
+    throw new AuthError(
+      providerMessage,
+      requiresReplacement
+        ? "BILLING_SUBSCRIPTION_RECREATE_REQUIRED"
+        : "BILLING_PROVIDER_FAILED",
     );
   }
 
@@ -705,6 +718,106 @@ export async function enablePaystackSubscription({
       enabled: true,
     }
   );
+}
+
+export async function createPaystackSubscription({
+  customer,
+  planCode,
+  startDate,
+  env = process.env,
+  fetchImpl = fetch,
+}) {
+  const secretKey = String(env.PAYSTACK_SECRET_KEY ?? "").trim();
+
+  if (!secretKey) {
+    throw new AuthError(
+      "Paystack is not configured for this environment.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
+    );
+  }
+
+  const normalizedCustomer = String(customer ?? "").trim();
+
+  const normalizedPlanCode = String(planCode ?? "").trim();
+
+  const parsedStartDate = new Date(startDate);
+
+  if (
+    !normalizedCustomer ||
+    !normalizedPlanCode ||
+    !Number.isFinite(parsedStartDate.getTime())
+  ) {
+    throw new AuthError(
+      "The replacement Paystack subscription details are incomplete.",
+      "VALIDATION_FAILED",
+    );
+  }
+
+  const response = await paystackFetchWithTimeout({
+    fetchImpl,
+
+    url: PAYSTACK_SUBSCRIPTIONS_URL,
+
+    options: {
+      method: "POST",
+
+      headers: {
+        Authorization: "Bearer " + secretKey,
+
+        "Content-Type": "application/json",
+
+        Accept: "application/json",
+      },
+
+      body: JSON.stringify({
+        customer: normalizedCustomer,
+
+        plan: normalizedPlanCode,
+
+        start_date: parsedStartDate.toISOString(),
+      }),
+    },
+
+    operation: "creating your replacement subscription",
+  });
+
+  let payload;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.status !== true || !payload?.data) {
+    throw new AuthError(
+      payload?.message ||
+        "Paystack could not create the replacement subscription.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const subscriptionCode = String(payload.data.subscription_code ?? "").trim();
+
+  const emailToken = String(payload.data.email_token ?? "").trim();
+
+  if (!subscriptionCode || !emailToken) {
+    throw new AuthError(
+      "Paystack created the replacement subscription but returned an incomplete subscription identity.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  return {
+    subscriptionCode,
+
+    emailToken,
+
+    status: String(payload.data.status ?? "active"),
+
+    nextPaymentDate:
+      payload.data.next_payment_date ?? parsedStartDate.toISOString(),
+  };
 }
 
 export function localReviewCheckout({
