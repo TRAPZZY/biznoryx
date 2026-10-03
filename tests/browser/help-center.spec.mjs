@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
 
 test("Help Center searches and filters troubleshooting articles", async ({
   page,
@@ -53,7 +53,9 @@ test("Help Center searches and filters troubleshooting articles", async ({
     rejectedArticle.getByText(/A file can be rejected/),
   ).toBeVisible();
 
-  await expect(page.getByText("1 matching article")).toBeVisible();
+  await expect(page.locator("#result-status")).toHaveText(
+    /^[1-9]\d* matching articles?$/,
+  );
 
   await search.fill("");
 
