@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>Help & Support | BIZNORYX</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #17211b;
+      background: #f5f8f5;
+      font-family:
+        Arial,
+        sans-serif;
+    }
+
+    main {
+      width: min(1040px, calc(100% - 32px));
+      margin: auto;
+      padding: 52px 0 80px;
+    }
+
+    .brand {
+      color: #17211b;
+      font-size: 26px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .brand span,
+    .eyebrow {
+      color: #19764f;
+    }
+
+    .back {
+      display: block;
+      width: fit-content;
+      margin: 30px 0;
+      color: #19764f;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .hero,
+    .card {
+      background: #fff;
+      border: 1px solid #dce5dd;
+      border-radius: 18px;
+    }
+
+    .hero {
+      padding: 42px;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    h1 {
+      margin: 12px 0;
+      font-size: clamp(34px, 7vw, 56px);
+    }
+
+    .hero > p:last-child {
+      max-width: 680px;
+      color: #66716a;
+      font-size: 17px;
+      line-height: 1.7;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns:
+        repeat(auto-fit, minmax(230px, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .card {
+      padding: 26px;
+    }
+
+    .card h2 {
+      margin-top: 0;
+    }
+
+    .card p {
+      color: #66716a;
+      line-height: 1.6;
+    }
+
+    .status {
+      color: #19764f !important;
+      font-weight: 800;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <a
+      class="brand"
+      href="/#/dashboard"
+    >
+      BIZNORYX<span>.</span>
+    </a>
+
+    <a
+      class="back"
+      href="/#/dashboard"
+    >
+      ← Back to workspace
+    </a>
+
+    <section class="hero">
+      <p class="eyebrow">
+        BIZNORYX SUPPORT
+      </p>
+
+      <h1>Help & Support</h1>
+
+      <p>
+        Get assistance with billing, subscriptions,
+        data uploads, validation, evidence reports,
+        account access and your BIZNORYX workspace.
+        Live support is available through 3CX.
+      </p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Live support</h2>
+
+        <p>
+          Use the 3CX chat widget on this page to
+          speak with BIZNORYX support.
+        </p>
+
+        <p class="status">
+          3CX live chat enabled
+        </p>
+      </article>
+
+      <article class="card">
+        <h2>Billing</h2>
+
+        <p>
+          Get help with subscriptions,
+          cancellations, payment history and Paystack.
+        </p>
+      </article>
+
+      <article class="card">
+        <h2>Product support</h2>
+
+        <p>
+          Get assistance with uploads, reports,
+          business data and workspace features.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <call-us-selector
+    phonesystem-url="https://1637.3cx.cloud"
+    party="LiveChat519580"
+  ></call-us-selector>
+
+  <script
+    defer
+    src="https://downloads-global.3cx.com/downloads/livechatandtalk/v1/callus.js"
+    id="tcx-callus-js"
+    charset="utf-8"
+  ></script>
+</body>
+</html>

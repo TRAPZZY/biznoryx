@@ -17,6 +17,9 @@ const PAYSTACK_VERIFY_URL =
 const PAYSTACK_DISABLE_SUBSCRIPTION_URL =
   "https://api.paystack.co/subscription/disable";
 
+const PAYSTACK_SUBSCRIPTIONS_URL =
+  "https://api.paystack.co/subscription";
+
 const BIZNORYX_MONTHLY_AMOUNT_MINOR =
   4_000_000;
 
@@ -481,6 +484,243 @@ export async function verifyPaystackTransaction({
   }
 
   return transaction;
+}
+
+export async function resolvePaystackSubscriptionIdentity({
+  reference,
+  organizationId,
+  planCode,
+  env = process.env,
+  fetchImpl = fetch,
+}) {
+  const normalizedReference =
+    String(reference ?? "").trim();
+
+  const normalizedOrganizationId =
+    String(organizationId ?? "").trim();
+
+  const normalizedPlanCode =
+    String(planCode ?? "").trim();
+
+  if (
+    !normalizedReference ||
+    !normalizedOrganizationId ||
+    !normalizedPlanCode
+  ) {
+    throw new AuthError(
+      "The existing subscription cannot be matched safely to Paystack.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const transaction =
+    await verifyPaystackTransaction({
+      reference: normalizedReference,
+      env,
+      fetchImpl,
+    });
+
+  const transactionOrganizationId =
+    String(
+      transaction?.metadata?.organization_id ??
+        transaction?.metadata?.organizationId ??
+        "",
+    ).trim();
+
+  if (
+    transactionOrganizationId &&
+    transactionOrganizationId !==
+      normalizedOrganizationId
+  ) {
+    throw new AuthError(
+      "The Paystack transaction does not belong to this workspace.",
+      "ORG_ACCESS_DENIED",
+    );
+  }
+
+  const customerId =
+    Number(transaction?.customer?.id);
+
+  if (
+    !Number.isSafeInteger(customerId) ||
+    customerId <= 0
+  ) {
+    throw new AuthError(
+      "Paystack did not return the customer attached to this subscription.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const listUrl =
+    new URL(
+      PAYSTACK_SUBSCRIPTIONS_URL,
+    );
+
+  listUrl.searchParams.set(
+    "customer",
+    String(customerId),
+  );
+
+  listUrl.searchParams.set(
+    "perPage",
+    "100",
+  );
+
+  const response =
+    await fetchImpl(
+      listUrl,
+      {
+        method: "GET",
+        headers: {
+          Authorization:
+            `Bearer ${String(
+              env.PAYSTACK_SECRET_KEY ?? "",
+            ).trim()}`,
+          Accept: "application/json",
+        },
+      },
+    );
+
+  let payload;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (
+    !response.ok ||
+    payload?.status !== true ||
+    !Array.isArray(payload?.data)
+  ) {
+    throw new AuthError(
+      payload?.message ||
+        "Paystack subscriptions could not be loaded.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const matching =
+    payload.data.filter(
+      (item) => {
+        const candidatePlanCode =
+          String(
+            item?.plan?.plan_code ??
+              item?.plan_code ??
+              "",
+          ).trim();
+
+        const status =
+          String(
+            item?.status ?? "",
+          ).toLowerCase();
+
+        return (
+          candidatePlanCode ===
+            normalizedPlanCode &&
+          ![
+            "complete",
+            "completed",
+            "disabled",
+            "cancelled",
+            "canceled",
+          ].includes(status)
+        );
+      },
+    );
+
+  const active =
+    matching.filter(
+      (item) =>
+        String(
+          item?.status ?? "",
+        ).toLowerCase() === "active",
+    );
+
+  const selected =
+    active.length === 1
+      ? active[0]
+      : matching.length === 1
+        ? matching[0]
+        : null;
+
+  if (!selected) {
+    throw new AuthError(
+      "BIZNORYX could not uniquely identify the active Paystack subscription.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const subscriptionCode =
+    String(
+      selected.subscription_code ??
+        "",
+    ).trim();
+
+  if (!subscriptionCode) {
+    throw new AuthError(
+      "Paystack returned an incomplete subscription identity.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const detailResponse =
+    await fetchImpl(
+      `${PAYSTACK_SUBSCRIPTIONS_URL}/${encodeURIComponent(
+        subscriptionCode,
+      )}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization:
+            `Bearer ${String(
+              env.PAYSTACK_SECRET_KEY ?? "",
+            ).trim()}`,
+          Accept: "application/json",
+        },
+      },
+    );
+
+  let detailPayload;
+
+  try {
+    detailPayload =
+      await detailResponse.json();
+  } catch {
+    detailPayload = null;
+  }
+
+  if (
+    !detailResponse.ok ||
+    detailPayload?.status !== true ||
+    !detailPayload?.data
+  ) {
+    throw new AuthError(
+      detailPayload?.message ||
+        "Paystack subscription details could not be loaded.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  const emailToken =
+    String(
+      detailPayload.data.email_token ??
+        selected.email_token ??
+        "",
+    ).trim();
+
+  if (!emailToken) {
+    throw new AuthError(
+      "Paystack returned an incomplete cancellation token.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
+  return {
+    subscriptionCode,
+    emailToken,
+  };
 }
 
 export async function disablePaystackSubscription({

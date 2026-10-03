@@ -1689,19 +1689,19 @@ function shell(content, active) {
             Make better decisions.
           </p>
 
-          <button
-            id="sidebar-help"
+          <a
+            id="sidebar-help-link"
             class="text-button sidebar-help"
-            type="button"
-            title="Open live support"
-            aria-label="Open live support"
+            href="/help.html"
+            title="Help & support"
+            aria-label="Help & support"
           >
             ${icon("life-buoy")}
 
             <span>
               Help
             </span>
-          </button>
+          </a>
 
           <button
             data-sign-out

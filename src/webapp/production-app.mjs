@@ -49,6 +49,7 @@ import {
   monthlyPlanFromEnv,
   planLabel,
   disablePaystackSubscription,
+  resolvePaystackSubscriptionIdentity,
   verifyPaystackTransaction,
   verifyPaystackWebhookSignature,
 } from "../billing/paystack.mjs";
@@ -1076,22 +1077,40 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    let subscriptionCode =
+      subscription.providerSubscriptionCode;
+
+    let emailToken =
+      subscription.providerEmailToken;
+
     if (
-      !subscription.providerSubscriptionCode ||
-      !subscription.providerEmailToken
+      !subscriptionCode ||
+      !emailToken
     ) {
-      throw new AuthError(
-        "This subscription cannot be canceled automatically yet. Contact BIZNORYX support so we can cancel it with Paystack.",
-        "BILLING_PROVIDER_FAILED",
-      );
+      const recovered =
+        await resolvePaystackSubscriptionIdentity({
+          reference:
+            subscription.checkoutReference,
+
+          organizationId,
+
+          planCode:
+            monthlyPlanFromEnv().planCode,
+
+          fetchImpl:
+            runtime.paystackFetch,
+        });
+
+      subscriptionCode =
+        recovered.subscriptionCode;
+
+      emailToken =
+        recovered.emailToken;
     }
 
     await disablePaystackSubscription({
-      subscriptionCode:
-        subscription.providerSubscriptionCode,
-
-      emailToken:
-        subscription.providerEmailToken,
+      subscriptionCode,
+      emailToken,
 
       fetchImpl:
         runtime.paystackFetch,
@@ -2105,11 +2124,14 @@ function applySecurityHeaders(response, production) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com",
-      "img-src 'self' https://images.unsplash.com data:",
-      "connect-src 'self'",
+      "script-src 'self' https://downloads-global.3cx.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://downloads-global.3cx.com https://1637.3cx.cloud",
+      "font-src 'self' https://fonts.gstatic.com https://downloads-global.3cx.com https://1637.3cx.cloud data:",
+      "img-src 'self' https://images.unsplash.com https://downloads-global.3cx.com https://1637.3cx.cloud data: blob:",
+      "connect-src 'self' https://1637.3cx.cloud wss://1637.3cx.cloud",
+      "frame-src https://1637.3cx.cloud",
+      "media-src 'self' https://1637.3cx.cloud blob:",
+      "worker-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -2279,8 +2301,16 @@ function publicSubscription(subscription) {
     canCancel:
       ["active", "past_due"].includes(subscription.status) &&
       Boolean(
-        subscription.providerSubscriptionCode &&
-          subscription.providerEmailToken,
+        (
+          subscription.providerSubscriptionCode &&
+          subscription.providerEmailToken
+        ) ||
+          (
+            subscription.checkoutReference &&
+            isProductionPaystackConfigured(
+              configuredPlan,
+            )
+          ),
       ),
 
     cancellationRequestedAt:
