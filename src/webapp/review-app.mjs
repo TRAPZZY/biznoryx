@@ -72,6 +72,16 @@ export function createReviewRuntime() {
     password: reviewPassword,
     emailVerifiedAt: new Date(),
   });
+
+  identity.acceptCurrentPolicy({
+    userId: owner.id,
+    acknowledgements: {
+      termsAccepted: true,
+      privacyAccepted: true,
+      dataAuthorityAccepted: true,
+      guideAcknowledged: true,
+    },
+  });
   const acme = organizations.createOrganization({
     name: "Acme Retail Group",
     slug: "acme-retail",
@@ -285,6 +295,7 @@ async function routeRequest({ request, response, runtime }) {
   if (url.pathname === "/api/session" && request.method === "GET") {
     const context = authenticateFromRequest(request, runtime, {
       required: false,
+      requirePolicy: false,
     });
     if (!context) {
       sendJson(response, 200, {
@@ -349,9 +360,44 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (
+    url.pathname === "/api/account/policy-acceptance" &&
+    request.method === "POST"
+  ) {
+    const context = authenticateFromRequest(
+      request,
+      runtime,
+      {
+        requireCsrf: true,
+        requirePolicy: false,
+      },
+    );
+
+    const body = await readJson(request);
+
+    const policy =
+      runtime.identity.acceptCurrentPolicy({
+        userId: context.user.id,
+        acknowledgements: body,
+      });
+
+    sendJson(response, 200, {
+      accepted: true,
+      policy,
+      shell: appShellState({
+        user: context.user,
+        session: context.session,
+        store: runtime.store,
+      }),
+    });
+
+    return;
+  }
+
   if (url.pathname === "/api/sign-out" && request.method === "POST") {
     const context = authenticateFromRequest(request, runtime, {
       requireCsrf: true,
+      requirePolicy: false,
     });
     runtime.sessions.signOut(context.session.id, context.user.id);
     response.setHeader("Set-Cookie", clearSessionCookie());
@@ -1169,15 +1215,45 @@ function presentAuditEvent(event) {
 }
 
 function authenticateFromRequest(request, runtime, options = {}) {
-  const token = parseCookies(request.headers.cookie ?? "").bnx_session;
-  if (!token && options.required === false) return null;
-  const csrfToken = request.headers["x-csrf-token"];
-  const context = runtime.sessions.authenticate({
-    token,
-    csrfToken,
-    requireCsrf: options.requireCsrf === true,
-  });
-  return { ...context, csrfToken: readSessionCsrf(runtime, context.session) };
+  const token =
+    parseCookies(request.headers.cookie ?? "").bnx_session;
+
+  if (!token && options.required === false) {
+    return null;
+  }
+
+  const csrfToken =
+    request.headers["x-csrf-token"];
+
+  const context =
+    runtime.sessions.authenticate({
+      token,
+      csrfToken,
+      requireCsrf:
+        options.requireCsrf === true,
+    });
+
+  if (options.requirePolicy !== false) {
+    const policy =
+      runtime.identity.policyStatus(
+        context.user.id,
+      );
+
+    if (policy.required) {
+      throw new AuthError(
+        "Accept the current BIZNORYX account and data terms before using the workspace.",
+        "POLICY_ACCEPTANCE_REQUIRED",
+      );
+    }
+  }
+
+  return {
+    ...context,
+    csrfToken: readSessionCsrf(
+      runtime,
+      context.session,
+    ),
+  };
 }
 
 function requireCapability(runtime, context, capability) {
@@ -1256,6 +1332,7 @@ function sendError(response, error) {
         ["USER_DISABLED", 401],
         ["MEMBERSHIP_DISABLED", 401],
         ["EMAIL_VERIFICATION_REQUIRED", 403],
+        ["POLICY_ACCEPTANCE_REQUIRED", 403],
         ["RATE_LIMITED", 429],
         ["SESSION_INVALID", 401],
         ["CSRF_INVALID", 403],

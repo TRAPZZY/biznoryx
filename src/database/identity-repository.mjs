@@ -14,6 +14,12 @@ import {
   withTransaction,
 } from "./postgres.mjs";
 
+import {
+  acknowledgementsComplete,
+  createCurrentPolicyAcceptance,
+  policyStatus as buildPolicyStatus,
+} from "../compliance/user-policy.mjs";
+
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 
 export class PostgresIdentityRepository {
@@ -577,6 +583,118 @@ export class PostgresIdentityRepository {
         );
       },
     );
+  }
+
+  async policyStatus(userId) {
+    const result = await withTransaction(
+      this.pool,
+      async (client) => {
+        await client.query(
+          "select set_config('app.current_user_id', $1, true)",
+          [userId],
+        );
+
+        return client.query(
+          `select
+             metadata,
+             created_at
+           from audit_events
+           where actor_user_id = $1
+             and organization_id is null
+             and event_type = 'identity.policy_accepted'
+             and target_type = 'app_user'
+             and target_id = $1
+           order by created_at desc
+           limit 1`,
+          [userId],
+        );
+      },
+    );
+
+    const row = result.rows[0];
+
+    if (!row) {
+      return buildPolicyStatus(null);
+    }
+
+    const metadata =
+      row.metadata &&
+      typeof row.metadata === "object"
+        ? row.metadata
+        : {};
+
+    return buildPolicyStatus({
+      termsVersion: metadata.termsVersion,
+      privacyVersion: metadata.privacyVersion,
+      dataUseVersion: metadata.dataUseVersion,
+      guideVersion: metadata.guideVersion,
+      acceptedAt: row.created_at,
+    });
+  }
+
+  async acceptCurrentPolicy({
+    userId,
+    acknowledgements,
+  }) {
+    if (
+      !acknowledgementsComplete(
+        acknowledgements,
+      )
+    ) {
+      throw new AuthError(
+        "Confirm the account, data and recurring-series acknowledgements before continuing.",
+        "POLICY_ACCEPTANCE_REQUIRED",
+      );
+    }
+
+    const acceptance =
+      createCurrentPolicyAcceptance(
+        this.now(),
+      );
+
+    await withTransaction(
+      this.pool,
+      async (client) => {
+        await client.query(
+          "select set_config('app.current_user_id', $1, true)",
+          [userId],
+        );
+
+        await client.query(
+          `insert into audit_events (
+             actor_user_id,
+             event_type,
+             target_type,
+             target_id,
+             metadata
+           )
+           values (
+             $1,
+             'identity.policy_accepted',
+             'app_user',
+             $1,
+             $2::jsonb
+           )`,
+          [
+            userId,
+            JSON.stringify({
+              termsVersion:
+                acceptance.termsVersion,
+              privacyVersion:
+                acceptance.privacyVersion,
+              dataUseVersion:
+                acceptance.dataUseVersion,
+              guideVersion:
+                acceptance.guideVersion,
+              source:
+                "account_data_onboarding",
+            }),
+          ],
+        );
+      },
+    );
+
+    return buildPolicyStatus(acceptance);
   }
 
   async revokeSession(

@@ -1,5 +1,11 @@
 import { createHash, pbkdf2Sync, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
+import {
+  acknowledgementsComplete,
+  createCurrentPolicyAcceptance,
+  policyStatus as buildPolicyStatus
+} from '../compliance/user-policy.mjs';
+
 export const CAPABILITIES = Object.freeze({
   MANAGE_ORGANIZATION: 'organization.manage',
   MANAGE_MEMBERS: 'members.manage',
@@ -121,6 +127,7 @@ export class IdentityService {
       displayName,
       passwordHash: hashPassword(password),
       emailVerifiedAt,
+      policyAcceptance: null,
       disabledAt: null,
       createdAt: new Date()
     };
@@ -132,6 +139,50 @@ export class IdentityService {
       targetId: user.id
     });
     return user;
+  }
+
+  policyStatus(userId) {
+    const user = mustGet(
+      this.store.users,
+      userId,
+      'User not found.'
+    );
+
+    return buildPolicyStatus(user.policyAcceptance);
+  }
+
+  acceptCurrentPolicy({ userId, acknowledgements }) {
+    if (!acknowledgementsComplete(acknowledgements)) {
+      throw new AuthError(
+        'Confirm the account, data and recurring-series acknowledgements before continuing.',
+        'POLICY_ACCEPTANCE_REQUIRED'
+      );
+    }
+
+    const user = mustGet(
+      this.store.users,
+      userId,
+      'User not found.'
+    );
+
+    const acceptance = createCurrentPolicyAcceptance();
+
+    user.policyAcceptance = acceptance;
+
+    this.auditLog.record({
+      actorUserId: userId,
+      eventType: 'identity.policy_accepted',
+      targetType: 'app_user',
+      targetId: userId,
+      metadata: {
+        termsVersion: acceptance.termsVersion,
+        privacyVersion: acceptance.privacyVersion,
+        dataUseVersion: acceptance.dataUseVersion,
+        guideVersion: acceptance.guideVersion
+      }
+    });
+
+    return buildPolicyStatus(acceptance);
   }
 
   disableUser(userId, actorUserId) {

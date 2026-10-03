@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { acceptRequiredPolicy } from "./helpers/policy-onboarding.mjs";
+
 test("verified customer can recover access with a one-time code", async ({
   page,
 }) => {
@@ -23,6 +25,7 @@ test("verified customer can recover access with a one-time code", async ({
     .textContent();
   await page.getByLabel("Verification code").fill(verificationCode.trim());
   await page.getByRole("button", { name: "Verify and continue" }).click();
+  await acceptRequiredPolicy(page);
 
   const signOut = page.waitForResponse(
     (response) => response.url().endsWith("/api/sign-out") && response.ok(),

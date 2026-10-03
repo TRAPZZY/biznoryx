@@ -103,7 +103,53 @@ test("new customer registers, creates business, validates and confirms recurring
 
     csrf = verified.csrfToken;
 
-    assert.equal(verified.shell.state, "empty");
+    assert.equal(
+      verified.shell.state,
+      "policy_required",
+    );
+
+    assert.equal(
+      verified.shell.policy.required,
+      true,
+    );
+
+    const blockedDashboard =
+      await call(
+        "dashboard",
+        undefined,
+        403,
+      );
+
+    assert.equal(
+      blockedDashboard.error,
+      "POLICY_ACCEPTANCE_REQUIRED",
+    );
+
+    const acceptedPolicy =
+      await call(
+        "account/policy-acceptance",
+        {
+          termsAccepted: true,
+          privacyAccepted: true,
+          dataAuthorityAccepted: true,
+          guideAcknowledged: true,
+        },
+      );
+
+    assert.equal(
+      acceptedPolicy.accepted,
+      true,
+    );
+
+    assert.equal(
+      acceptedPolicy.policy.required,
+      false,
+    );
+
+    assert.equal(
+      acceptedPolicy.shell.state,
+      "empty",
+    );
 
     await call(
       "organizations",

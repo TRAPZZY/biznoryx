@@ -829,6 +829,52 @@ async function routeRequest({ request, response, runtime }) {
 
   /*
    * ==================================================
+   * ACCOUNT — POLICY + DATA ONBOARDING
+   * ==================================================
+   */
+
+  if (
+    url.pathname === "/api/account/policy-acceptance" &&
+    request.method === "POST"
+  ) {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: true,
+      requirePolicy: false,
+    });
+
+    const body = await readJson(request);
+
+    if (typeof runtime.identity.acceptCurrentPolicy !== "function") {
+      throw new AuthError(
+        "Account policy acceptance is not available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const policy = await runtime.identity.acceptCurrentPolicy({
+      userId: context.user.id,
+      acknowledgements: body,
+    });
+
+    const shell = await postgresAppShellState({
+      user: context.user,
+      session: context.session,
+      identityRepository: runtime.identity,
+    });
+
+    sendJson(response, 200, {
+      accepted: true,
+      policy,
+      shell,
+    });
+
+    return;
+  }
+
+  /*
+   * ==================================================
    * AUTH — SIGN OUT
    * ==================================================
    */
@@ -839,6 +885,7 @@ async function routeRequest({ request, response, runtime }) {
       runtime,
 
       requireCsrf: true,
+      requirePolicy: false,
     });
 
     await runtime.identity.revokeSession(context.session.id, context.user.id);
@@ -2265,7 +2312,12 @@ async function routeRequest({ request, response, runtime }) {
   });
 }
 
-async function authenticateRequest({ request, runtime, requireCsrf = false }) {
+async function authenticateRequest({
+  request,
+  runtime,
+  requireCsrf = false,
+  requirePolicy = true,
+}) {
   const token = sessionTokenFromRequest(request);
 
   if (!token) {
@@ -2276,11 +2328,20 @@ async function authenticateRequest({ request, runtime, requireCsrf = false }) {
 
   const context = await runtime.identity.authenticate({
     token,
-
     csrfToken,
-
     requireCsrf,
   });
+
+  if (requirePolicy && typeof runtime.identity.policyStatus === "function") {
+    const policy = await runtime.identity.policyStatus(context.user.id);
+
+    if (policy.required) {
+      throw new AuthError(
+        "Accept the current BIZNORYX account and data terms before using the workspace.",
+        "POLICY_ACCEPTANCE_REQUIRED",
+      );
+    }
+  }
 
   return {
     token,
@@ -3177,6 +3238,7 @@ function sendError(response, error) {
         ["MEMBERSHIP_DISABLED", 401],
 
         ["EMAIL_VERIFICATION_REQUIRED", 403],
+        ["POLICY_ACCEPTANCE_REQUIRED", 403],
 
         ["EMAIL_CODE_INVALID", 400],
 

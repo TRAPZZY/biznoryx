@@ -252,6 +252,10 @@ function go(path) {
   }
 }
 
+function workspaceEntryPath(shellState) {
+  return shellState?.state === "empty" ? "/business" : "/dashboard";
+}
+
 function field(label, name, type = "text", value = "", extra = "") {
   return `
     <label>
@@ -1091,7 +1095,7 @@ function auth(register) {
     dashboard = null;
     validation = null;
 
-    go(result.shell.state === "empty" ? "/business" : "/dashboard");
+    go(workspaceEntryPath(result.shell));
   });
 
   if (
@@ -1310,7 +1314,7 @@ function verifyEmail() {
     validation = null;
     pendingVerification = null;
 
-    go(result.shell.state === "empty" ? "/business" : "/dashboard");
+    go(workspaceEntryPath(result.shell));
   });
 
   document.querySelector("#resend-code").onclick = async (event) => {
@@ -1336,6 +1340,571 @@ function verifyEmail() {
       button.disabled = false;
     }
   };
+}
+
+function policyOnboarding() {
+  const policy = session?.shell?.policy || {};
+
+  mount(`
+    <div class="policy-gate">
+      <div
+        class="policy-gate-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="policy-title"
+      >
+        <aside class="policy-gate-rail">
+          ${wordmark()}
+
+          <div>
+            <p class="overline">
+              ACCOUNT SETUP
+            </p>
+
+            <h1>
+              Start with clear rules.
+            </h1>
+
+            <p>
+              Before business data enters the workspace,
+              confirm how the account will be used and how
+              recurring datasets should be prepared.
+            </p>
+          </div>
+
+          <div class="policy-progress">
+            <span class="active" data-policy-progress="1">
+              <strong>01</strong>
+              Data & account terms
+            </span>
+
+            <span data-policy-progress="2">
+              <strong>02</strong>
+              Prepare recurring data
+            </span>
+          </div>
+
+          <button
+            id="policy-sign-out"
+            class="policy-sign-out"
+            type="button"
+          >
+            ${icon("log-out")}
+            Sign out
+          </button>
+        </aside>
+
+        <main class="policy-gate-main">
+          <section
+            id="policy-step-one"
+            class="policy-step"
+          >
+            <div class="policy-step-heading">
+              <div>
+                <p class="overline">
+                  1 OF 2 · ACCOUNT & DATA TERMS
+                </p>
+
+                <h2 id="policy-title">
+                  Before you bring business data into BIZNORYX.
+                </h2>
+              </div>
+
+              <span class="policy-version">
+                Effective
+                ${esc(policy.effectiveDate || "2026-10-03")}
+              </span>
+            </div>
+
+            <p class="policy-lead">
+              BIZNORYX processes the business data you
+              choose to upload so the workspace can
+              validate sources, calculate metrics, compare
+              reporting periods and produce evidence-backed
+              reports. Your organization remains
+              responsible for having a lawful and
+              contractual right to submit that data.
+            </p>
+
+            <div class="policy-notice-grid">
+              <details open>
+                <summary>
+                  Terms of Use
+                </summary>
+
+                <div>
+                  <p>
+                    Use BIZNORYX only for lawful business
+                    purposes and only with information your
+                    organization is authorized to process.
+                    Source accuracy, business decisions,
+                    accounting treatment, tax treatment and
+                    regulatory obligations remain the
+                    responsibility of your organization.
+                  </p>
+
+                  <p>
+                    BIZNORYX provides analytical and
+                    evidence-management tools. It does not
+                    replace legal, accounting, tax,
+                    regulatory or professional advice.
+                  </p>
+                </div>
+              </details>
+
+              <details>
+                <summary>
+                  Data & Privacy Notice
+                </summary>
+
+                <div>
+                  <p>
+                    Uploaded files are processed to provide
+                    the workspace features you request,
+                    including validation, storage,
+                    historical comparison, metrics and
+                    evidence reports.
+                  </p>
+
+                  <p>
+                    Do not upload passwords, authentication
+                    secrets, payment-card data, government
+                    identity documents, medical records or
+                    other highly sensitive personal
+                    information unless your organization
+                    has a documented lawful basis and the
+                    product has been configured for that
+                    specific use.
+                  </p>
+                </div>
+              </details>
+
+              <details>
+                <summary>
+                  Regional responsibility
+                </summary>
+
+                <div>
+                  <p>
+                    Privacy, data-protection, employment,
+                    financial, contractual and sector rules
+                    differ by country and industry. Your
+                    organization is responsible for
+                    determining which requirements apply to
+                    the data it uploads and for obtaining
+                    any required notices, permissions or
+                    consents.
+                  </p>
+
+                  <p>
+                    This acknowledgement records account
+                    acceptance; it is not a claim that a
+                    particular regulatory framework applies
+                    to every BIZNORYX customer.
+                  </p>
+                </div>
+              </details>
+            </div>
+
+            <div class="policy-checks">
+              <label>
+                <input
+                  id="policy-terms"
+                  type="checkbox"
+                >
+                <span>
+                  I agree to the BIZNORYX Terms of Use.
+                </span>
+              </label>
+
+              <label>
+                <input
+                  id="policy-privacy"
+                  type="checkbox"
+                >
+                <span>
+                  I have read the Data & Privacy Notice.
+                </span>
+              </label>
+
+              <label>
+                <input
+                  id="policy-authority"
+                  type="checkbox"
+                >
+                <span>
+                  I confirm I am authorized to upload and
+                  process the data I submit.
+                </span>
+              </label>
+            </div>
+
+            <div class="policy-actions">
+              <span>
+                Acceptance is recorded against this
+                account and the current policy version.
+              </span>
+
+              <button
+                id="policy-next"
+                class="primary"
+                type="button"
+                disabled
+              >
+                Continue to data guide
+                ${icon("arrow-right")}
+              </button>
+            </div>
+          </section>
+
+          <section
+            id="policy-step-two"
+            class="policy-step"
+            hidden
+          >
+            <div class="policy-step-heading">
+              <div>
+                <p class="overline">
+                  2 OF 2 · DATA SETUP
+                </p>
+
+                <h2>
+                  Build one reliable history at a time.
+                </h2>
+              </div>
+
+              <span class="policy-version">
+                Current production intake: CSV
+              </span>
+            </div>
+
+            <p class="policy-lead">
+              BIZNORYX becomes more useful when the same
+              type of business dataset is uploaded
+              repeatedly over time. A data series is the
+              history for one kind of information.
+            </p>
+
+            <div class="data-guide-rules">
+              <article>
+                <span>01</span>
+                <div>
+                  <h3>
+                    One dataset type per series
+                  </h3>
+
+                  <p>
+                    Keep Monthly Sales, Transaction
+                    History, Inventory Movement and other
+                    datasets in separate named series.
+                  </p>
+                </div>
+              </article>
+
+              <article>
+                <span>02</span>
+                <div>
+                  <h3>
+                    Keep the structure stable
+                  </h3>
+
+                  <p>
+                    If January uses date, product,
+                    quantity, revenue and cost, use the
+                    same core columns and compatible data
+                    types in February and March.
+                  </p>
+                </div>
+              </article>
+
+              <article>
+                <span>03</span>
+                <div>
+                  <h3>
+                    Match the reporting month
+                  </h3>
+
+                  <p>
+                    A file submitted as 2026-09 should
+                    represent the September reporting
+                    period for that series.
+                  </p>
+                </div>
+              </article>
+
+              <article>
+                <span>04</span>
+                <div>
+                  <h3>
+                    Use a meaningful numeric metric
+                  </h3>
+
+                  <p>
+                    Revenue, amount, sales, gross profit,
+                    cost, quantity or total are typical
+                    metrics when they exist in the source.
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            <div class="series-example">
+              <div class="series-example-head">
+                <div>
+                  <p class="overline">
+                    GOOD RECURRING SERIES
+                  </p>
+
+                  <h3>
+                    Monthly Sales
+                  </h3>
+                </div>
+
+                <span>
+                  Same structure · new period
+                </span>
+              </div>
+
+              <div class="series-periods">
+                <div>
+                  <strong>
+                    January 2026
+                  </strong>
+                  <code>
+                    date, order_id, product, quantity, revenue, cost
+                  </code>
+                </div>
+
+                <div>
+                  <strong>
+                    February 2026
+                  </strong>
+                  <code>
+                    date, order_id, product, quantity, revenue, cost
+                  </code>
+                </div>
+
+                <div>
+                  <strong>
+                    March 2026
+                  </strong>
+                  <code>
+                    date, order_id, product, quantity, revenue, cost
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            <div class="series-separation">
+              <div>
+                <strong>
+                  Monthly Sales
+                </strong>
+                <span>
+                  Jan → Feb → Mar
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  Transaction History
+                </strong>
+                <span>
+                  Jan → Feb → Mar
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  Inventory Movement
+                </strong>
+                <span>
+                  Jan → Feb → Mar
+                </span>
+              </div>
+            </div>
+
+            <div class="production-upload-note">
+              ${icon("file-spreadsheet")}
+
+              <div>
+                <strong>
+                  Production upload rule
+                </strong>
+
+                <p>
+                  Use CSV for the current verified
+                  recurring-data workflow. Keep each file
+                  below 25 MB, include a header row and at
+                  least one data row, and avoid duplicate
+                  or empty column names.
+                </p>
+              </div>
+            </div>
+
+            <label class="policy-guide-check">
+              <input
+                id="policy-guide"
+                type="checkbox"
+              >
+
+              <span>
+                I understand that each recurring data
+                series should keep a stable structure
+                across reporting periods.
+              </span>
+            </label>
+
+            <p
+              id="policy-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <div class="policy-actions">
+              <button
+                id="policy-back"
+                class="secondary"
+                type="button"
+              >
+                ${icon("arrow-left")}
+                Back
+              </button>
+
+              <button
+                id="policy-finish"
+                class="primary"
+                type="button"
+                disabled
+              >
+                Finish setup
+                ${icon("check")}
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  `);
+
+  const stepOne = document.querySelector("#policy-step-one");
+
+  const stepTwo = document.querySelector("#policy-step-two");
+
+  const next = document.querySelector("#policy-next");
+
+  const back = document.querySelector("#policy-back");
+
+  const finish = document.querySelector("#policy-finish");
+
+  const messageBox = document.querySelector("#policy-message");
+
+  const terms = document.querySelector("#policy-terms");
+
+  const privacy = document.querySelector("#policy-privacy");
+
+  const authority = document.querySelector("#policy-authority");
+
+  const guide = document.querySelector("#policy-guide");
+
+  const syncFirstStep = () => {
+    next.disabled = !(terms.checked && privacy.checked && authority.checked);
+  };
+
+  [terms, privacy, authority].forEach((input) => {
+    input.addEventListener("change", syncFirstStep);
+  });
+
+  guide.addEventListener("change", () => {
+    finish.disabled = !guide.checked;
+  });
+
+  next.onclick = () => {
+    if (next.disabled) {
+      return;
+    }
+
+    stepOne.hidden = true;
+    stepTwo.hidden = false;
+
+    document
+      .querySelector('[data-policy-progress="1"]')
+      ?.classList.remove("active");
+
+    document
+      .querySelector('[data-policy-progress="2"]')
+      ?.classList.add("active");
+
+    window.scrollTo(0, 0);
+  };
+
+  back.onclick = () => {
+    stepTwo.hidden = true;
+    stepOne.hidden = false;
+
+    document
+      .querySelector('[data-policy-progress="2"]')
+      ?.classList.remove("active");
+
+    document
+      .querySelector('[data-policy-progress="1"]')
+      ?.classList.add("active");
+
+    window.scrollTo(0, 0);
+  };
+
+  finish.onclick = async () => {
+    if (finish.disabled || !guide.checked) {
+      return;
+    }
+
+    finish.disabled = true;
+
+    messageBox.textContent = "Saving your account acknowledgement...";
+
+    messageBox.classList.remove("error-text");
+
+    try {
+      const result = await api("account/policy-acceptance", {
+        termsAccepted: terms.checked,
+        privacyAccepted: privacy.checked,
+        dataAuthorityAccepted: authority.checked,
+        guideAcknowledged: guide.checked,
+      });
+
+      session = {
+        authenticated: true,
+        shell: result.shell,
+      };
+
+      dashboard = null;
+      validation = null;
+
+      go(workspaceEntryPath(result.shell));
+    } catch (error) {
+      finish.disabled = !guide.checked;
+
+      messageBox.textContent =
+        error?.message || "The acknowledgement could not be saved.";
+
+      messageBox.classList.add("error-text");
+    }
+  };
+
+  document
+    .querySelector("#policy-sign-out")
+    ?.addEventListener("click", async () => {
+      try {
+        await api("sign-out", {});
+      } finally {
+        session = null;
+        dashboard = null;
+        validation = null;
+        csrfToken = null;
+        go("/sign-in");
+      }
+    });
 }
 
 function shell(content, active) {
@@ -5373,6 +5942,10 @@ async function route() {
 
     if (!session?.authenticated) {
       return go("/sign-in");
+    }
+
+    if (session.shell.state === "policy_required") {
+      return policyOnboarding();
     }
 
     if (session.shell.state === "empty") {

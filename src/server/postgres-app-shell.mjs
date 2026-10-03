@@ -1,3 +1,8 @@
+import {
+  CURRENT_POLICY_VERSIONS,
+  POLICY_EFFECTIVE_DATE,
+} from "../compliance/user-policy.mjs";
+
 export async function postgresAppShellState({
   user,
   session,
@@ -17,16 +22,35 @@ export async function postgresAppShellState({
     };
   }
 
-  const memberships =
-    await identityRepository.activeMemberships(
-      user.id,
-    );
+  const policy =
+    typeof identityRepository.policyStatus === "function"
+      ? await identityRepository.policyStatus(user.id)
+      : {
+          required: false,
+          effectiveDate: POLICY_EFFECTIVE_DATE,
+          ...CURRENT_POLICY_VERSIONS,
+          acceptedAt: null,
+        };
+
+  if (policy.required) {
+    return {
+      state: "policy_required",
+      primaryAction: "accept-policy",
+      user: publicUser(user),
+      policy,
+      organizations: [],
+      activeOrganization: null,
+    };
+  }
+
+  const memberships = await identityRepository.activeMemberships(user.id);
 
   if (memberships.length === 0) {
     return {
       state: "empty",
       primaryAction: "create-organization",
       user: publicUser(user),
+      policy,
       organizations: [],
       activeOrganization: null,
     };
@@ -35,8 +59,7 @@ export async function postgresAppShellState({
   const activeMembership =
     memberships.find(
       (membership) =>
-        membership.organizationId ===
-        session.activeOrganizationId,
+        membership.organizationId === session.activeOrganizationId,
     ) ?? memberships[0];
 
   return {
@@ -44,19 +67,19 @@ export async function postgresAppShellState({
 
     user: publicUser(user),
 
+    policy,
+
     activeOrganization: {
       id: activeMembership.organizationId,
       name: activeMembership.organizationName,
       slug: activeMembership.organizationSlug,
     },
 
-    organizations: memberships.map(
-      (membership) => ({
-        id: membership.organizationId,
-        name: membership.organizationName,
-        role: membership.role,
-      }),
-    ),
+    organizations: memberships.map((membership) => ({
+      id: membership.organizationId,
+      name: membership.organizationName,
+      role: membership.role,
+    })),
   };
 }
 

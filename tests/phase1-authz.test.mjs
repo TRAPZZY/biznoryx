@@ -130,16 +130,97 @@ test('invitation acceptance rejects mismatched signed-in users', () => {
   assert.throws(() => invitations.acceptInvitation({ token, acceptingUserId: charlie.id }), /does not match/);
 });
 
-test('app shell exposes loading, empty, ready, and disabled states', () => {
+test('app shell exposes loading, policy-required, empty, ready, and disabled states', () => {
   const { store, identity, sessions, alice } = fixture();
-  const issued = sessions.signIn({ email: 'alice@example.com', password: 'correct horse battery' });
-  assert.equal(appShellState({ user: null, session: null, store }).state, 'loading');
-  assert.equal(appShellState({ user: alice, session: issued.session, store }).state, 'ready');
+  const issued = sessions.signIn({
+    email: 'alice@example.com',
+    password: 'correct horse battery'
+  });
 
-  const solo = identity.createUser({ email: 'solo@example.com', displayName: 'Solo', password: 'solo password ok' });
-  assert.equal(appShellState({ user: solo, session: { activeOrganizationId: null }, store }).state, 'empty');
-  identity.disableUser(solo.id, alice.id);
-  assert.equal(appShellState({ user: solo, session: { activeOrganizationId: null }, store }).state, 'disabled');
+  assert.equal(
+    appShellState({
+      user: null,
+      session: null,
+      store
+    }).state,
+    'loading'
+  );
+
+  assert.equal(
+    appShellState({
+      user: alice,
+      session: issued.session,
+      store
+    }).state,
+    'policy_required'
+  );
+
+  identity.acceptCurrentPolicy({
+    userId: alice.id,
+    acknowledgements: {
+      termsAccepted: true,
+      privacyAccepted: true,
+      dataAuthorityAccepted: true,
+      guideAcknowledged: true
+    }
+  });
+
+  assert.equal(
+    appShellState({
+      user: alice,
+      session: issued.session,
+      store
+    }).state,
+    'ready'
+  );
+
+  const solo = identity.createUser({
+    email: 'solo@example.com',
+    displayName: 'Solo',
+    password: 'solo password ok'
+  });
+
+  assert.equal(
+    appShellState({
+      user: solo,
+      session: { activeOrganizationId: null },
+      store
+    }).state,
+    'policy_required'
+  );
+
+  identity.acceptCurrentPolicy({
+    userId: solo.id,
+    acknowledgements: {
+      termsAccepted: true,
+      privacyAccepted: true,
+      dataAuthorityAccepted: true,
+      guideAcknowledged: true
+    }
+  });
+
+  assert.equal(
+    appShellState({
+      user: solo,
+      session: { activeOrganizationId: null },
+      store
+    }).state,
+    'empty'
+  );
+
+  identity.disableUser(
+    solo.id,
+    alice.id
+  );
+
+  assert.equal(
+    appShellState({
+      user: solo,
+      session: { activeOrganizationId: null },
+      store
+    }).state,
+    'disabled'
+  );
 });
 
 test('organization-aware transaction sets RLS context and rolls back on failure', async () => {

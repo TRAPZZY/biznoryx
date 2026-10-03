@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { acceptRequiredPolicy } from "./helpers/policy-onboarding.mjs";
+
 async function createWorkspace(page) {
   await page.goto("/#/register");
   await page.getByLabel("Full name").fill("Evidence Browser Owner");
@@ -16,6 +18,7 @@ async function createWorkspace(page) {
   const code = await page.locator(".local-code strong").textContent();
   await page.getByLabel("Verification code").fill(code.trim());
   await page.getByRole("button", { name: "Verify and continue" }).click();
+  await acceptRequiredPolicy(page);
   await expect(
     page.getByRole("heading", { name: "Make this workspace yours." }),
   ).toBeVisible();
