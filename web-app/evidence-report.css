@@ -536,3 +536,34 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
     font-size: 18px;
   }
 }
+.er-explainer h2,
+.er-revenue-breakdown h3 { font-size: 20px; line-height: 1.35; letter-spacing: 0; }
+.er-question-label { display: grid; gap: 8px; max-width: 640px; margin: 20px 0; font-size: 14px; font-weight: 600; }
+.er-question-label select { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid #cbd5d0; border-radius: 4px; background: #fff; color: #24382e; font: inherit; }
+.er-guided-answer { max-width: 880px; overflow-wrap: anywhere; }
+.er-guided-answer h3 { margin: 8px 0 12px; font-size: 18px; letter-spacing: 0; }
+.er-answer-lead { font-size: 16px; line-height: 1.65; }
+.er-answer-notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 22px 0; }
+.er-answer-notes dt { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.er-answer-notes > div { display: block; min-width: 0; padding: 0; border: 0; }
+.er-answer-notes dd { margin: 0; font-size: 14px; line-height: 1.6; color: #56645c; }
+.er-explainer-print { display: none; }
+.er-mapping { border-top: 1px solid #dce5de; padding-top: 16px; }
+.er-mapping fieldset { border: 0; padding: 16px 0 0; margin: 0; min-width: 0; }
+.er-mapping fieldset label { display: grid; gap: 7px; margin-bottom: 16px; }
+.er-mapping fieldset .er-checkbox { display: flex; }
+.er-mapping fieldset[hidden] { display: none; }
+.er-mapping legend { font-size: 14px; font-weight: 700; }
+.er-revenue-breakdown .er-section-head > div { display: block; min-width: 0; flex: 1; }
+.er-revenue-breakdown .er-section-head p { margin-top: 8px; }
+.er-revenue-breakdown .er-table-scroll td:last-child { min-width: 230px; max-width: 500px; white-space: normal; line-height: 1.6; text-align: left; }
+.er-revenue-breakdown .er-table-scroll th:last-child { text-align: left; }
+@media (max-width: 700px) {
+  .er-answer-notes { grid-template-columns: 1fr; gap: 16px; }
+  .er-question-label select { font-size: 13px; }
+  .er-revenue-breakdown .er-section-head > div { flex-basis: 100%; }
+}
+@media print {
+  .er-explainer-interactive { display: none; }
+  .er-explainer-print { display: block; }
+}

@@ -3,9 +3,12 @@ import { median, medianAbsoluteDeviation } from "simple-statistics";
 import { AuthError } from "../auth/core.mjs";
 
 import { validateCsvHeaderSizes } from "../ingestion/csv-limits.mjs";
+import { parseReportNumber, reportDecimal } from "./decimal.mjs";
+import { buildRevenueBreakdown } from "./revenue-breakdown.mjs";
+import { buildReportExplainer } from "./report-explainer.mjs";
+export { parseReportNumber, reportDecimal } from "./decimal.mjs";
 
 export const REPORT_VERSION = "evidence-v2";
-const SCALE = 10n ** 10n;
 const MAX_METRICS = 12;
 const MAX_DATES = 2;
 const MAX_DIMENSIONS = 8;
@@ -14,7 +17,7 @@ const MAX_MONTHS = 120;
 const MAX_ANALYTICS_BYTES = 8 * 1024 * 1024;
 const DATE_NAME = /(^date$|date$|_at$|^day$)/i;
 const EXCLUDED_METRIC = /(^|[ _])(id|year|quarter|month|day|week|percent|percentage|rate|ratio|price|balance|stock|inventory|latitude|longitude|zip|postal|code|number|no|sku)([ _]|$)|_id$|percent|margin|unit_price/i;
-const DIMENSION_NAME = /(^|[ _])(product|service|channel|region|location|branch|category|segment|department|country)([ _]|$)/i;
+const DIMENSION_NAME = /(^|[ _])(product|sku|item|service|channel|region|location|branch|category|segment|department|country)([ _]|$)/i;
 const MONEY_NAME = /revenue|sales|amount|cost|profit|expense|payment|fee|spend/i;
 const text = (value) => String(value ?? "").trim();
 const label = (value) => text(value).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -22,25 +25,6 @@ const fail = (message) => { throw new AuthError(message, "VALIDATION_FAILED"); }
 
 export function isAdditiveReportColumn(column) {
   return !EXCLUDED_METRIC.test(column) && !DATE_NAME.test(column);
-}
-
-export function parseReportNumber(value) {
-  let raw = text(value);
-  if (/^\([^()]+\)$/.test(raw)) raw = `-${raw.slice(1, -1)}`;
-  raw = raw.replace(/^[\u0024\u00a3\u20ac\u20a6]/, "");
-  if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) raw = raw.replaceAll(",", "");
-  if (!/^[+-]?\d{1,28}(\.\d{1,10})?$/.test(raw)) return null;
-  const sign = raw.startsWith("-") ? -1n : 1n;
-  const [whole, fraction = ""] = raw.replace(/^[+-]/, "").split(".");
-  return sign * (BigInt(whole) * SCALE + BigInt(fraction.padEnd(10, "0")));
-}
-
-export function reportDecimal(value) {
-  const n = typeof value === "bigint" ? value : parseReportNumber(value);
-  if (n === null) return null;
-  const positive = n < 0n ? -n : n;
-  const fraction = String(positive % SCALE).padStart(10, "0").replace(/0+$/, "");
-  return `${n < 0n ? "-" : ""}${positive / SCALE}${fraction ? `.${fraction}` : ""}`;
 }
 
 export function parseReportDate(value) {
@@ -73,7 +57,7 @@ export function buildReportCube({ rows, columns = Object.keys(rows[0] ?? {}) }) 
   const dimensionCandidates = columns.filter((column) => DIMENSION_NAME.test(column));
   const dimensions = dimensionCandidates.filter((column) => {
     const count = new Set(rows.map((row) => text(row[column]))).size;
-    return count > 1 && count <= MAX_CATEGORIES;
+    return (count > 1 || /(^|[ _])(product|sku|item)([ _]|$)/i.test(column)) && count <= MAX_CATEGORIES;
   }).slice(0, MAX_DIMENSIONS);
   const metricColumns = columns.filter(isAdditiveReportColumn).filter((column) => {
     const populated = rows.map((row) => text(row[column])).filter(Boolean);
@@ -182,7 +166,24 @@ export function validateReportPolicy(body) {
   if (!Number.isFinite(materialityPercent) || materialityPercent < 0.1 || materialityPercent > 100) fail("Choose a review threshold between 0.1% and 100%.");
   if (!name || name.length > 120) fail("Metric name must contain 1 to 120 characters.");
   if (!["currency", "number"].includes(unit)) fail("Choose a metric unit.");
-  return { polarity, materialityPercent, label: name, unit };
+  let revenueBreakdown = null;
+  if (body.revenueBreakdown != null) {
+    const mapping = body.revenueBreakdown;
+    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping) || mapping.confirmed !== true || unit !== "currency") fail("Confirm that this metric is revenue before enabling its breakdown.");
+    const productColumn = text(mapping.productColumn), quantityColumn = text(mapping.quantityColumn), quantityUnit = text(mapping.quantityUnit), currency = text(mapping.currency);
+    if (!productColumn || !quantityColumn || productColumn === quantityColumn || !quantityUnit || quantityUnit.length > 40 || !/^[A-Z]{3}$/.test(currency)) fail("Choose distinct product and quantity columns, a shared quantity unit and a reporting currency.");
+    validateCsvHeaderSizes([productColumn, quantityColumn]);
+    revenueBreakdown = { productColumn, quantityColumn, quantityUnit, currency, confirmed: true };
+  }
+  return { polarity, materialityPercent, label: name, unit, revenueBreakdown };
+}
+
+export function validateRevenueMappingSource(source, metricColumn, definition, currency) {
+  const mapping = definition.revenueBreakdown;
+  if (!mapping) return;
+  const metric = source.cube.metrics.find((m) => m.column === metricColumn);
+  const quantity = source.cube.metrics.find((m) => m.column === mapping.quantityColumn);
+  if (mapping.currency !== currency || !quantity || quantity.column === metricColumn || mapping.productColumn === metricColumn || !metric?.all.dimensions.some((d) => d.column === mapping.productColumn) || !quantity.all.dimensions.some((d) => d.column === mapping.productColumn)) fail("The approved product, quantity and currency must match fields available in this source.");
 }
 
 function monthIndex(period) { const [year, month] = period.split("-").map(Number); return year * 12 + month - 1; }
@@ -200,7 +201,7 @@ function change(current, previous) {
 }
 
 function compactValue(value, unit, currency) {
-  return new Intl.NumberFormat("en", { ...(unit === "currency" ? { style: "currency", currency } : {}), maximumFractionDigits: 2 }).format(Number(value));
+  return new Intl.NumberFormat("en", { ...(unit === "currency" ? { style: "currency", currency } : {}), maximumFractionDigits: 2 }).format(value);
 }
 
 function selectSources(sources, selected, metric, dateColumn, limitations) {
@@ -236,7 +237,7 @@ function combinedPeriods(accepted) {
     const periods = dates ? dates.months : [{ ...item.all, period: source.period }];
     for (const point of periods) {
       const previous = buckets.get(point.period);
-      const mapped = { ...point, sourceIds: [source.id], partial: Boolean(dates && ((point.period === dates.first.slice(0, 7) && !dates.first.endsWith("-01")) || (point.period === dates.last.slice(0, 7) && dates.last !== monthLastDay(point.period)))) };
+      const mapped = { ...point, sourceIds: [source.id] };
       if (!previous) { buckets.set(point.period, mapped); continue; }
       previous.value = reportDecimal(parseReportNumber(previous.value) + parseReportNumber(point.value));
       previous.rows += point.rows;
@@ -246,7 +247,6 @@ function combinedPeriods(accepted) {
       previous.hasNegativeValues ||= point.hasNegativeValues;
       previous.first = [previous.first, point.first].filter(Boolean).sort()[0] ?? null;
       previous.last = [previous.last, point.last].filter(Boolean).sort().at(-1) ?? null;
-      previous.partial ||= mapped.partial;
       previous.sourceIds.push(source.id);
       for (const dimension of point.dimensions) {
         const target = previous.dimensions.find((d) => d.column === dimension.column);
@@ -260,7 +260,7 @@ function combinedPeriods(accepted) {
       }
     }
   }
-  return [...buckets.values()].sort((a, b) => a.period.localeCompare(b.period));
+  return [...buckets.values()].map((point) => ({ ...point, partial: Boolean(point.first && (point.first !== `${point.period}-01` || point.last !== monthLastDay(point.period))) })).sort((a, b) => a.period.localeCompare(b.period));
 }
 
 function decompose(current, previous, dimension) {
@@ -309,14 +309,15 @@ function buildFindings({ current, previous, comparison, policy, blocked, drivers
   const fact = comparison ? `${metricLabel} moved from ${fmt(previous.value)} in ${monthLabel(previous.period)} to ${fmt(current.value)} in ${monthLabel(current.period)}.` : `${metricLabel} totals ${fmt(current.value)} in ${monthLabel(current.period)}.`;
   const contributors = drivers?.hasComparison ? drivers.entries.filter((e) => e.change !== "0") : [];
   const leading = contributors[0];
+  const opposingLeading = Boolean(leading && comparison && ((comparison.direction === "up" && parseReportNumber(leading.change) < 0n) || (comparison.direction === "down" && parseReportNumber(leading.change) > 0n)));
   if (blocked) priorities.push({ id: "coverage", title: "Reconcile the coverage before changing course", quadrant: "fix_first", impact: "High", urgency: "Before acting", kind: "Data limitation", fact,
     signal: "Coverage or missing values limit the comparison.", interpretation: "Some movement may reflect the way the source was assembled.", implication: "Treating unequal coverage as performance could direct attention to the wrong area.", investigation: "Check the start and end dates, missing amounts and source extracts for both periods. Confirm equal coverage with the data owner.", success: "Comparable source coverage and no unresolved missing metric values.", evidenceQuality: quality });
   if (comparison && !blocked) priorities.push({ id: "movement", title: leading ? `Start with ${leading.name} in ${drivers.label.toLowerCase()}` : `Review the movement in ${metricLabel.toLowerCase()}`,
-    quadrant: health === "deteriorating" && material ? "fix_first" : health === "improving" && material ? "build_on" : "monitor",
+    quadrant: opposingLeading ? "monitor" : health === "deteriorating" && material ? "fix_first" : health === "improving" && material ? "build_on" : "monitor",
     impact: material ? "High" : "Low", urgency: health === "deteriorating" && material ? "Next review" : "Track next period", kind: "Recommended investigation", fact,
     signal: leading ? `${leading.name} has the largest absolute contribution to the change: ${fmt(leading.change)}.` : `The observed movement is ${comparison.direction === "flat" ? "unchanged" : comparison.direction === "up" ? "upward" : "downward"}.`,
-    interpretation: health === "deteriorating" ? "The direction is unfavorable under the business's confirmed metric definition." : health === "improving" ? "The direction is favorable under the business's confirmed metric definition." : "The movement is measurable; its business value depends on the metric's purpose.",
-    implication: health === "deteriorating" ? "Continued movement in this direction would move this metric away from its preferred direction." : health === "improving" ? "This area may be worth protecting, subject to capacity, cost and customer evidence." : "A larger total is not automatically a better business outcome.",
+    interpretation: opposingLeading ? "This category's movement opposes the overall change. The total and this category should not receive the same favorable or adverse label." : health === "deteriorating" ? "The direction is unfavorable under the business's confirmed metric definition." : health === "improving" ? "The direction is favorable under the business's confirmed metric definition." : "The movement is measurable; its business value depends on the metric's purpose.",
+    implication: opposingLeading ? "Other categories more than offset this movement. The overall assessment does not describe every category; review whether the shift was intentional." : health === "deteriorating" ? "Continued movement in this direction would move this metric away from its preferred direction." : health === "improving" ? "This area may be worth protecting, subject to capacity, cost and customer evidence." : "A larger total is not automatically a better business outcome.",
     investigation: leading ? `Review the underlying ${leading.name} records with the ${drivers.label.toLowerCase()} owner. Check changes in volume, mix, pricing and coverage before choosing a response.` : `Ask the metric owner to reconcile the ${monthLabel(previous.period)} and ${monthLabel(current.period)} extracts and identify what changed operationally.`,
     success: `Recheck ${metricLabel.toLowerCase()} and the same contribution next period using unchanged definitions.`, evidenceQuality: quality });
   const dominant = drivers?.entries.filter((e) => e.share !== null).sort((a, b) => b.share - a.share)[0];
@@ -409,18 +410,21 @@ export function buildBusinessReport({ sources, profile = {}, options = {}, polic
   };
   const daily = accepted.flatMap((e) => e.dates?.daily ?? []).filter((d) => d.date.startsWith(current.period)).sort((a, b) => a.date.localeCompare(b.date));
   const heatmap = drivers ? drivers.entries.slice(0, 8).map((entry) => ({ name: entry.name, values: historical.slice(-6).map((p) => ({ period: p.period, value: p.dimensions.find((d) => d.column === dimension)?.entries.find((e) => e.name === entry.name)?.value ?? "0" })) })) : [];
-  return {
+  const revenueBreakdown = buildRevenueBreakdown({ accepted, current, previous, policy, metric, currency, dateColumn, blocked });
+  const report = {
     version: REPORT_VERSION, id: `evidence_${selected.id}`, sourceId: selected.id, seriesKey: selected.seriesKey,
     organizationName: profile?.legalName || profile?.tradingName || "Business report", title: "Performance evidence report", generatedAt: now.toISOString(),
     metric: { column: metric.column, label: metricLabel, unit, currency, policy },
     controls: { sources: eligible.map((s) => ({ id: s.id, name: s.fileName, series: s.dataSeries || s.seriesKey })), metrics: selected.cube.metrics.map((m) => ({ column: m.column, label: m.label, unitHint: m.unitHint })), dates: metric.dates.map((d) => ({ column: d.column, label: label(d.column) })), dateColumn, periods: periods.map((p) => p.period), dimensions: current.dimensions.map((d) => ({ column: d.column, label: d.label })), dimension },
     current: { period: current.period, value: current.value, rows: current.rows, first: current.first, last: current.last, observedDays: current.observedDays, partial: current.partial },
     previous: previous ? { period: previous.period, value: previous.value, rows: previous.rows, partial: previous.partial } : null,
-    comparison, timeline, daily, drivers, heatmap, trend, executive, health, priorities, strengths, evidenceQuality, limitations,
+    comparison, timeline, daily, drivers, heatmap, trend, executive, health, priorities, strengths, evidenceQuality, limitations, revenueBreakdown,
     evidence: { calculation: `sum(${metric.column})`, dateColumn, aggregation: "sum", mappingVersion: policy?.version ?? null, sourceRows: accepted.reduce((s, e) => s + e.source.cube.rowCount, 0), contributingRows: current.rows,
       sources: accepted.map(({ source }) => ({ id: source.id, fileName: source.fileName, checksum: source.checksum, rawDataObjectId: source.rawDataObjectId ?? null, metricPointId: source.metricPointIds?.[metric.column] ?? null, confirmedAt: source.confirmedAt, declaredPeriod: source.period, rowCount: source.cube.rowCount })),
       policy: "All observations are grouped by the selected ISO source date. Sums use decimal fixed-point arithmetic. Missing periods remain gaps. Higher/lower assessments require owner confirmation. A persistent strength needs three consecutive observed months, two favorable movements, complete known metric/date coverage and no partial boundary month.",
-      priorityPolicy: `A movement reaches the materiality threshold at ${policy?.materialityPercent ?? 5}%. High-impact adverse movement is Fix first; favorable movement is Build on; unclassified movement is Monitor. Coverage and definition issues take precedence. Concentration is reviewed at a 50% share, only for nonnegative contributions.`,
+      priorityPolicy: `A movement reaches the materiality threshold at ${policy?.materialityPercent ?? 5}%. High-impact adverse movement is Fix first; favorable movement is Build on; unclassified movement is Monitor. A leading category that opposes the total stays Monitor, not the total's favorable/adverse label. Coverage and definition issues take precedence. Concentration is reviewed at a 50% share, only for nonnegative contributions.`,
     },
   };
+  report.explainer = buildReportExplainer(report);
+  return report;
 }

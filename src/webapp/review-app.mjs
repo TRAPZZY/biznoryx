@@ -31,7 +31,7 @@ import {
   publicUpload,
   reportSourcesFromUploads,
 } from "./customer-data.mjs";
-import { buildBusinessReport, validateReportPolicy } from "../reports/evidence-engine.mjs";
+import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource } from "../reports/evidence-engine.mjs";
 import { sendEvidenceExport } from "../reports/export.mjs";
 
 const contentTypes = new Map([
@@ -873,6 +873,8 @@ async function routeRequest({ request, response, runtime }) {
     const source = sources.find((s) => s.id === body.source);
     if (!source || !source.cube.metrics.some((m) => m.column === body.metric)) throw new AuthError("Report source not found.", "NOT_FOUND");
     const definition = validateReportPolicy(body);
+    const profile = [...runtime.store.businessProfiles.values()].find((p) => p.organizationId === organizationId);
+    validateRevenueMappingSource(source, body.metric, definition, profile?.primaryCurrency || "USD");
     const previous = runtime.reportPolicies.filter((p) => p.organizationId === organizationId && p.seriesKey === source.seriesKey && p.column === body.metric).at(-1);
     if (Number(body.expectedVersion ?? 0) !== (previous?.version ?? 0)) throw new AuthError("This definition changed. Refresh the report before saving again.", "VALIDATION_FAILED");
     const policy = { ...definition, organizationId, seriesKey: source.seriesKey, column: body.metric,

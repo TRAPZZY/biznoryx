@@ -47,10 +47,15 @@ function sanitizePdfText(value, maximumLength = 220) {
 }
 
 export function renderReportCsv(report) {
-  const rows = [["Kind", "Period", "Comparison period", "Metric", "Category", "Current value", "Previous value", "Absolute movement", "Percent movement", "Definition version", "Report version"]];
+  const rows = [["Kind", "Period", "Comparison period", "Metric", "Category", "Current value", "Previous value", "Absolute movement", "Percent movement", "Definition version", "Report version", "Explanation", "Evidence"]];
   for (const point of report.timeline) rows.push(["Monthly observation", point.period, "", report.metric.label, "", point.value, "", "", "", report.metric.policy?.version ?? "Unconfirmed", report.version]);
   for (const entry of report.drivers?.entries ?? []) rows.push(["Category contribution", report.current.period, report.previous?.period ?? "", report.metric.label, entry.name, entry.current, entry.previous, entry.change, entry.percentChange, report.metric.policy?.version ?? "Unconfirmed", report.version]);
-  return "\ufeff" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  const breakdown = report.revenueBreakdown;
+  for (const effect of breakdown?.effects ?? []) rows.push(["Revenue effect", report.current.period, report.previous?.period ?? "", report.metric.label, effect.label, "", "", effect.value, "", report.metric.policy?.version ?? "Unconfirmed", report.version, effect.explanation, JSON.stringify(breakdown.evidence)]);
+  if (breakdown && breakdown.status !== "ready") rows.push(["Revenue limitation", report.current.period, report.previous?.period ?? "", report.metric.label, breakdown.status, "", "", "", "", report.metric.policy?.version ?? "Unconfirmed", report.version, breakdown.reason, ""]);
+  for (const product of breakdown?.products ?? []) rows.push(["Revenue product", report.current.period, report.previous?.period ?? "", report.metric.label, product.name, product.currentRevenue, product.previousRevenue, "", "", report.metric.policy?.version ?? "Unconfirmed", report.version, `Quantity: ${product.previousQuantity} to ${product.currentQuantity} ${breakdown.quantityUnit}; realized price: ${product.previousPrice ?? "unavailable"} to ${product.currentPrice ?? "unavailable"}`, ""]);
+  for (const q of report.explainer?.questions ?? []) rows.push([q.classification, report.current.period, report.previous?.period ?? "", report.metric.label, q.question, "", "", "", "", report.metric.policy?.version ?? "Unconfirmed", report.version, `${q.answer} ${q.meaning} Check next: ${q.nextCheck} Keep in mind: ${q.caution}`, q.evidenceIds.join("; ")]);
+  return "\ufeff" + rows.map((row) => [...row, ...Array(Math.max(0, 13 - row.length)).fill("")].map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
 export async function renderReportPdf(report) {
@@ -65,8 +70,8 @@ export async function renderReportPdf(report) {
   let y = 44;
   function newPage() { doc.addPage(); y = 46; }
   function reserve(height) { if (y + height > bottom) newPage(); }
-  function paragraph(value, { size = 10, bold = false, ink = color, gap = 10 } = {}) {
-    const text = sanitizePdfText(value);
+  function paragraph(value, { size = 10, bold = false, ink = color, gap = 10, maximumLength = 220 } = {}) {
+    const text = sanitizePdfText(value, maximumLength);
     doc.font(bold ? "ReportBold" : "Report").fontSize(size).fillColor(ink);
     const height = doc.heightOfString(text, { width, lineGap: 3 });
     reserve(height + gap);
@@ -79,6 +84,14 @@ export async function renderReportPdf(report) {
     doc.moveTo(44, y).lineTo(44 + width, y).lineWidth(0.6).strokeColor("#dce5de").stroke();
     y += 16;
     paragraph(`${number} / ${value}`, { size: 15, bold: true, gap: 13 });
+  }
+  function fullParagraph(value, options = {}) {
+    let chunk = "";
+    for (const word of String(value ?? "").split(/\s+/)) {
+      if (chunk.length + word.length > 450) { paragraph(chunk, { ...options, maximumLength: 600 }); chunk = ""; }
+      chunk += `${chunk ? " " : ""}${word}`;
+    }
+    if (chunk) paragraph(chunk, { ...options, maximumLength: 600 });
   }
   function table(headers, rows, columnWidths) {
     function drawRow(values, header = false) {
@@ -140,6 +153,7 @@ export async function renderReportPdf(report) {
   table([report.metric.label, "Previous period", "Observed change"], [[reportValue(report.current.value, report.metric), report.previous ? reportValue(report.previous.value, report.metric) : "Not available", report.comparison ? `${reportValue(report.comparison.absoluteChange, report.metric)} (${report.comparison.percentChange === null ? "no valid percentage" : report.comparison.percentChange.toFixed(1) + "%"})` : "No comparison"]], [width / 3, width / 3, width / 3]);
   paragraph("First on the agenda", { size: 10, bold: true });
   paragraph(report.executive.focus || "Review the source coverage.");
+  reserve(350);
   heading("The performance story", "02");
   paragraph(report.trend.headline, { size: 11, bold: true });
   trendChart();
@@ -153,6 +167,17 @@ export async function renderReportPdf(report) {
     table([report.drivers.label, "Current", "Previous", "Contribution"], report.drivers.entries.map((entry) => [entry.name, reportValue(entry.current, report.metric), entry.previous === null ? "Not available" : reportValue(entry.previous, report.metric), entry.change === null ? "Not available" : reportValue(entry.change, report.metric)]), [width * 0.34, width * 0.22, width * 0.22, width * 0.22]);
     paragraph(report.drivers.note, { size: 9, ink: "#647668" });
   } else paragraph("No reusable category dimension is available. Category contributions have not been inferred.");
+  paragraph("Price, quantity & product mix", { size: 12, bold: true });
+  const breakdown = report.revenueBreakdown;
+  if (breakdown?.status === "ready") {
+    table(["Measured effect", "Revenue contribution"], breakdown.effects.map((effect) => [effect.label, effect.id === "rounding" ? `${report.metric.currency} ${effect.value}` : reportValue(effect.value, report.metric)]), [width * 0.6, width * 0.4]);
+    for (const effect of breakdown.effects) fullParagraph(`${effect.label}: ${effect.explanation}`, { size: 9 });
+    fullParagraph("Currency amounts are displayed to two decimal places. Calculations retain ten decimal places, with any rounding residual shown separately.", { size: 8 });
+    fullParagraph(breakdown.method, { size: 9 });
+    fullParagraph(`Definition v${breakdown.evidence.definitionVersion}: ${breakdown.evidence.revenueColumn} / ${breakdown.evidence.productColumn} / ${breakdown.evidence.quantityColumn} / ${breakdown.quantityUnit} / ${report.metric.currency}.`, { size: 9 });
+    table(["Product", "Prior units", "Current units", "Prior revenue", "Current revenue"], breakdown.products.map((p) => [p.name, p.previousQuantity, p.currentQuantity, reportValue(p.previousRevenue, report.metric), reportValue(p.currentRevenue, report.metric)]), [width * 0.28, width * 0.14, width * 0.14, width * 0.22, width * 0.22]);
+    for (const source of breakdown.evidence.sources) fullParagraph(`Source ${source.id}: revenue point ${source.revenueMetricPointId ?? "aggregate"}, quantity point ${source.quantityMetricPointId ?? "aggregate"}.`, { size: 8 });
+  } else fullParagraph(breakdown?.reason ?? "No approved revenue breakdown is available.");
   heading("The business agenda", "04");
   for (const priority of report.priorities) {
     reserve(180);
@@ -163,14 +188,13 @@ export async function renderReportPdf(report) {
   }
   heading("Strengths to protect", "05");
   paragraph(report.executive.protect);
-  newPage();
   heading("Evidence and limitations", "06");
   paragraph(`${report.evidenceQuality.label}: ${report.evidenceQuality.reason}`, { bold: true });
   for (const limitation of report.limitations) paragraph(`- ${limitation.message}`, { size: 9 });
   paragraph("Calculation and decision rules", { size: 12, bold: true });
   paragraph(`${report.evidence.calculation} | Date field: ${report.evidence.dateColumn || "Declared upload period"} | ${report.evidence.sourceRows} source rows`, { size: 9 });
-  paragraph(report.evidence.policy, { size: 9 });
-  paragraph(report.evidence.priorityPolicy, { size: 9 });
+  fullParagraph(report.evidence.policy, { size: 9 });
+  fullParagraph(report.evidence.priorityPolicy, { size: 9 });
   paragraph(report.metric.policy ? `Approved definition version ${report.metric.policy.version}: ${report.metric.policy.label}, ${report.metric.policy.polarity} preferred, ${report.metric.policy.materialityPercent}% materiality threshold.` : "Metric meaning has not been approved.", { size: 9 });
   for (const source of report.evidence.sources) {
     reserve(110);
@@ -180,13 +204,33 @@ export async function renderReportPdf(report) {
     if (source.rawDataObjectId) paragraph(`Raw object: ${source.rawDataObjectId}`, { size: 8 });
     if (source.metricPointId) paragraph(`Verified metric point: ${source.metricPointId}`, { size: 8 });
   }
+  newPage();
+  heading("Understand this report", "07");
+  for (const q of report.explainer?.questions ?? []) {
+    const blocks = [[q.question, 12, true], [q.classification, 8, false], [q.answer, 10, false], [`In plain language: ${q.meaning}`, 9, false], [`Check next: ${q.nextCheck}`, 9, false], [`Keep in mind: ${q.caution}`, 9, false]];
+    const answerHeight = blocks.reduce((height, [text, size, bold]) => {
+      doc.font(bold ? "ReportBold" : "Report").fontSize(size);
+      return height + doc.heightOfString(text, { width, lineGap: 3 }) + 10 + Math.floor(text.length / 450) * 10;
+    }, 0);
+    reserve(Math.min(answerHeight, bottom - 46));
+    fullParagraph(q.question, { size: 12, bold: true });
+    paragraph(q.classification, { size: 8, ink: "#647668" });
+    fullParagraph(q.answer, { size: 10 });
+    fullParagraph(`In plain language: ${q.meaning}`, { size: 9 });
+    fullParagraph(`Check next: ${q.nextCheck}`, { size: 9 });
+    fullParagraph(`Keep in mind: ${q.caution}`, { size: 9 });
+  }
   const range = doc.bufferedPageRange();
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(index);
+    // Footers sit outside the content margin; prevent PDFKit from flowing them onto a new page.
+    const bottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     const footerY = doc.page.height - 43;
     doc.moveTo(44, footerY - 11).lineTo(44 + width, footerY - 11).lineWidth(0.5).strokeColor("#dce5de").stroke();
     doc.font("Report").fontSize(8).fillColor("#6a7b70").text(`BIZNORYX / ${report.version}`, 44, footerY, { lineBreak: false });
     doc.text(`${index + 1} / ${range.count}`, 44 + width - 45, footerY, { width: 45, align: "right", lineBreak: false });
+    doc.page.margins.bottom = bottomMargin;
   }
   doc.end();
   return ready;
