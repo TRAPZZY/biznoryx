@@ -17,6 +17,7 @@ async function createWorkspace(page) {
   ).toBeVisible();
   const code = await page.locator(".local-code strong").textContent();
   await page.getByLabel("Verification code").fill(code.trim());
+  await page.getByLabel("Choose account password").fill("EvidenceBrowserPassword2026!");
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await acceptRequiredPolicy(page);
   await expect(

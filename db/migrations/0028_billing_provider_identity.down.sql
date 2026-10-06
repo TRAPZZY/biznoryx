@@ -1,0 +1,4 @@
+begin;
+drop function runtime_paystack_subscription_organization(text);
+drop index billing_provider_subscription_identity_unique_idx;
+commit;

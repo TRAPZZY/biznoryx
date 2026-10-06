@@ -372,6 +372,7 @@ export async function resolvePaystackSubscriptionIdentity({
   reference,
   organizationId,
   planCode,
+  expectedSubscriptionCode = null,
   includeInactive = false,
   env = process.env,
   fetchImpl = fetch,
@@ -382,10 +383,16 @@ export async function resolvePaystackSubscriptionIdentity({
 
   const normalizedPlanCode = String(planCode ?? "").trim();
 
+  const persistedSubscriptionCode = String(
+    expectedSubscriptionCode ?? "",
+  ).trim();
+
+  const secretKey = String(env.PAYSTACK_SECRET_KEY ?? "").trim();
+
   if (
-    !normalizedReference ||
     !normalizedOrganizationId ||
-    !normalizedPlanCode
+    (!persistedSubscriptionCode &&
+      (!normalizedReference || !normalizedPlanCode))
   ) {
     throw new AuthError(
       "The existing subscription cannot be matched safely to Paystack.",
@@ -393,125 +400,130 @@ export async function resolvePaystackSubscriptionIdentity({
     );
   }
 
-  const transaction = await verifyPaystackTransaction({
-    reference: normalizedReference,
-    env,
-    fetchImpl,
-  });
-
-  const transactionOrganizationId = String(
-    transaction?.metadata?.organization_id ??
-      transaction?.metadata?.organizationId ??
-      "",
-  ).trim();
-
-  if (
-    transactionOrganizationId &&
-    transactionOrganizationId !== normalizedOrganizationId
-  ) {
+  if (!secretKey) {
     throw new AuthError(
-      "The Paystack transaction does not belong to this workspace.",
-      "ORG_ACCESS_DENIED",
+      "Paystack is not configured for this environment.",
+      "BILLING_PROVIDER_NOT_CONFIGURED",
     );
   }
 
-  const customerId = Number(transaction?.customer?.id);
-
-  if (!Number.isSafeInteger(customerId) || customerId <= 0) {
-    throw new AuthError(
-      "Paystack did not return the customer attached to this subscription.",
-      "BILLING_PROVIDER_FAILED",
-    );
-  }
-
-  const listUrl = new URL(PAYSTACK_SUBSCRIPTIONS_URL);
-
-  listUrl.searchParams.set("customer", String(customerId));
-
-  listUrl.searchParams.set("perPage", "100");
-
-  const response = await paystackFetchWithTimeout({
-    fetchImpl,
-
-    url: listUrl,
-
-    options: {
-      method: "GET",
-
-      headers: {
-        Authorization: `Bearer ${String(env.PAYSTACK_SECRET_KEY ?? "").trim()}`,
-
-        Accept: "application/json",
-      },
-    },
-
-    operation: "finding your existing subscription",
-  });
-
-  let payload;
-
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  if (
-    !response.ok ||
-    payload?.status !== true ||
-    !Array.isArray(payload?.data)
-  ) {
-    throw new AuthError(
-      payload?.message || "Paystack subscriptions could not be loaded.",
-      "BILLING_PROVIDER_FAILED",
-    );
-  }
-
-  const matching = payload.data.filter((item) => {
-    const candidatePlanCode = String(
-      item?.plan?.plan_code ?? item?.plan_code ?? "",
-    ).trim();
-
-    const status = String(item?.status ?? "").toLowerCase();
-
-    const inactive = [
-      "complete",
-      "completed",
-      "disabled",
-      "cancelled",
-      "canceled",
-    ].includes(status);
-
-    return (
-      candidatePlanCode === normalizedPlanCode && (includeInactive || !inactive)
-    );
-  });
-
-  const active = matching.filter(
-    (item) => String(item?.status ?? "").toLowerCase() === "active",
-  );
-
-  const selected =
-    active.length === 1
-      ? active[0]
-      : matching.length === 1
-        ? matching[0]
-        : null;
-
-  if (!selected) {
-    throw new AuthError(
-      "BIZNORYX could not uniquely identify the active Paystack subscription.",
-      "BILLING_PROVIDER_FAILED",
-    );
-  }
-
-  const subscriptionCode = String(selected.subscription_code ?? "").trim();
+  let selected = null;
+  let customerId = null;
+  let subscriptionCode = persistedSubscriptionCode;
 
   if (!subscriptionCode) {
-    throw new AuthError(
-      "Paystack returned an incomplete subscription identity.",
-      "BILLING_PROVIDER_FAILED",
+    const transaction = await verifyPaystackTransaction({
+      reference: normalizedReference,
+      env,
+      fetchImpl,
+    });
+
+    if (
+      transaction.status !== "success" ||
+      transaction.reference !== normalizedReference
+    ) {
+      throw new AuthError(
+        "The existing subscription requires a verified successful transaction.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    const transactionOrganizationId = directPaystackOrganizationId(transaction);
+
+    if (
+      transactionOrganizationId &&
+      transactionOrganizationId !== normalizedOrganizationId
+    ) {
+      throw new AuthError(
+        "The Paystack transaction does not belong to this workspace.",
+        "ORG_ACCESS_DENIED",
+      );
+    }
+
+    customerId = Number(transaction?.customer?.id);
+
+    if (!Number.isSafeInteger(customerId) || customerId <= 0) {
+      throw new AuthError(
+        "Paystack did not return the customer attached to this subscription.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    const listUrl = new URL(PAYSTACK_SUBSCRIPTIONS_URL);
+
+    listUrl.searchParams.set("customer", String(customerId));
+    listUrl.searchParams.set("perPage", "100");
+
+    const response = await paystackFetchWithTimeout({
+      fetchImpl,
+      url: listUrl,
+      options: {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          Accept: "application/json",
+        },
+      },
+      operation: "finding your existing subscription",
+    });
+
+    let payload;
+
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (
+      !response.ok ||
+      payload?.status !== true ||
+      !Array.isArray(payload?.data)
+    ) {
+      throw new AuthError(
+        payload?.message || "Paystack subscriptions could not be loaded.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    // A customer (and payment method) may be shared by multiple workspaces.
+    const matching = payload.data.filter((item) => {
+      const candidatePlanCode = String(
+        item?.plan?.plan_code ?? item?.plan_code ?? "",
+      ).trim();
+      return (
+        candidatePlanCode === normalizedPlanCode &&
+        directPaystackOrganizationId(item) === normalizedOrganizationId &&
+        (includeInactive || !paystackSubscriptionIsInactive(item))
+      );
+    });
+
+    const active = matching.filter(
+      (item) => String(item?.status ?? "").toLowerCase() === "active",
     );
+
+    selected =
+      active.length === 1
+        ? active[0]
+        : matching.length === 1
+          ? matching[0]
+          : null;
+
+    if (!selected) {
+      throw new AuthError(
+        "BIZNORYX could not uniquely identify a Paystack subscription bound to this workspace.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
+
+    subscriptionCode = String(selected.subscription_code ?? "").trim();
+
+    if (!subscriptionCode) {
+      throw new AuthError(
+        "Paystack returned an incomplete subscription identity.",
+        "BILLING_PROVIDER_FAILED",
+      );
+    }
   }
 
   const detailResponse = await paystackFetchWithTimeout({
@@ -525,7 +537,7 @@ export async function resolvePaystackSubscriptionIdentity({
       method: "GET",
 
       headers: {
-        Authorization: `Bearer ${String(env.PAYSTACK_SECRET_KEY ?? "").trim()}`,
+        Authorization: `Bearer ${secretKey}`,
 
         Accept: "application/json",
       },
@@ -554,8 +566,32 @@ export async function resolvePaystackSubscriptionIdentity({
     );
   }
 
+  const detail = detailPayload.data;
+  const detailOrganizationId = directPaystackOrganizationId(detail);
+  const detailPlanCode = String(
+    detail?.plan?.plan_code ?? detail?.plan_code ?? "",
+  ).trim();
+
+  if (
+    String(detail.subscription_code ?? "").trim() !== subscriptionCode ||
+    (detailOrganizationId &&
+      detailOrganizationId !== normalizedOrganizationId) ||
+    (!persistedSubscriptionCode &&
+      detailPlanCode &&
+      detailPlanCode !== normalizedPlanCode) ||
+    (customerId &&
+      detail.customer?.id != null &&
+      Number(detail.customer.id) !== customerId) ||
+    (!includeInactive && paystackSubscriptionIsInactive(detail))
+  ) {
+    throw new AuthError(
+      "Paystack subscription details do not match the workspace's subscription.",
+      "BILLING_PROVIDER_FAILED",
+    );
+  }
+
   const emailToken = String(
-    detailPayload.data.email_token ?? selected.email_token ?? "",
+    detail.email_token ?? selected?.email_token ?? "",
   ).trim();
 
   if (!emailToken) {
@@ -569,6 +605,47 @@ export async function resolvePaystackSubscriptionIdentity({
     subscriptionCode,
     emailToken,
   };
+}
+
+function directPaystackOrganizationId(record) {
+  let metadata = record?.metadata;
+  if (typeof metadata === "string") {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch {
+      return null;
+    }
+  }
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const organizationId = String(metadata.organization_id ?? "").trim();
+  const legacyOrganizationId = String(metadata.organizationId ?? "").trim();
+  if (
+    organizationId &&
+    legacyOrganizationId &&
+    organizationId !== legacyOrganizationId
+  ) {
+    throw new AuthError(
+      "Paystack workspace metadata is inconsistent.",
+      "ORG_ACCESS_DENIED",
+    );
+  }
+  return organizationId || legacyOrganizationId || null;
+}
+
+function paystackSubscriptionIsInactive(subscription) {
+  return [
+    "complete",
+    "completed",
+    "disabled",
+    "cancelled",
+    "canceled",
+  ].includes(
+    String(subscription?.status ?? "")
+      .trim()
+      .toLowerCase(),
+  );
 }
 
 export async function disablePaystackSubscription({

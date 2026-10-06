@@ -32,6 +32,7 @@ test("verified users must accept account and data onboarding before workspace ac
   const code = await page.locator(".local-code strong").textContent();
 
   await page.getByLabel("Verification code").fill(code.trim());
+  await page.getByLabel("Choose account password").fill("PolicyReviewPassword2026!");
 
   await page
     .getByRole("button", {

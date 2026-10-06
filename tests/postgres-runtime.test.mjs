@@ -91,7 +91,7 @@ test(
       /*
        * Register first user.
        */
-      const first =
+      let first =
         await repository.register({
           email:
             `owner-${suffix}@example.test`,
@@ -152,6 +152,7 @@ test(
        */
       const verifiedUser =
         await emailVerification.verify({
+          newPassword: password,
           email:
             first.user.email,
 
@@ -168,6 +169,10 @@ test(
         verifiedUser.emailVerifiedAt
           instanceof Date,
       );
+
+      await assert.rejects(repository.authenticate({ token: first.token }),
+        (error) => error.code === "SESSION_INVALID");
+      first = await repository.createSessionForUser(verifiedUser);
 
       /*
        * Create first organization.

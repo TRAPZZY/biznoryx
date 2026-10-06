@@ -395,7 +395,7 @@ export class EmailVerificationService {
     return { reset: true };
   }
 
-  verify({ email, code, purpose = 'email_verification' }) {
+  verify({ email, code, purpose = 'email_verification', newPassword }) {
     const normalizedEmail = normalizeEmail(email);
     const now = this.now();
     const challenge = [...this.store.emailVerifications.values()]
@@ -408,8 +408,11 @@ export class EmailVerificationService {
     if (hashSecret(String(code ?? '').trim()) !== challenge.codeHash) {
       throw new AuthError('Verification code is invalid or expired.', 'EMAIL_CODE_INVALID');
     }
-    challenge.consumedAt = now;
     const user = mustGet(this.store.users, challenge.userId, 'User not found.');
+    if (!user.emailVerifiedAt) {
+      user.passwordHash = hashPassword(newPassword);
+    }
+    challenge.consumedAt = now;
     user.emailVerifiedAt = now;
     this.auditLog.record({
       actorUserId: user.id,

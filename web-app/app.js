@@ -1272,6 +1272,14 @@ function verifyEmail() {
               'inputmode="numeric" autocomplete="one-time-code" maxlength="12"',
             )}
 
+            ${field(
+              "Choose account password",
+              "newPassword",
+              "password",
+              "",
+              'autocomplete="new-password" minlength="12" maxlength="128"',
+            )}
+
             <button
               class="primary"
               type="submit"

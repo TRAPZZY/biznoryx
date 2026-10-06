@@ -704,6 +704,8 @@ test("billing cancellation is owner-only, calls Paystack and returns sanitized s
     assert.deepEqual(calls[2].input, {
       organizationId: "org-1",
       actorUserId: "user-1",
+      providerSubscriptionCode: "SUB_live",
+      providerEmailToken: "email-token",
     });
 
     membershipRole = "viewer";

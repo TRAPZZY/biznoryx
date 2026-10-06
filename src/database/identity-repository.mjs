@@ -9,10 +9,7 @@ import {
   verifyPassword,
 } from "../auth/core.mjs";
 
-import {
-  withTenantTransaction,
-  withTransaction,
-} from "./postgres.mjs";
+import { withTenantTransaction, withTransaction } from "./postgres.mjs";
 
 import {
   acknowledgementsComplete,
@@ -21,57 +18,51 @@ import {
 } from "../compliance/user-policy.mjs";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
+const sessionCredentials = new WeakMap();
+
+// Keep credential evidence private while verification hands a user to session creation.
+export function sessionUserFromRow(row, { requireVerifiedEmail = true } = {}) {
+  const user = mapUser(row);
+  sessionCredentials.set(user, {
+    userId: row.id,
+    passwordHash: row.password_hash,
+    requireVerifiedEmail,
+  });
+  return user;
+}
 
 export class PostgresIdentityRepository {
-  constructor(
-    pool,
-    {
-      now = () => new Date(),
-      production = false,
-    } = {},
-  ) {
+  constructor(pool, { now = () => new Date(), production = false } = {}) {
     this.pool = pool;
     this.now = now;
     this.production = production;
   }
 
-  async createUser({
-    email,
-    displayName,
-    password,
-  }) {
-    const normalizedEmail =
-      normalizeEmail(email);
+  async createUser({ email, displayName, password }) {
+    const normalizedEmail = normalizeEmail(email);
 
     const userId = randomUUID();
 
     try {
-      await withTransaction(
-        this.pool,
-        async (client) => {
-          await client.query(
-            `insert into app_users (
+      await withTransaction(this.pool, async (client) => {
+        await client.query(
+          `insert into app_users (
                id,
                email,
                display_name,
                password_hash
              )
              values ($1, $2, $3, $4)`,
-            [
-              userId,
-              normalizedEmail,
-              displayName,
-              hashPassword(password),
-            ],
-          );
+          [userId, normalizedEmail, displayName, hashPassword(password)],
+        );
 
-          await client.query(
-            "select set_config('app.current_user_id', $1, true)",
-            [userId],
-          );
+        await client.query(
+          "select set_config('app.current_user_id', $1, true)",
+          [userId],
+        );
 
-          await client.query(
-            `insert into audit_events (
+        await client.query(
+          `insert into audit_events (
                actor_user_id,
                event_type,
                target_type,
@@ -83,16 +74,12 @@ export class PostgresIdentityRepository {
                'app_user',
                $1
              )`,
-            [userId],
-          );
-        },
-      );
+          [userId],
+        );
+      });
     } catch (error) {
       if (error.code === "23505") {
-        throw new AuthError(
-          "Email is already registered.",
-          "EMAIL_EXISTS",
-        );
+        throw new AuthError("Email is already registered.", "EMAIL_EXISTS");
       }
 
       throw error;
@@ -107,11 +94,7 @@ export class PostgresIdentityRepository {
     };
   }
 
-  async register({
-    email,
-    displayName,
-    password,
-  }) {
+  async register({ email, displayName, password }) {
     const user = await this.createUser({
       email,
       displayName,
@@ -125,13 +108,10 @@ export class PostgresIdentityRepository {
     });
   }
 
-  async signIn({
-    email,
-    password,
-    requireVerifiedEmail = true,
-  }) {
-    const result = await this.pool.query(
-      `select
+  async signIn({ email, password, requireVerifiedEmail = true }) {
+    return withTransaction(this.pool, async (client) => {
+      const result = await client.query(
+        `select
          id,
          email,
          display_name,
@@ -139,73 +119,73 @@ export class PostgresIdentityRepository {
          email_verified_at,
          disabled_at
        from app_users
-       where email = $1`,
-      [normalizeEmail(email)],
-    );
-
-    const user = result.rows[0];
-
-    if (
-      !user ||
-      user.disabled_at ||
-      !verifyPassword(
-        password,
-        user.password_hash,
-      )
-    ) {
-      throw new AuthError(
-        "Invalid credentials.",
-        "INVALID_CREDENTIALS",
+       where email = $1
+       for update`,
+        [normalizeEmail(email)],
       );
-    }
 
-    if (
-      requireVerifiedEmail &&
-      !user.email_verified_at
-    ) {
-      throw new AuthError(
-        "Enter the verification code sent to your work email.",
-        "EMAIL_VERIFICATION_REQUIRED",
+      const user = result.rows[0];
+
+      if (
+        !user ||
+        user.disabled_at ||
+        !verifyPassword(password, user.password_hash)
+      ) {
+        throw new AuthError("Invalid credentials.", "INVALID_CREDENTIALS");
+      }
+
+      if (requireVerifiedEmail && !user.email_verified_at) {
+        throw new AuthError(
+          "Enter the verification code sent to your work email.",
+          "EMAIL_VERIFICATION_REQUIRED",
+        );
+      }
+
+      return this.createSessionForUser(
+        sessionUserFromRow(user, { requireVerifiedEmail }),
+        client,
       );
-    }
-
-    return this.createSessionForUser(
-      mapUser(user),
-    );
+    });
   }
 
-  async createSessionForUser(user) {
-    if (!user || user.disabledAt) {
-      throw new AuthError(
-        "Invalid credentials.",
-        "INVALID_CREDENTIALS",
-      );
+  async createSessionForUser(user, transactionClient = null) {
+    const credentials = user && sessionCredentials.get(user);
+    if (!credentials || credentials.userId !== user.id || user.disabledAt) {
+      throw new AuthError("Invalid credentials.", "INVALID_CREDENTIALS");
     }
 
-    const memberships =
-      await this.activeMemberships(user.id);
+    const work = async (client) => {
+      const result = await client.query(
+        `select id, email, display_name, password_hash, email_verified_at, disabled_at
+         from app_users where id = $1 for update`,
+        [user.id],
+      );
+      const current = result.rows[0];
+      if (
+        !current ||
+        current.disabled_at ||
+        current.password_hash !== credentials.passwordHash ||
+        (credentials.requireVerifiedEmail && !current.email_verified_at)
+      ) {
+        throw new AuthError("Invalid credentials.", "INVALID_CREDENTIALS");
+      }
+      const currentUser = mapUser(current);
+      const memberships = await this.activeMemberships(current.id, client);
 
-    const token = randomBytes(32).toString(
-      "base64url",
-    );
+      const token = randomBytes(32).toString("base64url");
 
-    const csrfToken =
-      randomBytes(32).toString("base64url");
+      const csrfToken = randomBytes(32).toString("base64url");
 
-    const sessionId = randomUUID();
+      const sessionId = randomUUID();
 
-    const expiresAt = new Date(
-      this.now().getTime() +
-        SESSION_TTL_MS,
-    );
+      const expiresAt = new Date(this.now().getTime() + SESSION_TTL_MS);
 
-    const activeOrganizationId =
-      memberships[0]?.organizationId ??
-      null;
+      const activeOrganizationId = memberships[0]?.organizationId ?? null;
 
-    const createSession = async (
-      client,
-    ) => {
+      await client.query(
+        "select set_config('app.current_organization_id', $1, true)",
+        [activeOrganizationId ?? ""],
+      );
       await client.query(
         `insert into user_sessions (
            id,
@@ -241,66 +221,33 @@ export class PostgresIdentityRepository {
            'user_session',
            $3
          )`,
-        [
+        [activeOrganizationId, user.id, sessionId],
+      );
+      return {
+        user: currentUser,
+
+        session: {
+          id: sessionId,
+          userId: user.id,
           activeOrganizationId,
-          user.id,
-          sessionId,
-        ],
-      );
-    };
-
-    if (activeOrganizationId) {
-      await withTenantTransaction(
-        this.pool,
-        {
-          organizationId:
-            activeOrganizationId,
-          actorUserId: user.id,
+          expiresAt,
         },
-        createSession,
-      );
-    } else {
-      await withTransaction(
-        this.pool,
-        async (client) => {
-          await client.query(
-            "select set_config('app.current_user_id', $1, true)",
-            [user.id],
-          );
 
-          await createSession(client);
-        },
-      );
-    }
+        memberships,
 
-    return {
-      user,
-
-      session: {
-        id: sessionId,
-        userId: user.id,
-        activeOrganizationId,
-        expiresAt,
-      },
-
-      memberships,
-
-      token,
-
-      csrfToken,
-
-      cookie: secureSessionCookie(
         token,
-        this.production,
-      ),
+
+        csrfToken,
+
+        cookie: secureSessionCookie(token, this.production),
+      };
     };
+    return transactionClient
+      ? work(transactionClient)
+      : withTransaction(this.pool, work);
   }
 
-  async authenticate({
-    token,
-    csrfToken,
-    requireCsrf = false,
-  }) {
+  async authenticate({ token, csrfToken, requireCsrf = false }) {
     const result = await this.pool.query(
       `select
          session_id,
@@ -324,121 +271,83 @@ export class PostgresIdentityRepository {
     if (
       !context ||
       context.session_revoked_at ||
-      new Date(
-        context.session_expires_at,
-      ) <= now
+      new Date(context.session_expires_at) <= now
     ) {
-      throw new AuthError(
-        "Session is not active.",
-        "SESSION_INVALID",
-      );
+      throw new AuthError("Session is not active.", "SESSION_INVALID");
     }
 
     if (context.user_disabled_at) {
-      throw new AuthError(
-        "User is disabled.",
-        "USER_DISABLED",
-      );
+      throw new AuthError("User is disabled.", "USER_DISABLED");
     }
 
     if (
       requireCsrf &&
-      hashSecret(csrfToken ?? "") !==
-        context.csrf_token_hash
+      hashSecret(csrfToken ?? "") !== context.csrf_token_hash
     ) {
-      throw new AuthError(
-        "Invalid CSRF token.",
-        "CSRF_INVALID",
-      );
+      throw new AuthError("Invalid CSRF token.", "CSRF_INVALID");
     }
 
     if (
       context.active_organization_id &&
-      context.membership_status !==
-        "active"
+      context.membership_status !== "active"
     ) {
-      await this.revokeSession(
-        context.session_id,
-        context.user_id,
-      );
+      await this.revokeSession(context.session_id, context.user_id);
 
-      throw new AuthError(
-        "Membership is disabled.",
-        "MEMBERSHIP_DISABLED",
-      );
+      throw new AuthError("Membership is disabled.", "MEMBERSHIP_DISABLED");
     }
 
-    await withTransaction(
-      this.pool,
-      async (client) => {
-        await client.query(
-          "select set_config('app.current_user_id', $1, true)",
-          [context.user_id],
-        );
+    await withTransaction(this.pool, async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        context.user_id,
+      ]);
 
-        await client.query(
-          `update user_sessions
+      await client.query(
+        `update user_sessions
            set last_seen_at = $2
            where id = $1`,
-          [
-            context.session_id,
-            now,
-          ],
-        );
-      },
-    );
+        [context.session_id, now],
+      );
+    });
 
     return mapContext(context);
   }
 
-  async activeMemberships(userId) {
-    const result =
-      await withTransaction(
-        this.pool,
-        async (client) => {
-          await client.query(
-            "select set_config('app.current_user_id', $1, true)",
-            [userId],
-          );
+  async activeMemberships(userId, transactionClient = null) {
+    const work = async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
 
-          return client.query(
-            `select
+      return client.query(
+        `select
                membership_id,
                organization_id,
                organization_name,
                organization_slug,
                membership_role
              from runtime_active_memberships($1)`,
-            [userId],
-          );
-        },
+        [userId],
       );
+    };
+    const result = transactionClient
+      ? await work(transactionClient)
+      : await withTransaction(this.pool, work);
 
-    return result.rows.map(
-      (row) => ({
-        id: row.membership_id,
+    return result.rows.map((row) => ({
+      id: row.membership_id,
 
-        organizationId:
-          row.organization_id,
+      organizationId: row.organization_id,
 
-        organizationName:
-          row.organization_name,
+      organizationName: row.organization_name,
 
-        organizationSlug:
-          row.organization_slug,
+      organizationSlug: row.organization_slug,
 
-        role: row.membership_role,
-      }),
-    );
+      role: row.membership_role,
+    }));
   }
 
-  async createOrganization({
-    actorUserId,
-    name,
-    slug,
-  }) {
-    const organizationId =
-      randomUUID();
+  async createOrganization({ actorUserId, name, slug }) {
+    const organizationId = randomUUID();
 
     const membershipId = randomUUID();
 
@@ -457,12 +366,7 @@ export class PostgresIdentityRepository {
              created_by_user_id
            )
            values ($1, $2, $3, $4)`,
-          [
-            organizationId,
-            name,
-            slug,
-            actorUserId,
-          ],
+          [organizationId, name, slug, actorUserId],
         );
 
         await client.query(
@@ -473,11 +377,7 @@ export class PostgresIdentityRepository {
              role
            )
            values ($1, $2, $3, 'owner')`,
-          [
-            membershipId,
-            organizationId,
-            actorUserId,
-          ],
+          [membershipId, organizationId, actorUserId],
         );
 
         await client.query(
@@ -495,10 +395,7 @@ export class PostgresIdentityRepository {
              'organization',
              $1
            )`,
-          [
-            organizationId,
-            actorUserId,
-          ],
+          [organizationId, actorUserId],
         );
       },
     );
@@ -510,23 +407,10 @@ export class PostgresIdentityRepository {
     };
   }
 
-  async switchOrganization({
-    sessionId,
-    actorUserId,
-    organizationId,
-  }) {
-    const memberships =
-      await this.activeMemberships(
-        actorUserId,
-      );
+  async switchOrganization({ sessionId, actorUserId, organizationId }) {
+    const memberships = await this.activeMemberships(actorUserId);
 
-    if (
-      !memberships.some(
-        (item) =>
-          item.organizationId ===
-          organizationId,
-      )
-    ) {
+    if (!memberships.some((item) => item.organizationId === organizationId)) {
       throw new AuthError(
         "Cannot switch to an organization without active membership.",
         "ORG_ACCESS_DENIED",
@@ -540,25 +424,17 @@ export class PostgresIdentityRepository {
         actorUserId,
       },
       async (client) => {
-        const result =
-          await client.query(
-            `update user_sessions
+        const result = await client.query(
+          `update user_sessions
              set active_organization_id = $3
              where id = $1
                and user_id = $2
                and revoked_at is null`,
-            [
-              sessionId,
-              actorUserId,
-              organizationId,
-            ],
-          );
+          [sessionId, actorUserId, organizationId],
+        );
 
         if (result.rowCount !== 1) {
-          throw new AuthError(
-            "Session is not active.",
-            "SESSION_INVALID",
-          );
+          throw new AuthError("Session is not active.", "SESSION_INVALID");
         }
 
         await client.query(
@@ -576,26 +452,20 @@ export class PostgresIdentityRepository {
              'organization',
              $1
            )`,
-          [
-            organizationId,
-            actorUserId,
-          ],
+          [organizationId, actorUserId],
         );
       },
     );
   }
 
   async policyStatus(userId) {
-    const result = await withTransaction(
-      this.pool,
-      async (client) => {
-        await client.query(
-          "select set_config('app.current_user_id', $1, true)",
-          [userId],
-        );
+    const result = await withTransaction(this.pool, async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
 
-        return client.query(
-          `select
+      return client.query(
+        `select
              metadata,
              created_at
            from audit_events
@@ -606,10 +476,9 @@ export class PostgresIdentityRepository {
              and target_id = $1
            order by created_at desc
            limit 1`,
-          [userId],
-        );
-      },
-    );
+        [userId],
+      );
+    });
 
     const row = result.rows[0];
 
@@ -618,10 +487,7 @@ export class PostgresIdentityRepository {
     }
 
     const metadata =
-      row.metadata &&
-      typeof row.metadata === "object"
-        ? row.metadata
-        : {};
+      row.metadata && typeof row.metadata === "object" ? row.metadata : {};
 
     return buildPolicyStatus({
       termsVersion: metadata.termsVersion,
@@ -632,36 +498,23 @@ export class PostgresIdentityRepository {
     });
   }
 
-  async acceptCurrentPolicy({
-    userId,
-    acknowledgements,
-  }) {
-    if (
-      !acknowledgementsComplete(
-        acknowledgements,
-      )
-    ) {
+  async acceptCurrentPolicy({ userId, acknowledgements }) {
+    if (!acknowledgementsComplete(acknowledgements)) {
       throw new AuthError(
         "Confirm the account, data and recurring-series acknowledgements before continuing.",
         "POLICY_ACCEPTANCE_REQUIRED",
       );
     }
 
-    const acceptance =
-      createCurrentPolicyAcceptance(
-        this.now(),
-      );
+    const acceptance = createCurrentPolicyAcceptance(this.now());
 
-    await withTransaction(
-      this.pool,
-      async (client) => {
-        await client.query(
-          "select set_config('app.current_user_id', $1, true)",
-          [userId],
-        );
+    await withTransaction(this.pool, async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
 
-        await client.query(
-          `insert into audit_events (
+      await client.query(
+        `insert into audit_events (
              actor_user_id,
              event_type,
              target_type,
@@ -675,95 +528,60 @@ export class PostgresIdentityRepository {
              $1,
              $2::jsonb
            )`,
-          [
-            userId,
-            JSON.stringify({
-              termsVersion:
-                acceptance.termsVersion,
-              privacyVersion:
-                acceptance.privacyVersion,
-              dataUseVersion:
-                acceptance.dataUseVersion,
-              guideVersion:
-                acceptance.guideVersion,
-              source:
-                "account_data_onboarding",
-            }),
-          ],
-        );
-      },
-    );
+        [
+          userId,
+          JSON.stringify({
+            termsVersion: acceptance.termsVersion,
+            privacyVersion: acceptance.privacyVersion,
+            dataUseVersion: acceptance.dataUseVersion,
+            guideVersion: acceptance.guideVersion,
+            source: "account_data_onboarding",
+          }),
+        ],
+      );
+    });
 
     return buildPolicyStatus(acceptance);
   }
 
-  async revokeSession(
-    sessionId,
-    userId,
-  ) {
-    await withTransaction(
-      this.pool,
-      async (client) => {
-        await client.query(
-          "select set_config('app.current_user_id', $1, true)",
-          [userId],
-        );
+  async revokeSession(sessionId, userId) {
+    await withTransaction(this.pool, async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
 
-        await client.query(
-          `update user_sessions
+      await client.query(
+        `update user_sessions
            set revoked_at = now()
            where id = $1
              and user_id = $2`,
-          [
-            sessionId,
-            userId,
-          ],
-        );
-      },
-    );
+        [sessionId, userId],
+      );
+    });
   }
 
-  async rotateCsrfToken(
-    sessionId,
-    userId,
-  ) {
-    const csrfToken =
-      randomBytes(32).toString(
-        "base64url",
-      );
+  async rotateCsrfToken(sessionId, userId) {
+    const csrfToken = randomBytes(32).toString("base64url");
 
-    const updated =
-      await withTransaction(
-        this.pool,
-        async (client) => {
-          await client.query(
-            "select set_config('app.current_user_id', $1, true)",
-            [userId],
-          );
+    const updated = await withTransaction(this.pool, async (client) => {
+      await client.query("select set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
 
-          return client.query(
-            `update user_sessions
+      return client.query(
+        `update user_sessions
              set csrf_token_hash = $3,
                  last_seen_at = $4
              where id = $1
                and user_id = $2
                and revoked_at is null
                and expires_at > $4`,
-            [
-              sessionId,
-              userId,
-              hashSecret(csrfToken),
-              this.now(),
-            ],
-          );
-        },
+        [sessionId, userId, hashSecret(csrfToken), this.now()],
       );
+    });
 
     if (updated.rowCount !== 1) {
-      throw new AuthError(
-        "Session is not active.",
-        "SESSION_INVALID",
-      );
+      throw new AuthError("Session is not active.", "SESSION_INVALID");
     }
 
     return csrfToken;
@@ -778,8 +596,7 @@ function mapUser(row) {
 
     displayName: row.display_name,
 
-    emailVerifiedAt:
-      row.email_verified_at ?? null,
+    emailVerifiedAt: row.email_verified_at ?? null,
 
     disabledAt: row.disabled_at,
   };
@@ -794,8 +611,7 @@ function mapContext(row) {
 
       displayName: row.display_name,
 
-      disabledAt:
-        row.user_disabled_at,
+      disabledAt: row.user_disabled_at,
     },
 
     session: {
@@ -803,25 +619,19 @@ function mapContext(row) {
 
       userId: row.user_id,
 
-      activeOrganizationId:
-        row.active_organization_id,
+      activeOrganizationId: row.active_organization_id,
 
-      expiresAt:
-        row.session_expires_at,
+      expiresAt: row.session_expires_at,
     },
 
-    membership:
-      row.active_organization_id
-        ? {
-            organizationId:
-              row.active_organization_id,
+    membership: row.active_organization_id
+      ? {
+          organizationId: row.active_organization_id,
 
-            role:
-              row.membership_role,
+          role: row.membership_role,
 
-            status:
-              row.membership_status,
-          }
-        : null,
+          status: row.membership_status,
+        }
+      : null,
   };
 }

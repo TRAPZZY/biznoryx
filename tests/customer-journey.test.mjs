@@ -99,6 +99,7 @@ test("new customer registers, creates business, validates and confirms recurring
     const verified = await call("auth/verify-email", {
       email: "journey@example.com",
       code: registration.reviewCode,
+      newPassword: "JourneyPassword2026!",
     });
 
     csrf = verified.csrfToken;

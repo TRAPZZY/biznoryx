@@ -1,54 +1,26 @@
-import {
-  AuthError,
-} from "../auth/core.mjs";
+import { AuthError } from "../auth/core.mjs";
 
 export function subscriptionHasPremiumAccess(
   subscription,
-  {
-    now = () => new Date(),
-  } = {},
+  { now = () => new Date() } = {},
 ) {
-  if (!subscription) {
+  if (
+    !subscription ||
+    !["active", "non_renewing"].includes(subscription.status)
+  ) {
     return false;
   }
 
+  const { currentPeriodEnd } = subscription;
   if (
-    subscription.status ===
-    "active"
+    !(currentPeriodEnd instanceof Date) &&
+    (typeof currentPeriodEnd !== "string" || !currentPeriodEnd.trim())
   ) {
-    return true;
+    return false;
   }
 
-  if (
-    subscription.status ===
-    "non_renewing"
-  ) {
-    if (
-      !subscription.currentPeriodEnd
-    ) {
-      return false;
-    }
-
-    const periodEnd =
-      new Date(
-        subscription.currentPeriodEnd,
-      ).getTime();
-
-    if (
-      !Number.isFinite(
-        periodEnd,
-      )
-    ) {
-      return false;
-    }
-
-    return (
-      periodEnd >
-      now().getTime()
-    );
-  }
-
-  return false;
+  const periodEnd = new Date(currentPeriodEnd).getTime();
+  return Number.isFinite(periodEnd) && periodEnd > now().getTime();
 }
 
 export async function requirePremiumSubscription({
@@ -59,9 +31,7 @@ export async function requirePremiumSubscription({
 }) {
   if (
     !billingRepository ||
-    typeof billingRepository
-      .ensureSubscription !==
-      "function"
+    typeof billingRepository.ensureSubscription !== "function"
   ) {
     throw new AuthError(
       "Billing is temporarily unavailable.",
@@ -76,42 +46,30 @@ export async function requirePremiumSubscription({
     );
   }
 
-  const subscription =
-    await billingRepository
-      .ensureSubscription({
-        organizationId,
+  const subscription = await billingRepository.ensureSubscription({
+    organizationId,
 
-        actorUserId,
+    actorUserId,
 
-        provider:
-          "paystack",
-      });
+    provider: "paystack",
+  });
 
   if (
-    subscriptionHasPremiumAccess(
-      subscription,
-      {
-        now,
-      },
-    )
+    subscriptionHasPremiumAccess(subscription, {
+      now,
+    })
   ) {
     return subscription;
   }
 
   throw new AuthError(
-    subscriptionRequiredMessage(
-      subscription,
-    ),
+    subscriptionRequiredMessage(subscription),
     "SUBSCRIPTION_REQUIRED",
   );
 }
 
-function subscriptionRequiredMessage(
-  subscription,
-) {
-  switch (
-    subscription?.status
-  ) {
+function subscriptionRequiredMessage(subscription) {
+  switch (subscription?.status) {
     case "trialing":
       return "Activate your BIZNORYX subscription to upload and process production business data.";
 
