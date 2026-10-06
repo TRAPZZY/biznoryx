@@ -1,3 +1,4 @@
+import { validateCsvHeaderSizes } from "../ingestion/csv-limits.mjs";
 import {
   createHash,
 } from "node:crypto";
@@ -579,6 +580,8 @@ export function deriveCsvMetrics({
       "METRIC_CSV_HEADER_INVALID",
     );
   }
+
+  validateCsvHeaderSizes(headers);
 
   const normalizedHeaders =
     headers.map(

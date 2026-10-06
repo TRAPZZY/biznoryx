@@ -125,3 +125,35 @@ test("production verified metric series preserve report analytics and default to
   assert.equal(sources[0].rawDataObjectId, "raw-1");
   assert.equal(sources[0].metricPointIds.revenue, "metric-point-1");
 });
+
+test("report construction rejects oversized dimension headers before reading row values", () => {
+  const column = "product_" + "x".repeat(4096);
+  const row = { get revenue() { assert.fail("Rows must not be analyzed with oversized headers"); } };
+  assert.throws(() => buildReportCube({ rows: [row], columns: [column, "revenue"] }),
+    { code: "VALIDATION_FAILED", message: /160 UTF-8 bytes/ });
+});
+
+test("analytics budget includes repeated category values across months and metrics", () => {
+  // Escaped control characters cost six JSON bytes each. Each metric fits alone,
+  // but their combined repeated dimensions exceed the source-wide budget.
+  const data = Array.from({ length: 120 }, (_, i) => ({
+    date: `${2020 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, "0")}-01`,
+    product: `${i % 2 ? "A" : "B"}${"\u0001".repeat(4096)}`,
+    revenue: "1", cost: "2", quantity: "3", amount: "4",
+  }));
+  const single = buildReportCube({ rows: data, columns: ["date", "product", "revenue"] });
+  assert.equal(single.metrics[0].all.value, "120");
+  assert.equal(single.metrics[0].dates[0].months.length, 120);
+  assert.ok(Buffer.byteLength(JSON.stringify(single)) < 8 * 1024 * 1024);
+  assert.throws(() => buildReportCube({ rows: data }),
+    { code: "VALIDATION_FAILED", message: /8 MB size budget/ });
+});
+
+test("analytics budget bounds a single oversized category before bucket serialization", () => {
+  const data = [
+    { product: "é".repeat(750000), revenue: "1" },
+    { product: "B", revenue: "2" },
+  ];
+  assert.throws(() => buildReportCube({ rows: data }),
+    { code: "VALIDATION_FAILED", message: /8 MB size budget/ });
+});

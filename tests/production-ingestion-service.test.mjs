@@ -702,3 +702,28 @@ test(
     );
   },
 );
+test("oversized ASCII and UTF-8 CSV headers are rejected before any storage or repository calls", async () => {
+  for (const header of ["product_" + "x".repeat(153), "product_" + "é".repeat(77)]) {
+    const { repository, calls } = createRepository();
+    const storage = new FakeObjectStorage();
+    const service = new ProductionIngestionService({ repository, objectStorage: storage });
+    await assert.rejects(service.upload({
+      organizationId: "org-1", actorUserId: "user-1", fileName: "sales.csv",
+      period: "2026-01", content: `${header},revenue\nA,10\nB,20\n`,
+    }), { code: "VALIDATION_FAILED", message: /160 UTF-8 bytes/ });
+    assert.deepEqual(calls, { source: [], stream: [], registration: [] });
+    assert.equal(storage.putCalls.length, 0);
+  }
+});
+
+test("CSV headers at the UTF-8 byte limit retain their original names", async () => {
+  for (const header of ["product_" + "x".repeat(152), "product_" + "é".repeat(76)]) {
+    const { repository, calls } = createRepository();
+    const service = new ProductionIngestionService({ repository, objectStorage: new FakeObjectStorage() });
+    await service.upload({
+      organizationId: "org-1", actorUserId: "user-1", fileName: "sales.csv",
+      period: "2026-01", content: `${header},revenue\nA,10\nB,20\n`,
+    });
+    assert.equal(calls.registration[0].upload.columns[0].name, header);
+  }
+});
