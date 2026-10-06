@@ -371,7 +371,7 @@ test(
 );
 
 test(
-  "rejected ingestion removes raw bytes written by the current request",
+  "rejected ingestion preserves immutable raw evidence referenced by the database",
   async () => {
     const {
       repository,
@@ -423,18 +423,18 @@ test(
     assert.equal(
       storage.deleteCalls
         .length,
-      1,
+      0,
     );
 
     assert.equal(
       storage.objects.size,
-      0,
+      1,
     );
   },
 );
 
 test(
-  "database failure removes an object staged by the current upload",
+  "database failure preserves immutable raw bytes for retry or reconciliation",
   async () => {
     const {
       repository,
@@ -484,12 +484,12 @@ test(
     assert.equal(
       storage.deleteCalls
         .length,
-      1,
+      0,
     );
 
     assert.equal(
       storage.objects.size,
-      0,
+      1,
     );
   },
 );

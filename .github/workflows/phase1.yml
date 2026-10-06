@@ -38,6 +38,9 @@ jobs:
       - name: Verify local gates
         run: npm run verify
 
+      - name: Audit production dependency advisories
+        run: npm audit --omit=dev
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -71,6 +74,6 @@ jobs:
           BIZNORYX_APP_DB_PASSWORD: biznoryx_runtime_ci_password
 
       - name: Verify durable runtime behavior
-        run: node --test tests/postgres-runtime.test.mjs
+        run: node --test tests/postgres-runtime.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs
         env:
           TEST_DATABASE_URL: postgresql://biznoryx_app:biznoryx_runtime_ci_password@localhost:5432/biznoryx

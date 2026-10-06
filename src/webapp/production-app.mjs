@@ -56,7 +56,7 @@ import {
   verifyPaystackWebhookSignature,
 } from "../billing/paystack.mjs";
 
-import { requirePremiumSubscription } from "../billing/entitlements.mjs";
+import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../billing/entitlements.mjs";
 
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 
@@ -107,7 +107,13 @@ const AUTH_RATE_LIMIT_WINDOW_MS = 60_000;
 
 const AUTH_RATE_LIMIT_MAX = 15;
 
+const AUTH_PEER_RATE_LIMIT_MAX = 300;
+
 const MAX_JSON_BODY_BYTES = 32 * 1024 * 1024;
+
+const MAX_CONTROL_BODY_BYTES = 64 * 1024;
+
+const MAX_AUTH_BODY_BYTES = 16 * 1024;
 
 const WORKER_HEALTH_MAX_AGE_SECONDS = 30;
 
@@ -352,7 +358,10 @@ async function routeRequest({ request, response, runtime }) {
       secureBase = new URL("https://" + forwardedHost);
     }
 
-    const target = new URL(request.url ?? "/", secureBase);
+    // Copy only path and query; request targets must never replace the trusted host.
+    const target = new URL(secureBase);
+    target.pathname = url.pathname;
+    target.search = url.search;
 
     response.writeHead(308, {
       Location: target.toString(),
@@ -508,7 +517,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  enforceAllowedOrigin(request);
+  enforceAllowedOrigin(request, runtime.production);
 
   if (isAuthEndpoint(url.pathname)) {
     enforceAuthRateLimit(request, runtime, url.pathname);
@@ -521,7 +530,7 @@ async function routeRequest({ request, response, runtime }) {
    */
 
   if (url.pathname === "/api/register" && request.method === "POST") {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     validateCredentials(body);
 
@@ -557,7 +566,7 @@ async function routeRequest({ request, response, runtime }) {
    */
 
   if (url.pathname === "/api/auth/resend-code" && request.method === "POST") {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     validateEmail(body.email);
 
@@ -580,7 +589,7 @@ async function routeRequest({ request, response, runtime }) {
     url.pathname === "/api/auth/password-reset/request" &&
     request.method === "POST"
   ) {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     validateEmail(body.email);
 
@@ -613,7 +622,7 @@ async function routeRequest({ request, response, runtime }) {
     url.pathname === "/api/auth/password-reset/confirm" &&
     request.method === "POST"
   ) {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     validateEmail(body.email);
 
@@ -638,12 +647,13 @@ async function routeRequest({ request, response, runtime }) {
    */
 
   if (url.pathname === "/api/auth/verify-email" && request.method === "POST") {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     const user = await runtime.emailVerification.verify({
       email: assertText(body.email, "Email is required."),
 
       code: assertText(body.code, "Verification code is required.", 32),
+      newPassword: body.newPassword,
     });
 
     const result = await runtime.identity.createSessionForUser(user);
@@ -676,7 +686,7 @@ async function routeRequest({ request, response, runtime }) {
    */
 
   if (url.pathname === "/api/sign-in" && request.method === "POST") {
-    const body = await readJson(request);
+    const body = await readAuthJson(request, runtime, url.pathname);
 
     validateCredentials(body);
 
@@ -747,6 +757,9 @@ async function routeRequest({ request, response, runtime }) {
    */
 
   if (url.pathname === "/api/session" && request.method === "GET") {
+    if (request.headers["sec-fetch-site"] === "cross-site") {
+      throw new AuthError("Request origin is not allowed.", "CSRF_INVALID");
+    }
     const token = sessionTokenFromRequest(request);
 
     if (!token) {
@@ -1177,6 +1190,8 @@ async function routeRequest({ request, response, runtime }) {
       const recovered = await resolvePaystackSubscriptionIdentity({
         reference: subscription.checkoutReference,
 
+        expectedSubscriptionCode: subscription.providerSubscriptionCode,
+
         organizationId,
 
         planCode: monthlyPlanFromEnv().planCode,
@@ -1199,6 +1214,8 @@ async function routeRequest({ request, response, runtime }) {
     const updated = await runtime.billing.cancelSubscription({
       organizationId,
       actorUserId: context.user.id,
+      providerSubscriptionCode: subscriptionCode,
+      providerEmailToken: emailToken,
     });
 
     sendJson(response, 200, {
@@ -1276,6 +1293,8 @@ async function routeRequest({ request, response, runtime }) {
     if (!subscriptionCode || !emailToken) {
       const recovered = await resolvePaystackSubscriptionIdentity({
         reference: subscription.checkoutReference,
+
+        expectedSubscriptionCode: subscription.providerSubscriptionCode,
 
         organizationId,
 
@@ -1388,6 +1407,13 @@ async function routeRequest({ request, response, runtime }) {
       "Select or create an organization before starting billing.",
     );
 
+    await requireOrganizationManager({
+      runtime,
+      organizationId,
+      actorUserId: context.user.id,
+      message: "Organization owner access is required to start billing.",
+    });
+
     if (!runtime.billing) {
       throw new AuthError(
         "Production billing is not available.",
@@ -1412,7 +1438,7 @@ async function routeRequest({ request, response, runtime }) {
       provider: "paystack",
     });
 
-    if (currentSubscription.status === "active") {
+    if (subscriptionHasPremiumAccess(currentSubscription)) {
       throw new AuthError(
         "This workspace already has an active subscription.",
         "VALIDATION_FAILED",
@@ -1431,6 +1457,8 @@ async function routeRequest({ request, response, runtime }) {
       callbackUrl: `${publicUrl}/billing/paystack/callback`,
 
       reference,
+
+      fetchImpl: runtime.paystackFetch,
     });
 
     await runtime.billing.createCheckoutSession({
@@ -2405,7 +2433,7 @@ function applySecurityHeaders(response, production) {
   }
 }
 
-function enforceAllowedOrigin(request) {
+function enforceAllowedOrigin(request, production) {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method ?? "")) {
     return;
   }
@@ -2413,6 +2441,9 @@ function enforceAllowedOrigin(request) {
   const origin = request.headers.origin;
 
   if (!origin) {
+    if (request.headers["sec-fetch-site"] === "cross-site") {
+      throw new AuthError("Request origin is not allowed.", "CSRF_INVALID");
+    }
     return;
   }
 
@@ -2424,12 +2455,27 @@ function enforceAllowedOrigin(request) {
     throw new AuthError("Request origin is not allowed.", "CSRF_INVALID");
   }
 
-  if (originUrl.host !== request.headers.host) {
+  const configuredOrigin = production
+    ? cleanEnvironmentValue(process.env.BIZNORYX_PUBLIC_URL) ??
+      cleanEnvironmentValue(process.env.PUBLIC_APP_URL)
+    : null;
+  const expectedOrigin = configuredOrigin
+    ? new URL(configuredOrigin).origin
+    : `${production || request.socket.encrypted ? "https" : "http"}://${request.headers.host}`;
+
+  if (originUrl.origin !== expectedOrigin || origin !== originUrl.origin) {
     throw new AuthError("Request origin is not allowed.", "CSRF_INVALID");
   }
 }
 
-function enforceAuthRateLimit(request, runtime, endpoint) {
+async function readAuthJson(request, runtime, endpoint) {
+  const body = await readJson(request);
+  validateEmail(body.email);
+  enforceAuthRateLimit(request, runtime, endpoint, normalizeEmail(body.email));
+  return body;
+}
+
+function enforceAuthRateLimit(request, runtime, endpoint, accountEmail = null) {
   const now = Date.now();
 
   for (const [key, record] of runtime.authAttempts) {
@@ -2438,7 +2484,10 @@ function enforceAuthRateLimit(request, runtime, endpoint) {
     }
   }
 
-  const key = `${request.socket.remoteAddress ?? "unknown"}:${endpoint}`;
+  const identity = accountEmail
+    ? `account:${createHash("sha256").update(accountEmail).digest("hex")}`
+    : `peer:${request.socket.remoteAddress ?? "unknown"}`;
+  const key = `${identity}:${endpoint}`;
 
   const existing = runtime.authAttempts.get(key);
 
@@ -2455,7 +2504,8 @@ function enforceAuthRateLimit(request, runtime, endpoint) {
 
   runtime.authAttempts.set(key, record);
 
-  if (record.count > AUTH_RATE_LIMIT_MAX) {
+  const maximum = accountEmail ? AUTH_RATE_LIMIT_MAX : AUTH_PEER_RATE_LIMIT_MAX;
+  if (record.count > maximum) {
     throw new AuthError(
       "Too many attempts. Please try again in a minute.",
       "RATE_LIMITED",
@@ -2667,15 +2717,22 @@ function billingPublicUrl(request) {
 }
 
 async function readRawBody(request, limitBytes = MAX_JSON_BODY_BYTES) {
+  const declaredSize = Number(request.headers["content-length"]);
+  if (Number.isFinite(declaredSize) && declaredSize > limitBytes) {
+    request.resume();
+    throw new AuthError("The request is too large.", "PAYLOAD_TOO_LARGE");
+  }
+
   const chunks = [];
 
   let size = 0;
 
-  for await (const chunk of request) {
+  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     size += chunk.length;
 
     if (size > limitBytes) {
-      throw new AuthError("The request is too large.", "VALIDATION_FAILED");
+      request.resume();
+      throw new AuthError("The request is too large.", "PAYLOAD_TOO_LARGE");
     }
 
     chunks.push(chunk);
@@ -2728,6 +2785,13 @@ async function verifyAndActivateBillingCheckout({
   actorUserId,
   reference,
 }) {
+  await requireOrganizationManager({
+    runtime,
+    organizationId,
+    actorUserId,
+    message: "Organization owner access is required to complete billing.",
+  });
+
   if (!runtime.billing) {
     throw new AuthError(
       "Production billing is not available.",
@@ -2763,6 +2827,7 @@ async function verifyAndActivateBillingCheckout({
 
   const verified = await verifyPaystackTransaction({
     reference,
+    fetchImpl: runtime.paystackFetch,
   });
 
   if (verified?.status !== "success") {
@@ -2796,7 +2861,7 @@ async function verifyAndActivateBillingCheckout({
     amountMinor: verified.amount,
     currency: verified.currency,
     channel: verified.channel,
-    paidAt: verified.paid_at ?? verified.transaction_date ?? new Date(),
+    paidAt: verifiedPaymentDate(verified),
   });
 
   if (
@@ -2835,6 +2900,7 @@ async function verifyAndActivateBillingCheckout({
             : "subscription_activated",
 
         ...providerIdentity,
+        paidAt: verifiedPaymentDate(verified),
       });
     },
   );
@@ -2867,10 +2933,21 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
   ) {
     verified = await verifyPaystackTransaction({
       reference,
+      fetchImpl: runtime.paystackFetch,
     });
   }
 
-  const organizationId = paystackOrganizationId(data, verified);
+  const providerIdentity = paystackSubscriptionIdentity(data, verified);
+  const metadataOrganizationId = paystackOrganizationId(data, verified);
+  const boundOrganizationId = providerIdentity.providerSubscriptionCode &&
+    typeof runtime.billing.organizationForSubscription === "function"
+    ? await runtime.billing.organizationForSubscription(providerIdentity)
+    : null;
+
+  if (boundOrganizationId && metadataOrganizationId && boundOrganizationId !== metadataOrganizationId) {
+    throw new AuthError("Paystack subscription does not belong to this organization.", "ORG_ACCESS_DENIED");
+  }
+  const organizationId = boundOrganizationId ?? metadataOrganizationId;
 
   let action = billingActionForPaystackEvent(eventName, data);
 
@@ -2885,6 +2962,9 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
   }
 
   if (!organizationId) {
+    if (!verified && providerIdentity.providerSubscriptionCode) {
+      return { received: true, duplicate: false, action: "ignored" };
+    }
     throw new AuthError(
       "Paystack event does not include a BIZNORYX organization reference.",
       "VALIDATION_FAILED",
@@ -2942,7 +3022,7 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
       amountMinor: verified.amount,
       currency: verified.currency,
       channel: verified.channel,
-      paidAt: verified.paid_at ?? verified.transaction_date ?? new Date(),
+      paidAt: verifiedPaymentDate(verified),
     });
   }
 
@@ -2972,7 +3052,8 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
 
     action,
 
-    ...paystackSubscriptionIdentity(data, verified),
+    ...providerIdentity,
+    paidAt: verified ? verifiedPaymentDate(verified) : null,
   });
 
   return {
@@ -2980,8 +3061,17 @@ async function applyProductionPaystackWebhook({ runtime, event, rawBody }) {
 
     duplicate: Boolean(result?.duplicate),
 
-    action,
+    action: result?.action ?? action,
   };
+}
+
+function verifiedPaymentDate(verified) {
+  const value = verified?.paid_at ?? verified?.transaction_date;
+  const paidAt = value ? new Date(value) : null;
+  if (!paidAt || !Number.isFinite(paidAt.getTime())) {
+    throw new AuthError("Paystack payment date could not be confirmed.", "VALIDATION_FAILED");
+  }
+  return paidAt;
 }
 
 function billingActionForPaystackEvent(eventName, data) {
@@ -3009,6 +3099,7 @@ function billingActionForPaystackEvent(eventName, data) {
 }
 
 function paystackSubscriptionIdentity(...sources) {
+  const identity = {};
   for (const source of sources) {
     if (!source || typeof source !== "object") {
       continue;
@@ -3045,20 +3136,12 @@ function paystackSubscriptionIdentity(...sources) {
         customer.customerCode,
     );
 
-    if (
-      providerSubscriptionCode ||
-      providerEmailToken ||
-      providerCustomerCode
-    ) {
-      return {
-        providerCustomerCode,
-        providerSubscriptionCode,
-        providerEmailToken,
-      };
-    }
+    if (providerSubscriptionCode) identity.providerSubscriptionCode ??= providerSubscriptionCode;
+    if (providerEmailToken) identity.providerEmailToken ??= providerEmailToken;
+    if (providerCustomerCode) identity.providerCustomerCode ??= providerCustomerCode;
   }
 
-  return {};
+  return identity;
 }
 
 function paystackOrganizationId(data, verified) {
@@ -3069,11 +3152,7 @@ function paystackOrganizationId(data, verified) {
 
     data?.subscription?.metadata,
 
-    data?.customer?.metadata,
-
     verified?.metadata,
-
-    verified?.customer?.metadata,
   ];
 
   for (const candidate of candidates) {
@@ -3163,25 +3242,17 @@ function validateVerifiedPaystackPayment({
 }
 
 async function readJson(request) {
-  const chunks = [];
+  const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+  const limit = pathname === "/api/ingestion/upload"
+    ? MAX_JSON_BODY_BYTES
+    : isAuthEndpoint(pathname) ? MAX_AUTH_BODY_BYTES : MAX_CONTROL_BODY_BYTES;
+  const bytes = await readRawBody(request, limit);
 
-  let size = 0;
-
-  for await (const chunk of request) {
-    size += chunk.length;
-
-    if (size > MAX_JSON_BODY_BYTES) {
-      throw new AuthError("The request is too large.", "VALIDATION_FAILED");
-    }
-
-    chunks.push(chunk);
-  }
-
-  if (chunks.length === 0) {
+  if (bytes.length === 0) {
     return {};
   }
 
-  const raw = Buffer.concat(chunks).toString("utf8");
+  const raw = bytes.toString("utf8");
 
   try {
     const value = JSON.parse(raw);
@@ -3249,6 +3320,8 @@ function sendError(response, error) {
         ["WEAK_PASSWORD", 400],
 
         ["RATE_LIMITED", 429],
+
+        ["PAYLOAD_TOO_LARGE", 413],
 
         ["SESSION_INVALID", 401],
 

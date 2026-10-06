@@ -24,6 +24,7 @@ test("verified customer can recover access with a one-time code", async ({
     .locator(".local-code strong")
     .textContent();
   await page.getByLabel("Verification code").fill(verificationCode.trim());
+  await page.getByLabel("Choose account password").fill(originalPassword);
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await acceptRequiredPolicy(page);
 

@@ -14,7 +14,7 @@ test("cancelled Paystack subscription is replaced without charging the current p
 
   const providerCalls = [];
 
-  const periodEnd = new Date("2026-10-30T00:00:00.000Z");
+  const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const subscription = {
     id: "subscription-old",
@@ -193,6 +193,10 @@ test("cancelled Paystack subscription is replaced without charging the current p
     assert.equal(response.status, 200);
 
     assert.equal(body.subscription.status, "active");
+
+    assert.equal(body.subscription.currentPeriodEnd, periodEnd.toISOString());
+
+    assert.equal(subscription.currentPeriodEnd, periodEnd);
 
     assert.equal(body.renewal.mode, "replacement_scheduled");
 

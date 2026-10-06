@@ -14,7 +14,13 @@ for (const up of ups) {
   if (!/^begin;/i.test(sql.trim())) problems.push(`${up} must start with begin`);
   if (!/commit;/i.test(sql)) problems.push(`${up} must commit`);
   if (/enable row level security/i.test(sql) && !/create policy/i.test(sql)) problems.push(`${up} enables RLS without policies`);
-  if (/create policy/i.test(sql) && !/with check/i.test(sql)) problems.push(`${up} has RLS policies without explicit WITH CHECK`);
+  const policies = sql.match(/\bcreate\s+policy\b[^;]*;/gi) ?? [];
+  for (const policy of policies) {
+    // PostgreSQL forbids WITH CHECK on read/delete policies; writes need it.
+    if (!/\bfor\s+(select|delete)\b/i.test(policy) && !/\bwith\s+check\b/i.test(policy)) {
+      problems.push(`${up} has a writable RLS policy without explicit WITH CHECK`);
+    }
+  }
   if (!existsSync(downPath)) problems.push(`${up} is missing rollback ${down}`);
 }
 

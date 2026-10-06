@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { AuthError } from "../auth/core.mjs";
+import { AuthError, CAPABILITIES, ROLE_CAPABILITIES } from "../auth/core.mjs";
 import { monthlyPlanFromEnv } from "../billing/paystack.mjs";
 import { withTransaction } from "./postgres.mjs";
 
@@ -8,6 +8,17 @@ export class PostgresBillingRepository {
   constructor(pool, { now = () => new Date() } = {}) {
     this.pool = pool;
     this.now = now;
+  }
+
+  async organizationForSubscription({ providerSubscriptionCode }) {
+    if (typeof providerSubscriptionCode !== "string" || !providerSubscriptionCode || providerSubscriptionCode.length > 160) {
+      return null;
+    }
+    const result = await this.pool.query(
+      "select runtime_paystack_subscription_organization($1) as organization_id",
+      [providerSubscriptionCode],
+    );
+    return result.rows[0]?.organization_id ?? null;
   }
 
   async ensureSubscription({
@@ -183,6 +194,14 @@ export class PostgresBillingRepository {
       this.pool,
       { organizationId, actorUserId },
       async (client) => {
+        const membership = await client.query(
+          `select role from organization_memberships
+            where organization_id = $1 and user_id = $2 and status = 'active'`,
+          [organizationId, actorUserId],
+        );
+        if (!ROLE_CAPABILITIES[membership.rows[0]?.role]?.includes(CAPABILITIES.MANAGE_ORGANIZATION)) {
+          throw new AuthError("Organization owner access is required to start billing.", "ORG_ACCESS_DENIED");
+        }
         const checkout = await client.query(
           `insert into billing_checkout_sessions (
              id,
@@ -270,7 +289,8 @@ export class PostgresBillingRepository {
                     updated_by_user_id = $3,
                     updated_at = $10
               where organization_id = $1
-                and status <> 'active'
+                and (status not in ('active', 'non_renewing')
+                     or current_period_end is null or current_period_end <= $10)
               returning id`,
           [
             organizationId,
@@ -438,6 +458,7 @@ export class PostgresBillingRepository {
     providerCustomerCode = null,
     providerSubscriptionCode = null,
     providerEmailToken = null,
+    paidAt = null,
   }) {
     const payloadSha256 = createHash("sha256").update(payload).digest("hex");
 
@@ -492,17 +513,19 @@ export class PostgresBillingRepository {
           };
         }
 
-        await this.applySubscriptionAction(client, {
+        const applied = await this.applySubscriptionAction(client, {
           organizationId,
           reference,
           action,
           providerCustomerCode,
           providerSubscriptionCode,
           providerEmailToken,
+          paidAt,
         });
 
         return {
           duplicate: false,
+          action: applied === false ? "ignored" : action,
         };
       },
     );
@@ -510,7 +533,7 @@ export class PostgresBillingRepository {
     return result;
   }
 
-  async cancelSubscription({ organizationId, actorUserId }) {
+  async cancelSubscription({ organizationId, actorUserId, providerSubscriptionCode = null, providerEmailToken = null }) {
     const result = await withBillingTenant(
       this.pool,
       { organizationId, actorUserId },
@@ -518,11 +541,14 @@ export class PostgresBillingRepository {
         const updated = await client.query(
           `update organization_billing_subscriptions
               set status = 'non_renewing',
+                  provider_subscription_code = coalesce($4, provider_subscription_code),
+                  provider_email_token = coalesce($5, provider_email_token),
                   cancellation_requested_at = coalesce(cancellation_requested_at, $3),
                   updated_by_user_id = coalesce($2, updated_by_user_id),
                   updated_at = $3
             where organization_id = $1
               and status in ('active', 'past_due')
+              and (provider_subscription_code is null or $4::text is null or provider_subscription_code = $4)
             returning id, organization_id, provider,
                       provider_customer_code,
                       provider_subscription_code,
@@ -534,7 +560,7 @@ export class PostgresBillingRepository {
                       trial_ends_at, active_at,
                       current_period_end, created_at,
                       updated_at`,
-          [organizationId, actorUserId, this.now()],
+          [organizationId, actorUserId, this.now(), providerSubscriptionCode, providerEmailToken],
         );
 
         if (updated.rows[0]) {
@@ -696,6 +722,7 @@ export class PostgresBillingRepository {
       providerCustomerCode = null,
       providerSubscriptionCode = null,
       providerEmailToken = null,
+      paidAt = null,
     },
   ) {
     const status = new Map([
@@ -715,11 +742,27 @@ export class PostgresBillingRepository {
     }
 
     if (!status) {
-      return;
+      return false;
     }
 
     const now = this.now();
 
+    const currentResult = await client.query(
+      `select provider_subscription_code, checkout_reference, status, current_period_end
+         from organization_billing_subscriptions
+        where organization_id = $1
+        for update`,
+      [organizationId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) return false;
+
+    // Lifecycle notifications may only change the subscription currently bound to this tenant.
+    if (status !== "active" && (!providerSubscriptionCode || providerSubscriptionCode !== current.provider_subscription_code)) {
+      return false;
+    }
+
+    let pendingCheckout = false;
     if (reference) {
       const existing = await client.query(
         `select id, status, completed_at
@@ -731,9 +774,29 @@ export class PostgresBillingRepository {
       );
 
       if (existing.rows[0]?.status === "completed") {
-        return;
+        return false;
       }
+      pendingCheckout = existing.rows[0]?.status === "pending" &&
+        current.status === "pending_checkout" && current.checkout_reference === reference;
     }
+
+    if (status === "active" && !pendingCheckout &&
+        (!providerSubscriptionCode || providerSubscriptionCode !== current.provider_subscription_code)) {
+      return false;
+    }
+
+    const paymentDate = paidAt == null ? now : new Date(paidAt);
+    if (!Number.isFinite(paymentDate.getTime())) {
+      throw new AuthError("Payment date is invalid.", "VALIDATION_FAILED");
+    }
+    const paidThrough = new Date(paymentDate);
+    const billingDay = Math.min(paymentDate.getUTCDate(), 28);
+    paidThrough.setUTCDate(1);
+    paidThrough.setUTCMonth(paidThrough.getUTCMonth() + 1);
+    paidThrough.setUTCDate(billingDay);
+
+    if (status === "active" && !pendingCheckout && current.current_period_end &&
+        paidThrough <= new Date(current.current_period_end)) return false;
 
     await client.query(
       `update organization_billing_subscriptions
@@ -797,7 +860,7 @@ export class PostgresBillingRepository {
         status,
         reference,
         now,
-        new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        paidThrough,
         providerCustomerCode,
         providerSubscriptionCode,
         providerEmailToken,
@@ -819,6 +882,7 @@ export class PostgresBillingRepository {
         [organizationId, reference, now],
       );
     }
+    return true;
   }
 }
 

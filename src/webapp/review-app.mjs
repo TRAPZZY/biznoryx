@@ -278,6 +278,7 @@ async function routeRequest({ request, response, runtime }) {
     const user = runtime.emailVerification.verify({
       email: assertText(body.email, "Email is required."),
       code: assertText(body.code, "Verification code is required."),
+      newPassword: body.newPassword,
     });
     const result = runtime.sessions.createSessionForUser(user);
     response.setHeader("Set-Cookie", result.cookie);

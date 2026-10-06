@@ -15,6 +15,11 @@ const MAX_UPLOAD_BYTES =
 
 const MAX_BATCH_FILES = 10;
 
+const MAX_CSV_ROWS = 50_000;
+const MAX_CSV_COLUMNS = 200;
+const MAX_CSV_CELLS = 1_000_000;
+const MAX_CSV_RECORD_BYTES = 1024 * 1024;
+
 export class ProductionIngestionService {
   constructor({
     repository,
@@ -160,8 +165,6 @@ export class ProductionIngestionService {
 
     this.inflightObjectWrites.set(identity.storageKey, currentLock);
 
-    let storedByThisAttempt = false;
-
     try {
       await writeLock;
 
@@ -193,11 +196,11 @@ export class ProductionIngestionService {
                   .checksumSha256,
             },
           });
-
-        storedByThisAttempt =
-          true;
       }
 
+      // Shared content-addressed bytes remain evidence even when registration
+      // is rejected or fails. Request cleanup could delete another replica's
+      // committed object; unreferenced objects need separate reconciliation.
       const result =
         await this.repository
           .registerRawUpload({
@@ -232,34 +235,7 @@ export class ProductionIngestionService {
             reportingPeriod,
           });
 
-      if (
-        result.ingestionRun
-          .status ===
-          "rejected" &&
-        storedByThisAttempt
-      ) {
-        await safeDeleteObject({
-          objectStorage:
-            this.objectStorage,
-
-          key:
-            identity.storageKey,
-        });
-      }
-
       return result;
-    } catch (error) {
-      if (storedByThisAttempt) {
-        await safeDeleteObject({
-          objectStorage:
-            this.objectStorage,
-
-          key:
-            identity.storageKey,
-        });
-      }
-
-      throw error;
     } finally {
       unlock();
 
@@ -331,6 +307,8 @@ export class ProductionIngestionService {
 
 function parseCsv(content) {
   let records;
+  let dataCells = 0;
+  let recordBytes = 0;
 
   try {
     records =
@@ -344,8 +322,60 @@ function parseCsv(content) {
           false,
 
         trim: true,
+
+        max_record_size: MAX_CSV_RECORD_BYTES,
+
+        // Include the header and first excess row so overflow throws instead
+        // of silently accepting a truncated file.
+        to: MAX_CSV_ROWS + 2,
+
+        cast: (value, { index }) => {
+          // A delimiter-only record can grow without hitting max_record_size.
+          // Check width before the parser appends another field to the record.
+          if (index >= MAX_CSV_COLUMNS) {
+            throw new AuthError(
+              "The CSV file exceeds the limit of 200 columns.",
+              "VALIDATION_FAILED",
+            );
+          }
+          recordBytes += Buffer.byteLength(value, "utf8");
+          if (recordBytes > MAX_CSV_RECORD_BYTES) {
+            throw new AuthError(
+              "A CSV record exceeds the 1 MiB data limit.",
+              "VALIDATION_FAILED",
+            );
+          }
+          return value;
+        },
+
+        on_record: (record, { records: recordCount }) => {
+          if (recordCount > MAX_CSV_ROWS + 1) {
+            throw new AuthError(
+              "The CSV file exceeds the limit of 50,000 data rows.",
+              "VALIDATION_FAILED",
+            );
+          }
+          if (recordCount > 1) {
+            dataCells += record.length;
+            if (dataCells > MAX_CSV_CELLS) {
+              throw new AuthError(
+                "The CSV file exceeds the limit of 1,000,000 data cells.",
+                "VALIDATION_FAILED",
+              );
+            }
+          }
+          recordBytes = 0;
+          return record;
+        },
       });
-  } catch {
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    if (error?.code === "CSV_MAX_RECORD_SIZE") {
+      throw new AuthError(
+        "A CSV record exceeds the 1 MiB data limit.",
+        "VALIDATION_FAILED",
+      );
+    }
     throw new AuthError(
       "The CSV file could not be parsed.",
       "VALIDATION_FAILED",
@@ -724,23 +754,4 @@ function requiredText(
   }
 
   return text;
-}
-
-async function safeDeleteObject({
-  objectStorage,
-  key,
-}) {
-  try {
-    await objectStorage
-      .deleteObject({
-        key,
-      });
-  } catch {
-    /*
-     * Preserve the original ingestion error.
-     * Failed cleanup will later be surfaced
-     * through storage reconciliation and
-     * operational monitoring.
-     */
-  }
 }

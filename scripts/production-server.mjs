@@ -39,7 +39,7 @@ const host =
 
 const pool = createPostgresPool();
 
-const { server } =
+const { server, runtime } =
   createProductionApp({
     pool,
     production,
@@ -97,7 +97,7 @@ async function shutdown(
     `Received ${signal}. Beginning graceful shutdown.\n`,
   );
 
-  healthChecks.beginDraining();
+  runtime.healthChecks.beginDraining();
 
   const forceTimer = setTimeout(
     () => {
