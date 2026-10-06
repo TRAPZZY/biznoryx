@@ -48,13 +48,13 @@ test("review evidence report explains dated trends, accepts governed definitions
       dataSeries: "Monthly sales",
       dataKind: "Sales performance",
       content: [
-        "order_date,year,product_category,sales_channel,net_sales,profit_margin_percent",
-        "2026-01-01,2026,Core,Online,40.00,40",
-        "2026-01-31,2026,Core,Online,60.00,39",
-        "2026-02-01,2026,Core,Online,100.00,41",
-        "2026-02-28,2026,Expansion,Partner,60.00,35",
-        "2026-03-01,2026,Core,Online,145.00,42",
-        "2026-03-31,2026,=FormulaLookalike,Partner,45.00,38",
+        "order_date,year,product_category,sales_channel,net_sales,profit_margin_percent,quantity",
+        "2026-01-01,2026,Core,Online,40.00,40,4",
+        "2026-01-31,2026,Core,Online,60.00,39,6",
+        "2026-02-01,2026,Core,Online,100.00,41,10",
+        "2026-02-28,2026,Expansion,Partner,60.00,35,3",
+        "2026-03-01,2026,Core,Online,145.00,42,10",
+        "2026-03-31,2026,=FormulaLookalike,Partner,45.00,38,3",
       ].join("\n"),
     })).upload;
 
@@ -94,8 +94,14 @@ test("review evidence report explains dated trends, accepts governed definitions
       polarity: "higher",
       materialityPercent: 5,
       expectedVersion: 0,
+      revenueBreakdown: { productColumn: "product_category", quantityColumn: "quantity", quantityUnit: "items", currency: "USD", confirmed: true },
     });
     assert.equal(definition.policy.version, 1);
+    assert.equal(definition.policy.revenueBreakdown.quantityColumn, "quantity");
+    await call("evidence-report/definition", {
+      source: initial.sourceId, metric: initial.metric.column, label: "Net sales", unit: "currency", polarity: "higher", materialityPercent: 5, expectedVersion: 1,
+      revenueBreakdown: { productColumn: "product_category", quantityColumn: "not_available", quantityUnit: "items", currency: "USD", confirmed: true },
+    }, 400);
 
     await call("evidence-report/definition", {
       source: initial.sourceId,
@@ -109,6 +115,10 @@ test("review evidence report explains dated trends, accepts governed definitions
 
     const approved = (await call("evidence-report")).report;
     assert.equal(approved.health, "improving");
+    assert.equal(approved.revenueBreakdown.status, "ready");
+    assert.equal(approved.revenueBreakdown.totalChange, "30");
+    assert.equal(approved.revenueBreakdown.effects.find((effect) => effect.id === "price").value, "45");
+    assert.match(approved.explainer.questions.find((q) => q.id === "amount").answer, /190\.00/);
     assert.equal(approved.strengths.length, 1);
     assert.match(approved.executive.story, /Net sales/i);
     assert.ok(approved.evidence.policy.includes("fixed-point arithmetic"));

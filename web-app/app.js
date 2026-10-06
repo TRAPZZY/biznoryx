@@ -3,6 +3,7 @@ import {
   reportControls,
   evidenceDialog,
   definitionDialog,
+  renderReportAnswer,
 } from "./evidence-report.js";
 
 let csrfToken;
@@ -4623,21 +4624,49 @@ function bindReportControls() {
     };
   }
 
-  document.querySelectorAll("[data-evidence]").forEach((button) => {
+  const bindEvidence = (root = document) => root.querySelectorAll("[data-evidence]").forEach((button) => {
     button.onclick = () =>
       openReportDialog(
         evidenceDialog(currentReport, button.dataset.evidence),
         button,
       );
   });
+  bindEvidence();
+  document.querySelector("[data-report-question]")?.addEventListener("change", (event) => {
+    const answer = document.querySelector("#er-answer");
+    answer.innerHTML = renderReportAnswer(currentReport, event.target.value);
+    bindEvidence(answer);
+    window.lucide?.createIcons();
+  });
 
   document.querySelectorAll("[data-definition]").forEach((button) => {
     button.onclick = () => {
       openReportDialog(definitionDialog(currentReport), button);
 
+      const definitionForm = document.querySelector("#report-definition");
+      const enableBreakdown = definitionForm.elements.enableRevenueBreakdown;
+      const updateMappingFields = () => {
+        const supported = currentReport.controls.dimensions.length > 0 && currentReport.controls.metrics.length > 1;
+        enableBreakdown.disabled = definitionForm.elements.unit.value !== "currency" || !supported;
+        if (enableBreakdown.disabled) enableBreakdown.checked = false;
+        const fields = definitionForm.querySelector("[data-revenue-fields]");
+        fields.disabled = !enableBreakdown.checked;
+        fields.hidden = !enableBreakdown.checked;
+      };
+      enableBreakdown.addEventListener("change", updateMappingFields);
+      definitionForm.elements.unit.addEventListener("change", updateMappingFields);
+      updateMappingFields();
+
       bindForm("#report-definition", async (form) => {
         await api("evidence-report/definition", {
           ...form,
+          revenueBreakdown: form.enableRevenueBreakdown ? {
+            productColumn: form.productColumn,
+            quantityColumn: form.quantityColumn,
+            quantityUnit: form.quantityUnit,
+            currency: currentReport.metric.currency,
+            confirmed: form.confirmRevenueMapping === "on",
+          } : null,
 
           source: currentReport.sourceId,
 

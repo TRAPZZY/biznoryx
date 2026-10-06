@@ -38,7 +38,7 @@ async function createWorkspace(page) {
 
 test("evidence report analyzes dated source rows and exports from the UI", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   const uniqueSeries = `Advanced evidence ${Date.now()}`;
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -51,13 +51,13 @@ test("evidence report analyzes dated source rows and exports from the UI", async
     mimeType: "text/csv",
     buffer: Buffer.from(
       [
-        "order_date,product_category,sales_channel,net_sales,profit_margin_percent,year",
-        "2026-01-01,Core,Online,40.00,40,2026",
-        "2026-01-31,Core,Online,60.00,39,2026",
-        "2026-02-01,Core,Online,100.00,41,2026",
-        "2026-02-28,Expansion,Partner,60.00,35,2026",
-        "2026-03-01,Core,Online,145.00,42,2026",
-        "2026-03-31,=FormulaLookalike,Partner,45.00,38,2026",
+        "order_date,product_category,sales_channel,net_sales,profit_margin_percent,year,quantity",
+        "2026-01-01,Core,Online,40.00,40,2026,4",
+        "2026-01-31,Core,Online,60.00,39,2026,6",
+        "2026-02-01,Core,Online,100.00,41,2026,10",
+        "2026-02-28,Expansion,Partner,60.00,35,2026,3",
+        "2026-03-01,Core,Online,145.00,42,2026,10",
+        "2026-03-31,=FormulaLookalike,Partner,45.00,38,2026,3",
       ].join("\n"),
     ),
   });
@@ -135,6 +135,11 @@ test("evidence report analyzes dated source rows and exports from the UI", async
   await page.getByLabel("Business metric name").fill("Net sales");
   await page.getByLabel("When this metric increases").selectOption("higher");
   await page.getByLabel("Review changes of at least (%)").fill("5");
+  await page.getByLabel("Separate price, quantity and product mix").check();
+  await page.getByLabel("Product identifier").selectOption("product_category");
+  await page.getByLabel("Quantity column").selectOption("quantity");
+  await page.getByLabel("Shared quantity unit").fill("items");
+  await page.getByLabel(/I confirm this is revenue in USD/).check();
   await page
     .getByLabel(
       "I confirm this definition and that summing this column is appropriate.",
@@ -146,6 +151,41 @@ test("evidence report analyzes dated source rows and exports from the UI", async
   );
   await expect(page.getByRole("main")).toContainText("Definition v1");
   await expect(page.getByRole("main")).toContainText("Improving");
+  await expect(page.locator(".er-revenue-breakdown")).toContainText("effects reconcile");
+  await expect(page.locator(".er-revenue-breakdown")).toContainText("$45.00");
+  await expect(page.locator(".er-revenue-breakdown")).toContainText("Product mix");
+  const question = page.getByLabel("Your question");
+  await question.selectOption("amount");
+  await expect(page.locator("#er-answer")).toContainText("$160.00");
+  await expect(page.locator("#er-answer")).toContainText("$190.00");
+  await expect(page.locator("#er-answer")).toContainText("$30.00");
+  await page.locator("#er-answer").getByRole("button", { name: "View supporting evidence" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close evidence" }).click();
+  await question.selectOption("revenue");
+  await expect(page.locator("#er-answer")).toContainText("First recorded sales");
+  expect(await page.locator("#er-revenue-title").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(300);
+  await page.locator(".er-explainer").screenshot({ path: testInfo.outputPath("explainer-desktop.png") });
+  await page.locator(".er-revenue-breakdown").screenshot({ path: testInfo.outputPath("revenue-desktop.png") });
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator("#er-revenue-title").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(200);
+  expect(await page.locator(".er-answer-notes > div").first().evaluate((element) => getComputedStyle(element).display)).toBe("block");
+  await page.locator(".er-explainer").screenshot({ path: testInfo.outputPath("explainer-mobile.png") });
+  await page.locator(".er-revenue-breakdown").screenshot({ path: testInfo.outputPath("revenue-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.reload();
+  await expect(page.locator(".er-revenue-breakdown")).toContainText("effects reconcile");
+  await page.locator('#report-controls [name="period"]').selectOption("2026-02");
+  await page.getByLabel("Your question").selectOption("amount");
+  await expect(page.locator("#er-answer")).toContainText("$100.00");
+  await expect(page.locator("#er-answer")).toContainText("$160.00");
+  await expect(page.locator("#er-answer")).not.toContainText("$190.00");
+  await page.locator('#report-controls [name="compare"]').selectOption("none");
+  await expect(page.locator(".er-revenue-breakdown")).toContainText("Select a comparable earlier period");
+  await page.getByLabel("Your question").selectOption("amount");
+  await expect(page.locator("#er-answer")).toContainText("No earlier comparison");
+  await page.locator('#report-controls [name="period"]').selectOption("2026-03");
 
   for (const [name, pattern] of [
     ["Export PDF", /\.pdf$/],
@@ -155,6 +195,7 @@ test("evidence report analyzes dated source rows and exports from the UI", async
     await page.getByRole("button", { name }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(pattern);
+    await download.saveAs(testInfo.outputPath(download.suggestedFilename()));
   }
   const csvDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export comparison CSV" }).click();

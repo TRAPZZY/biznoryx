@@ -75,7 +75,7 @@ import { createWorkerHealthProbe } from "../server/worker-health-probe.mjs";
 
 import { PostgresEvidenceReportRepository } from "../database/evidence-report-repository.mjs";
 
-import { buildBusinessReport } from "../reports/evidence-engine.mjs";
+import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource } from "../reports/evidence-engine.mjs";
 
 import { reportSourcesFromSeries } from "../reports/production-sources.mjs";
 
@@ -2302,6 +2302,12 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    const definition = validateReportPolicy(body);
+    if (definition.revenueBreakdown) {
+      if (!runtime.businessOnboarding) throw new AuthError("Business profile storage is required to approve revenue mappings.", "VALIDATION_FAILED");
+      const profile = await runtime.businessOnboarding.getProfile(tenant);
+      validateRevenueMappingSource(source, body.metric, definition, profile?.primaryCurrency || "USD");
+    }
     const policy = await runtime.evidenceReports.approvePolicy({
       ...tenant,
 
@@ -2309,7 +2315,7 @@ async function routeRequest({ request, response, runtime }) {
 
       column: body.metric,
 
-      definition: body,
+      definition,
 
       expectedVersion: Number(body.expectedVersion ?? 0),
     });
