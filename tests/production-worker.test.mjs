@@ -1040,3 +1040,31 @@ test(
     );
   },
 );
+test("metric extraction rejects oversized headers in previously stored CSVs", () => {
+  for (const header of ["product_" + "x".repeat(4096), "product_" + "é".repeat(77)]) {
+    assert.throws(() => deriveCsvMetrics({
+      body: Buffer.from(`${header},date,revenue\nA,2025-01-01,10\nB,2025-02-01,20\n`),
+    }), { code: "VALIDATION_FAILED", message: /160 UTF-8 bytes/ });
+  }
+});
+
+test("an excessive analytics budget fails the job before any metrics are persisted", async () => {
+  const content = Buffer.from([
+    "date,product,revenue,cost,quantity,amount",
+    ...Array.from({ length: 120 }, (_, i) =>
+      `${2020 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, "0")}-01,${i % 2 ? "A" : "B"}${"x".repeat(4096)},1,2,3,4`),
+  ].join("\n"));
+  const repository = new FakeWorkerRepository({ job: durableJob(), context: verifiedContext({ content }) });
+  const metricsRepository = new FakeMetricsRepository();
+  const comparisonRepository = new FakeComparisonRepository();
+  const worker = new ProductionWorker({
+    repository, metricsRepository, comparisonRepository, workerId: "test-worker",
+    objectStorage: { async getObject() { return { body: content }; } },
+  });
+  await worker.runOnce();
+  assert.equal(repository.failed.length, 1);
+  assert.match(repository.failed[0].error.message, /8 MB size budget/);
+  assert.equal(repository.completed.length, 0);
+  assert.equal(metricsRepository.calls.length, 0);
+  assert.equal(comparisonRepository.calls.length, 0);
+});
