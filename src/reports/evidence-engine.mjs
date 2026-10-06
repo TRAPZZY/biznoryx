@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { median, medianAbsoluteDeviation } from "simple-statistics";
 import { AuthError } from "../auth/core.mjs";
 
+import { validateCsvHeaderSizes } from "../ingestion/csv-limits.mjs";
+
 export const REPORT_VERSION = "evidence-v2";
 const SCALE = 10n ** 10n;
 const MAX_METRICS = 12;
@@ -9,6 +11,7 @@ const MAX_DATES = 2;
 const MAX_DIMENSIONS = 8;
 const MAX_CATEGORIES = 80;
 const MAX_MONTHS = 120;
+const MAX_ANALYTICS_BYTES = 8 * 1024 * 1024;
 const DATE_NAME = /(^date$|date$|_at$|^day$)/i;
 const EXCLUDED_METRIC = /(^|[ _])(id|year|quarter|month|day|week|percent|percentage|rate|ratio|price|balance|stock|inventory|latitude|longitude|zip|postal|code|number|no|sku)([ _]|$)|_id$|percent|margin|unit_price/i;
 const DIMENSION_NAME = /(^|[ _])(product|service|channel|region|location|branch|category|segment|department|country)([ _]|$)/i;
@@ -57,6 +60,15 @@ function metricRank(column) {
 
 export function buildReportCube({ rows, columns = Object.keys(rows[0] ?? {}) }) {
   if (rows.length > 50000 || columns.length > 200) fail("Report analysis supports up to 50,000 rows and 200 columns per source.");
+  validateCsvHeaderSizes(columns);
+  // Charge conservative JSON byte bounds before allocating repeated metadata.
+  // Six bytes per UTF-8 byte covers JSON escaping, including control characters.
+  let analyticsBytes = 0;
+  const reserve = (bytes) => {
+    analyticsBytes += bytes;
+    if (analyticsBytes > MAX_ANALYTICS_BYTES) fail("Report analytics exceed the 8 MB size budget. Split this source into smaller files.");
+  };
+  reserve(512 + columns.reduce((size, column) => size + 32 + 12 * Buffer.byteLength(column), 0));
   const dateColumns = columns.filter((column) => DATE_NAME.test(column) && rows.some((row) => parseReportDate(row[column]))).slice(0, MAX_DATES);
   const dimensionCandidates = columns.filter((column) => DIMENSION_NAME.test(column));
   const dimensions = dimensionCandidates.filter((column) => {
@@ -67,7 +79,7 @@ export function buildReportCube({ rows, columns = Object.keys(rows[0] ?? {}) }) 
     const populated = rows.map((row) => text(row[column])).filter(Boolean);
     return populated.length > 0 && populated.filter((value) => parseReportNumber(value) !== null).length / populated.length >= 0.9;
   }).sort((a, b) => metricRank(a) - metricRank(b) || a.localeCompare(b)).slice(0, MAX_METRICS);
-  const metrics = metricColumns.map((column) => buildMetricCube(rows, column, dimensions, dateColumns));
+  const metrics = metricColumns.map((column) => buildMetricCube(rows, column, dimensions, dateColumns, reserve));
   return {
     version: REPORT_VERSION,
     rowCount: rows.length,
@@ -78,11 +90,12 @@ export function buildReportCube({ rows, columns = Object.keys(rows[0] ?? {}) }) 
   };
 }
 
-function newBucket(period, dimensions) {
+function newBucket(period, dimensions, reserve) {
+  reserve(512 + dimensions.reduce((size, column) => size + 128 + 6 * (Buffer.byteLength(column) + Buffer.byteLength(label(column))), 0));
   return { period, total: 0n, rows: 0, missing: 0, invalid: 0, first: null, last: null, days: new Set(), negative: false, dimensions: new Map(dimensions.map((column) => [column, new Map()])) };
 }
 
-function addRow(bucket, value, row, date) {
+function addRow(bucket, value, row, date, reserve) {
   if (date) {
     bucket.first = !bucket.first || date < bucket.first ? date : bucket.first;
     bucket.last = !bucket.last || date > bucket.last ? date : bucket.last;
@@ -94,7 +107,11 @@ function addRow(bucket, value, row, date) {
   bucket.negative ||= value < 0n;
   for (const [column, entries] of bucket.dimensions) {
     const key = text(row[column]) || "(Unspecified)";
-    const entry = entries.get(key) ?? { name: key, total: 0n, rows: 0 };
+    let entry = entries.get(key);
+    if (!entry) {
+      reserve(128 + 6 * Buffer.byteLength(key));
+      entry = { name: key, total: 0n, rows: 0 };
+    }
     entry.total += value;
     entry.rows += 1;
     entries.set(key, entry);
@@ -113,15 +130,17 @@ function serializeBucket(bucket) {
   };
 }
 
-function buildMetricCube(rows, column, dimensions, dateColumns) {
-  const all = newBucket("all", dimensions);
+function buildMetricCube(rows, column, dimensions, dateColumns, reserve) {
+  reserve(512 + 6 * (Buffer.byteLength(column) + Buffer.byteLength(label(column))));
+  reserve(dateColumns.reduce((size, dateColumn) => size + 256 + 6 * Buffer.byteLength(dateColumn), 0));
+  const all = newBucket("all", dimensions, reserve);
   const dates = dateColumns.map((dateColumn) => ({ column: dateColumn, invalidRows: 0, validRows: 0, first: null, last: null, months: new Map(), daily: new Map() }));
   for (const row of rows) {
     const raw = text(row[column]);
     const value = parseReportNumber(raw);
     if (!raw) all.missing += 1;
     else if (value === null) all.invalid += 1;
-    addRow(all, value, row, null);
+    addRow(all, value, row, null, reserve);
     for (const date of dates) {
       const day = parseReportDate(row[date.column]);
       if (!day) { date.invalidRows += 1; continue; }
@@ -129,13 +148,17 @@ function buildMetricCube(rows, column, dimensions, dateColumns) {
       date.first = !date.first || day < date.first ? day : date.first;
       date.last = !date.last || day > date.last ? day : date.last;
       const month = day.slice(0, 7);
-      if (!date.months.has(month)) date.months.set(month, newBucket(month, dimensions));
+      if (!date.months.has(month)) date.months.set(month, newBucket(month, dimensions, reserve));
       if (date.months.size > MAX_MONTHS) fail("A source can cover up to ten years. Split longer histories into separate sources.");
       const bucket = date.months.get(month);
       if (!raw) bucket.missing += 1;
       else if (value === null) bucket.invalid += 1;
-      addRow(bucket, value, row, day);
-      const daily = date.daily.get(day) ?? { date: day, total: 0n, rows: 0 };
+      addRow(bucket, value, row, day, reserve);
+      let daily = date.daily.get(day);
+      if (!daily) {
+        reserve(128);
+        daily = { date: day, total: 0n, rows: 0 };
+      }
       if (value !== null) { daily.total += value; daily.rows += 1; }
       date.daily.set(day, daily);
     }

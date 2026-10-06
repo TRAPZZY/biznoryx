@@ -1,3 +1,4 @@
+import { validateCsvHeaderSizes } from "./csv-limits.mjs";
 import {
   parse,
 } from "csv-parse/sync";
@@ -426,6 +427,8 @@ function parseCsv(content) {
       "VALIDATION_FAILED",
     );
   }
+
+  validateCsvHeaderSizes(headers);
 
   const normalizedHeaders =
     headers.map(

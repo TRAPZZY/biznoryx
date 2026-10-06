@@ -2,6 +2,8 @@
 
 Scope: the local BIZNORYX checkout at `dd2775d`, confirmed equal to GitHub `origin/main`, its production HTTP runtime, PostgreSQL authorization, billing, ingestion, and browser authentication flows. Public-site inspection used ordinary read-only HTTP requests. No live payment, account, database, or deployment was changed.
 
+Before final handoff, GitHub main advanced to `484eab1` with additional CSV header and report-analytics allocation limits. That change was merged into the security branch, its test conflict resolved without discarding either fix, and the combined sources verified again.
+
 ## Findings addressed
 
 | Area | Defect | Result |
@@ -39,7 +41,7 @@ Each migration has a rollback file. Rolling back restores the earlier behavior a
 ## Verification
 
 - New regression tests reproduced redirect, origin, request-size, session/reset, provisional credential, provider ownership, expiry, CSV amplification, duplicate raw-object cleanup, and durable onboarding failures before their fixes.
-- `npm run verify` passed: 271 tests passed, 11 database-dependent tests skipped without a database URL, zero failures. Source checks, migration checks, security checks, and production packaging passed.
+- `npm run verify` passed on the combined sources: 278 tests passed, 11 database-dependent tests skipped without a database URL, zero failures. Source checks, migration checks, security checks, and production packaging passed.
 - `npm run test:browser` passed all 28 desktop/mobile journeys covering navigation, registration, recovery, onboarding, uploads, reports, and billing history.
 - Disposable PostgreSQL databases exercise migrations, restricted-role SQL acceptance, tenant isolation, provider binding uniqueness, stale webhooks, audit visibility, and the existing durable analytics flows.
 - All 15 SQL acceptance files passed. The final restricted-role runtime/webhook/policy run passed all four tests. The worker queue test passed separately against its own clean database.
