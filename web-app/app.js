@@ -651,15 +651,14 @@ function landing() {
           </p>
 
           <h2>
-            ₦40,000/month for one business workspace.
+            Start with a 7-day trial, then ₦40,000/month.
           </h2>
 
           <p>
-            Start with one organization, verified email
-            sign-up, multi-file CSV intake, evidence
-            reports, dashboard history and secure
-            member-ready foundations. Paystack checkout is
-            built into the workspace billing flow.
+            Try the workspace with secure card verification,
+            upload files or enter data directly, and see how
+            BIZNORYX turns business records into verified
+            evidence before the first subscription payment.
           </p>
         </div>
 
@@ -761,25 +760,25 @@ function publicPage(path) {
 
       title: "₦40,000 per month for the BIZNORYX business workspace.",
 
-      body: "One simple monthly plan gives a business the workspace, verified sign-up, recurring business-data intake, evidence reporting, dashboard history and billing access.",
+      body: "Start with a seven-day trial after secure card verification. Upload files, enter business data directly and review evidence-backed reports before the first subscription payment.",
 
       image:
         "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=2000&q=85",
 
       sections: [
         [
+          "7-day trial",
+          "Use the workspace after card verification and cancel before the first subscription payment.",
+        ],
+
+        [
+          "Flexible data entry",
+          "Upload recurring files or enter monthly business numbers directly.",
+        ],
+
+        [
           "₦40,000/month",
-          "One clear monthly subscription for your BIZNORYX business workspace.",
-        ],
-
-        [
-          "Secure payments",
-          "Monthly subscription payments are processed securely through Paystack.",
-        ],
-
-        [
-          "Evidence included",
-          "Reports and dashboards are generated from verified business data.",
+          "Continue with one clear monthly subscription when the trial ends.",
         ],
       ],
     },
