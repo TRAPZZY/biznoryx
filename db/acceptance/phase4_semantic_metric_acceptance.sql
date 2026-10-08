@@ -87,6 +87,8 @@ values ('43000000-0000-4000-8000-000000000031', '10000000-0000-4000-8000-0000000
 insert into raw_data_objects (id, organization_id, storage_key, original_filename, content_type, byte_size, checksum_sha256, status, created_by_user_id)
 values ('44000000-0000-4000-8000-000000000031', '10000000-0000-4000-8000-000000000031', 'org/phase4/raw/sales.csv', 'sales.csv', 'text/csv', 128, 'phase4-checksum', 'accepted', '00000000-0000-4000-8000-000000000031');
 
+set local app.current_organization_id = '10000000-0000-4000-8000-000000000031';
+
 insert into ingestion_runs (
   id,
   organization_id,

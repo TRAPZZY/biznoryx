@@ -41,7 +41,7 @@ Manual months stay explicitly partial, even when entered dates reach both month 
 
 ## Verification
 
-Run `npm run verify` and `npm run test:browser`. With local Docker PostgreSQL and the existing `.env.local` runtime password, run `node --env-file=.env.local scripts/entry-trial-acceptance.mjs`. It creates disposable databases and checks real runtime permissions, RLS, draft concurrency, cumulative decimals, correction history, recovery, overlap, and trial constraints. The broader pipeline check is `node --env-file=.env.local scripts/production-pipeline-acceptance.mjs`.
+Run `npm run verify` and `npm run test:browser`. With local Docker PostgreSQL and the existing `.env.local` runtime password, run `node --env-file=.env.local scripts/entry-trial-acceptance.mjs`. It creates disposable databases, runs the existing SQL acceptance suite, and checks real runtime permissions, RLS, draft concurrency, cumulative decimals, correction history, recovery, overlap, and trial constraints. The broader pipeline check is `node --env-file=.env.local scripts/production-pipeline-acceptance.mjs`.
 
 Provider tests use synthetic, deterministic Paystack fixtures, never real charges. Browser trial tests inject billing states to verify disclosures, recovery, and confirmation UI; PostgreSQL acceptance independently verifies durable records and tenant boundaries.
 

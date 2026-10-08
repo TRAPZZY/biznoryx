@@ -24,6 +24,11 @@ try {
       });
     }
   }
+  for (const file of readdirSync("db/acceptance").filter((name) => name.endsWith(".sql")).sort()) {
+    run([...psql, "-d", database, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
+      input: readFileSync(`db/acceptance/${file}`),
+    });
+  }
   const url = new URL("postgresql://biznoryx_admin@127.0.0.1:5432/postgres");
   url.password = adminPassword;
   const adminUrl = url.href;

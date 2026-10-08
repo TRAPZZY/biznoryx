@@ -1,4 +1,22 @@
-import { test, expect } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
+import { createReviewApp } from "../../src/webapp/review-app.mjs";
+
+// Each journey owns its state and auth quota without changing runtime limits.
+const test = base.extend({
+  baseURL: async ({}, use) => {
+    const { server } = createReviewApp();
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      await use(`http://127.0.0.1:${server.address().port}`);
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  },
+});
 
 async function signIn(page, path) {
   await page.goto("/#/sign-in");
