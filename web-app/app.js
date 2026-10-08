@@ -5,6 +5,8 @@ import {
   definitionDialog,
   renderReportAnswer,
 } from "./evidence-report.js";
+import { mountManualEntry } from "./manual-entry.js";
+import { mountTrialBilling } from "./trial-billing.js";
 
 let csrfToken;
 let session;
@@ -14,6 +16,8 @@ let pendingVerification;
 let billingCheckoutReference;
 let navigationVersion = 0;
 let activeSeriesKey;
+let dataEntryMode = "upload";
+let disposeManualEntry;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
@@ -2503,6 +2507,8 @@ function business() {
 }
 
 function dataPage() {
+  disposeManualEntry?.();
+  disposeManualEntry = null;
   const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
   shell(
@@ -2513,7 +2519,13 @@ function dataPage() {
         "Add one or more reporting files to your business history.",
       )}
 
-      <div class="data-layout">
+      <div class="data-input-modes" role="tablist" aria-label="Add business data">
+        <button id="upload-mode" type="button" role="tab" aria-selected="${dataEntryMode === "upload"}" aria-controls="file-upload-panel">${icon("cloud-upload")} Upload file</button>
+        <button id="manual-mode" type="button" role="tab" aria-selected="${dataEntryMode === "manual"}" aria-controls="manual-entry-panel">${icon("table-2")} Enter data</button>
+      </div>
+
+      <div id="manual-entry-panel" role="tabpanel" ${dataEntryMode === "manual" ? "" : "hidden"}></div>
+      <div id="file-upload-panel" role="tabpanel" class="data-layout" ${dataEntryMode === "upload" ? "" : "hidden"}>
         <form
           id="upload-form"
           class="upload-form"
@@ -2780,6 +2792,26 @@ function dataPage() {
     `,
     "/data",
   );
+
+  const manualPanel = document.querySelector("#manual-entry-panel");
+  const uploadPanel = document.querySelector("#file-upload-panel");
+  const setInputMode = (mode) => {
+    dataEntryMode = mode;
+    manualPanel.hidden = mode !== "manual";
+    uploadPanel.hidden = mode !== "upload";
+    document.querySelector("#upload-mode").setAttribute("aria-selected", String(mode === "upload"));
+    document.querySelector("#manual-mode").setAttribute("aria-selected", String(mode === "manual"));
+    if (mode === "manual" && !disposeManualEntry) {
+      disposeManualEntry = mountManualEntry({
+        container: manualPanel,
+        api,
+        onSubmitted: async () => { dashboard = await api("dashboard"); },
+      });
+    }
+  };
+  document.querySelector("#upload-mode").onclick = () => setInputMode("upload");
+  document.querySelector("#manual-mode").onclick = () => setInputMode("manual");
+  setInputMode(dataEntryMode);
 
   const fileInput = document.querySelector('[name="file"]');
 
@@ -3637,6 +3669,7 @@ function overview() {
   const previousValue = numericValue(previous?.value);
 
   const changePercent =
+    latest?.dataStatus !== "partial" && previous?.dataStatus !== "partial" &&
     latestValue !== null && previousValue !== null && previousValue !== 0
       ? ((latestValue - previousValue) / Math.abs(previousValue)) * 100
       : null;
@@ -3837,7 +3870,7 @@ function overview() {
           latest.value,
         )} for ${formatPeriod(latest)}${
           changePercent === null
-            ? "."
+            ? latest.dataStatus === "partial" ? ". This month contains partial records." : "."
             : `, ${changePercent >= 0 ? "up" : "down"} ${Math.abs(
                 changePercent,
               ).toFixed(1)}% from the previous verified period.`
@@ -3931,7 +3964,7 @@ function overview() {
             </strong>
 
             <small>
-              ${latest ? esc(formatPeriod(latest)) : "No verified period"}
+              ${latest ? `${esc(formatPeriod(latest))}${latest.dataStatus === "partial" ? " (partial)" : ""}` : "No verified period"}
             </small>
           </article>
 
@@ -4904,9 +4937,11 @@ function billingPage() {
     },
 
     trialing: {
-      label: "Trial",
+      label: subscription?.trial?.cardSetup?.verified ? "Trial" : "Not active",
       tone: "trial",
-      description: "Your workspace is currently using trial access.",
+      description: subscription?.trial?.cardSetup?.verified
+        ? "Your verified trial ends on the date shown below."
+        : "Start a verified trial or activate a subscription to process business data.",
     },
 
     past_due: {
@@ -5482,6 +5517,12 @@ function billingPage() {
   );
 
   const historyContent = document.querySelector("#billing-history-content");
+  mountTrialBilling({
+    container: document.querySelector(".billing-plan-actions"),
+    api,
+    subscription,
+    onChanged: async () => { dashboard = await api("dashboard"); billingPage(); },
+  });
 
   paymentHistoryRequest
     .then(({ payments }) => {
@@ -5934,6 +5975,8 @@ function showError(error) {
 
 async function route() {
   const version = ++navigationVersion;
+  disposeManualEntry?.();
+  disposeManualEntry = null;
 
   const rawPath = location.hash.slice(1) || "/";
 

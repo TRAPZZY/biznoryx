@@ -7,6 +7,9 @@ import {
 } from "node:os";
 
 import pg from "pg";
+import { PostgresBillingRepository } from "../src/database/billing-repository.mjs";
+import { SevenDayTrialService, trialConfiguration } from "../src/billing/trial-service.mjs";
+import { startTrialMaintenance } from "../src/worker/trial-maintenance.mjs";
 
 import {
   PostgresMetricComparisonRepository,
@@ -151,6 +154,7 @@ const controller =
 
 let stopping =
   false;
+let stopTrialMaintenance;
 
 process.on(
   "SIGINT",
@@ -169,6 +173,14 @@ try {
 
   await objectStorage
     .healthCheck();
+
+  if (process.env.BIZNORYX_TRIAL_VERIFICATION_AMOUNT_MINOR || process.env.BIZNORYX_BILLING_ENCRYPTION_KEY) {
+    trialConfiguration();
+    stopTrialMaintenance = startTrialMaintenance({
+      service: new SevenDayTrialService({ billingRepository: new PostgresBillingRepository(pool) }),
+      onError: reportWorkerError,
+    });
+  }
 
   process.stdout.write(
     `BIZNORYX production worker started: ${workerId}\n`,
@@ -197,6 +209,7 @@ try {
   process.exitCode =
     1;
 } finally {
+  await stopTrialMaintenance?.();
   await pool.end();
 }
 

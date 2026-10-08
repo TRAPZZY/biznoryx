@@ -61,6 +61,9 @@ import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../bil
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 
 import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
+import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
+import { ManualEntryService } from "../ingestion/manual-entry.mjs";
+import { SevenDayTrialService } from "../billing/trial-service.mjs";
 
 import {
   ObjectStorageError,
@@ -134,6 +137,8 @@ export function createProductionApp({
   activityRepository,
   objectStorage,
   ingestionService,
+  manualEntryService,
+  trialService,
   paystackFetch = fetch,
   healthChecks,
   publicDir = join(process.cwd(), "web-app"),
@@ -281,6 +286,10 @@ export function createProductionApp({
     objectStorage: storage,
 
     ingestion,
+    manualEntry: manualEntryService ?? (pool && storage
+      ? new ManualEntryService({ repository: new PostgresManualEntryRepository(pool), objectStorage: storage }) : null),
+    trials: trialService ?? (billing?.trials
+      ? new SevenDayTrialService({ billingRepository: billing, fetchImpl: paystackFetch }) : null),
 
     paystackFetch,
 
@@ -448,7 +457,9 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
-    const result = await applyProductionPaystackWebhook({
+    const trialResult = runtime.trials
+      ? await runtime.trials.handleWebhook({ event, rawBody, signature }) : null;
+    const result = trialResult?.handled ? trialResult : await applyProductionPaystackWebhook({
       runtime,
       event,
       rawBody,
@@ -468,6 +479,26 @@ async function routeRequest({ request, response, runtime }) {
    * The transaction is re-verified server-side before
    * the subscription is activated.
    */
+
+  if (url.pathname === "/billing/paystack/trial/callback" && request.method === "GET") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
+    const organizationId = requireActiveOrganization(context, "Select a business before completing card setup.");
+    await requireOrganizationManager({ runtime, organizationId, actorUserId: context.user.id, message: "Organization owner access is required to complete trial billing." });
+    if (!runtime.trials) throw new AuthError("Trial billing is unavailable.", "SERVICE_UNAVAILABLE");
+    let attention = false;
+    try {
+      await runtime.trials.verifyCheckout({
+        organizationId, actorUserId: context.user.id,
+        reference: assertText(url.searchParams.get("reference") ?? url.searchParams.get("trxref"), "Card verification reference is required.", 160),
+      });
+    } catch (error) {
+      if (!(error instanceof AuthError)) throw error;
+      attention = true;
+    }
+    response.writeHead(302, { Location: `${billingPublicUrl(request)}/${attention ? "?trial_setup=attention" : ""}#/billing`, "Cache-Control": "no-store" });
+    response.end();
+    return;
+  }
 
   if (
     url.pathname === "/billing/paystack/callback" &&
@@ -1079,6 +1110,34 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (url.pathname === "/api/billing/trial" && request.method === "GET") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
+    const organizationId = requireActiveOrganization(context, "Select a business before loading billing.");
+    if (!runtime.trials) throw new AuthError("Trial billing is unavailable.", "SERVICE_UNAVAILABLE");
+    sendJson(response, 200, { trial: await runtime.trials.getTrial({ organizationId, actorUserId: context.user.id }) });
+    return;
+  }
+
+  if (["/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update"].includes(url.pathname) && request.method === "POST") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: true });
+    const organizationId = requireActiveOrganization(context, "Select a business before managing its trial.");
+    await requireOrganizationManager({ runtime, organizationId, actorUserId: context.user.id, message: "Organization owner access is required to manage trial billing." });
+    if (!runtime.trials) throw new AuthError("Trial billing is unavailable.", "SERVICE_UNAVAILABLE");
+    const body = await readJson(request);
+    const input = { organizationId, actorUserId: context.user.id };
+    let result;
+    if (url.pathname.endsWith("/checkout")) {
+      result = await runtime.trials.startCheckout({ ...input, email: context.user.email,
+        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent });
+    } else if (url.pathname.endsWith("/verify")) {
+      result = await runtime.trials.verifyCheckout({ ...input, reference: assertText(body.reference, "Card verification reference is required.", 160) });
+    } else if (url.pathname.endsWith("/payment-update")) {
+      result = await runtime.trials.paymentUpdateLink(input);
+    } else result = await runtime.trials.cancelTrial(input);
+    sendJson(response, 200, result.subscription ? { ...result, subscription: publicSubscription(result.subscription) } : result);
+    return;
+  }
+
   if (url.pathname === "/api/billing/history" && request.method === "GET") {
     const { context } = await authenticateRequest({
       request,
@@ -1445,6 +1504,13 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    if (runtime.trials) {
+      const trial = await runtime.trials.getTrial({ organizationId, actorUserId: context.user.id });
+      if (trial?.startedAt && !trial.canceledAt && !["converted", "active"].includes(trial.status)) {
+        throw new AuthError("Manage or cancel the scheduled trial subscription before starting another checkout.", "VALIDATION_FAILED");
+      }
+    }
+
     const publicUrl = billingPublicUrl(request);
 
     const reference = createProductionBillingReference();
@@ -1731,6 +1797,30 @@ async function routeRequest({ request, response, runtime }) {
       }),
     });
 
+    return;
+  }
+
+  if (url.pathname === "/api/ingestion/manual" && request.method === "GET") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
+    const organizationId = requireActiveOrganization(context, "Select a business before entering records.");
+    if (!runtime.manualEntry) throw new AuthError("Data entry is unavailable.", "SERVICE_UNAVAILABLE");
+    const result = await runtime.manualEntry.load({ organizationId, actorUserId: context.user.id,
+      draftId: url.searchParams.get("draftId"), submissionId: url.searchParams.get("submissionId"),
+      dataSeries: url.searchParams.get("dataSeries"), period: url.searchParams.get("period") });
+    sendJson(response, 200, result);
+    return;
+  }
+
+  if (["/api/ingestion/manual/draft", "/api/ingestion/manual/validate", "/api/ingestion/manual/submit"].includes(url.pathname) && request.method === "POST") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: true });
+    const organizationId = requireActiveOrganization(context, "Select a business before entering records.");
+    await requirePremiumSubscription({ billingRepository: runtime.billing, organizationId, actorUserId: context.user.id });
+    if (!runtime.manualEntry) throw new AuthError("Data entry is unavailable.", "SERVICE_UNAVAILABLE");
+    const body = await readJson(request);
+    const input = { ...body, organizationId, actorUserId: context.user.id };
+    const method = url.pathname.endsWith("/draft") ? "saveDraft" : url.pathname.endsWith("/validate") ? "validateDraft" : "submit";
+    const result = await runtime.manualEntry[method](input);
+    sendJson(response, 200, result.upload ? { ...result, upload: mapIngestionResult(result.upload, { dataKind: "Manual entry" }) } : result);
     return;
   }
 
@@ -2624,6 +2714,13 @@ function publicSubscription(subscription) {
     checkoutReference: subscription.checkoutReference,
 
     trialEndsAt: subscription.trialEndsAt,
+    trial: subscription.trial ? {
+      startedAt: subscription.trial.startedAt,
+      endsAt: subscription.trial.endsAt,
+      canceledAt: subscription.trial.canceledAt,
+      cardSetup: { verified: subscription.trial.cardSetup?.verified === true },
+      providerProvisioned: subscription.trial.providerProvisioned === true,
+    } : null,
 
     activeAt: subscription.activeAt,
 
@@ -3249,7 +3346,7 @@ function validateVerifiedPaystackPayment({
 
 async function readJson(request) {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  const limit = pathname === "/api/ingestion/upload"
+  const limit = ["/api/ingestion/upload", "/api/ingestion/manual/draft"].includes(pathname)
     ? MAX_JSON_BODY_BYTES
     : isAuthEndpoint(pathname) ? MAX_AUTH_BODY_BYTES : MAX_CONTROL_BODY_BYTES;
   const bytes = await readRawBody(request, limit);
@@ -3356,12 +3453,26 @@ function sendError(response, error) {
         ["PAYSTACK_SIGNATURE_INVALID", 401],
 
         ["TENANT_CONTEXT_REQUIRED", 400],
+        ["DRAFT_VERSION_CONFLICT", 409],
+        ["DRAFT_ALREADY_SUBMITTED", 409],
+        ["DRAFT_NOT_VALIDATED", 409],
+        ["MANUAL_PROCESSING_PENDING", 409],
+        ["MANUAL_SCHEMA_CONFLICT", 409],
+        ["SOURCE_MODE_CONFLICT", 409],
+        ["CORRECTION_VERSION_CONFLICT", 409],
+        ["MANUAL_NOT_FOUND", 404],
+        ["MANUAL_LIMIT_EXCEEDED", 413],
+        ["BILLING_BINDING_MISMATCH", 400],
+        ["BILLING_RECONCILIATION_REQUIRED", 503],
+        ["BILLING_OPERATION_IN_PROGRESS", 409],
+        ["BILLING_TRIAL_INELIGIBLE", 409],
       ]).get(error.code) ?? 400;
 
     sendJson(response, status, {
       error: error.code,
 
       message: error.message,
+      ...(Array.isArray(error.issues) ? { issues: error.issues } : {}),
     });
 
     return;
@@ -3395,9 +3506,11 @@ function serveStatic({ request, response, url, publicDir }) {
     return;
   }
 
-  if (url.pathname === "/vendor/lucide.js") {
+  if (["/vendor/lucide.js", "/vendor/csv-parse.js"].includes(url.pathname)) {
     const body = readFileSync(
-      join(process.cwd(), "node_modules/lucide/dist/umd/lucide.min.js"),
+      join(process.cwd(), url.pathname === "/vendor/csv-parse.js"
+        ? "node_modules/csv-parse/dist/esm/sync.js"
+        : "node_modules/lucide/dist/umd/lucide.min.js"),
     );
 
     response.writeHead(200, {

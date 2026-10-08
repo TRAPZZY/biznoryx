@@ -33,6 +33,7 @@ import {
 } from "./customer-data.mjs";
 import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource } from "../reports/evidence-engine.mjs";
 import { sendEvidenceExport } from "../reports/export.mjs";
+import { ReviewManualEntry } from "../preview/manual-entry.mjs";
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -118,7 +119,7 @@ export function createReviewRuntime() {
   });
   store.auditEvents.length = 0;
 
-  return {
+  const runtime = {
     store,
     auditLog,
     identity,
@@ -136,6 +137,8 @@ export function createReviewRuntime() {
     reviewAccount: { email: reviewEmail, password: reviewPassword },
     seededOrganizations: [acme.id, north.id],
   };
+  runtime.manualEntry = new ReviewManualEntry(runtime);
+  return runtime;
 }
 
 export function createReviewApp(runtime = createReviewRuntime()) {
@@ -541,6 +544,13 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  if (url.pathname === "/api/billing/trial" && request.method === "GET") {
+    const context = authenticateFromRequest(request, runtime);
+    requireCapability(runtime, context, CAPABILITIES.READ_BUSINESS_DATA);
+    sendJson(response, 200, { trial: { eligible: false, configured: false, status: "unavailable" } });
+    return;
+  }
+
   if (url.pathname === "/api/billing/history" && request.method === "GET") {
     const context = authenticateFromRequest(request, runtime, {
       required: true,
@@ -761,6 +771,11 @@ async function routeRequest({ request, response, runtime }) {
         validateCustomerUploadFile(payload, organizationId),
       ),
     );
+    for (const upload of uploads) {
+      if ([...runtime.uploads.values()].some((entry) => entry.organizationId === organizationId && entry.dataSeries === upload.dataSeries && entry.period === upload.period && entry.manualEntry)) {
+        throw new AuthError("This month contains manual entries. Continue entering records for this series or choose a separate series.", "SOURCE_MODE_CONFLICT");
+      }
+    }
     const retainedBytes = [...runtime.uploads.values()]
       .filter((item) => item.organizationId === organizationId)
       .reduce((total, item) => total + (item.sourceSizeBytes ?? Buffer.byteLength(item.content)), 0);
@@ -788,6 +803,22 @@ async function routeRequest({ request, response, runtime }) {
       upload: publicUpload(uploads[0]),
       uploads: uploads.map(publicUpload),
     });
+    return;
+  }
+
+  if (url.pathname === "/api/ingestion/manual" && request.method === "GET") {
+    const context = authenticateFromRequest(request, runtime);
+    const { organizationId } = requireCapability(runtime, context, CAPABILITIES.READ_BUSINESS_DATA);
+    sendJson(response, 200, await runtime.manualEntry.load({ organizationId, actorUserId: context.user.id,
+      draftId: url.searchParams.get("draftId"), submissionId: url.searchParams.get("submissionId") }));
+    return;
+  }
+  if (["/api/ingestion/manual/draft", "/api/ingestion/manual/validate", "/api/ingestion/manual/submit"].includes(url.pathname) && request.method === "POST") {
+    const context = authenticateFromRequest(request, runtime, { requireCsrf: true });
+    const { organizationId } = requireCapability(runtime, context, CAPABILITIES.WRITE_BUSINESS_DATA);
+    const body = await readJson(request);
+    const method = url.pathname.endsWith("/draft") ? "saveDraft" : url.pathname.endsWith("/validate") ? "validateDraft" : "submit";
+    sendJson(response, 200, await runtime.manualEntry[method]({ ...body, organizationId, actorUserId: context.user.id }));
     return;
   }
 
@@ -1345,6 +1376,11 @@ function sendError(response, error) {
         ["BILLING_PROVIDER_NOT_CONFIGURED", 503],
         ["BILLING_PROVIDER_FAILED", 502],
         ["PAYSTACK_SIGNATURE_INVALID", 401],
+        ["SOURCE_MODE_CONFLICT", 409],
+        ["DRAFT_VERSION_CONFLICT", 409],
+        ["DRAFT_NOT_VALIDATED", 409],
+        ["MANUAL_NOT_FOUND", 404],
+        ["MANUAL_LIMIT_EXCEEDED", 413],
       ]).get(error.code) ?? 400;
     sendJson(response, status, { error: error.code, message: error.message });
     return;
@@ -1356,13 +1392,15 @@ function sendError(response, error) {
 }
 
 function serveStatic(url, response) {
-  if (url.pathname === "/vendor/lucide.js") {
+  if (["/vendor/lucide.js", "/vendor/csv-parse.js"].includes(url.pathname)) {
     response.writeHead(200, {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     response.end(
       readFileSync(
-        join(process.cwd(), "node_modules/lucide/dist/umd/lucide.min.js"),
+        join(process.cwd(), url.pathname === "/vendor/csv-parse.js"
+          ? "node_modules/csv-parse/dist/esm/sync.js"
+          : "node_modules/lucide/dist/umd/lucide.min.js"),
       ),
     );
     return;

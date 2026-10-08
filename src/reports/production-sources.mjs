@@ -14,6 +14,7 @@ export function reportSourcesFromSeries(series) {
         dataSeries: metric.dataStream.displayName,
         period: String(point.periodStart instanceof Date ? point.periodStart.toISOString() : point.periodStart).slice(0, 7),
         fileName: evidence.fileName || metric.dataStream.displayName,
+        dataStatus: point.dataStatus ?? "complete",
         checksum: evidence.checksumSha256 ?? null,
         rawDataObjectId: point.rawDataObjectId, metricPointIds: {},
         confirmedAt: point.createdAt,

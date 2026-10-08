@@ -151,12 +151,14 @@ export class PostgresMetricComparisonRepository {
                  rp.period_start,
                  rp.period_end,
                  rp.label as period_label,
+                 rp.data_status,
 
                  row_number() over (
                    partition by
                      mp.metric_definition_id,
                      mp.reporting_period_id
                    order by
+                     ir.created_at desc,
                      mp.created_at desc,
                      mp.id desc
                  ) as point_rank
@@ -166,6 +168,9 @@ export class PostgresMetricComparisonRepository {
                join reporting_periods rp
                  on rp.id =
                    mp.reporting_period_id
+
+               join ingestion_runs ir on ir.id = mp.ingestion_run_id
+                 and ir.organization_id = mp.organization_id
 
                where mp.organization_id = $1
                  and mp.metric_definition_id = $2
@@ -184,7 +189,8 @@ export class PostgresMetricComparisonRepository {
                created_at,
                period_start,
                period_end,
-               period_label
+               period_label,
+               data_status
 
              from ranked_points
 
@@ -650,6 +656,7 @@ function buildNotReadyComparison({
   organizationId,
   definition,
   current,
+  reason = "A previous verified period is required.",
 }) {
   return {
     organizationId,
@@ -697,7 +704,7 @@ function buildNotReadyComparison({
         "not_ready",
 
       reason:
-        "A previous verified period is required.",
+        reason,
 
       metricDefinitionId:
         definition.id,
@@ -731,6 +738,10 @@ function buildReadyComparison({
   previous,
   current,
 }) {
+  if (current.data_status === "partial" || previous.data_status === "partial") {
+    return buildNotReadyComparison({ organizationId, definition, current,
+      reason: "Daily records are still a partial reporting period. Complete comparable periods are required." });
+  }
   const change =
     calculateMetricChange({
       previousValue:

@@ -138,7 +138,9 @@ test("viewers cannot start, verify or complete billing checkout", async () => {
     },
     billingRepository: { async ensureSubscription() { billingCalls += 1; return { status: "non_renewing" }; } },
   }, async (port) => {
-    for (const path of ["/api/billing/checkout", "/api/billing/verify", "/billing/paystack/callback?reference=test-reference"]) {
+    for (const path of ["/api/billing/checkout", "/api/billing/verify", "/billing/paystack/callback?reference=test-reference",
+      "/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update",
+      "/billing/paystack/trial/callback?reference=test-reference"]) {
       const response = await request(port, path, {
         method: path.startsWith("/api/") ? "POST" : "GET",
         headers: { cookie: "bnx_session=test-token", "x-csrf-token": "test-csrf" },
@@ -148,6 +150,58 @@ test("viewers cannot start, verify or complete billing checkout", async () => {
       assert.equal(JSON.parse(response.body).error, "ORG_ACCESS_DENIED");
     }
     assert.equal(billingCalls, 0);
+  });
+});
+
+test("manual entry mutations bind actor and organization to the authenticated session", async () => {
+  const inputs = [];
+  await withServer({
+    identityRepository: { async authenticate({ requireCsrf }) {
+      assert.equal(requireCsrf, true);
+      return { user: { id: "owner-1" }, session: { activeOrganizationId: "org-1" } };
+    } },
+    billingRepository: { async ensureSubscription() { return { status: "active", currentPeriodEnd: new Date(Date.now() + 86_400_000) }; } },
+    manualEntryService: Object.fromEntries(["saveDraft", "validateDraft", "submit"].map((method) => [method, async (input) => {
+      inputs.push(input); return { draft: { id: "draft-1" } };
+    }])),
+  }, async (port) => {
+    for (const action of ["draft", "validate", "submit"]) {
+      const response = await request(port, `/api/ingestion/manual/${action}`, { method: "POST",
+        headers: { cookie: "bnx_session=test-token", "x-csrf-token": "test-csrf" },
+        body: JSON.stringify({ organizationId: "victim-org", actorUserId: "victim-user", validationId: "receipt" }),
+      });
+      assert.equal(response.status, 200, response.body);
+    }
+  });
+  assert.equal(inputs.length, 3);
+  assert.ok(inputs.every((input) => input.organizationId === "org-1" && input.actorUserId === "owner-1" && input.validationId === "receipt"));
+});
+
+test("unverified legacy trials cannot mutate production manual records", async () => {
+  let writes = 0;
+  await withServer({
+    identityRepository: { async authenticate() { return { user: { id: "owner-1" }, session: { activeOrganizationId: "org-1" } }; } },
+    billingRepository: { async ensureSubscription() { return { status: "trialing", trialEndsAt: new Date(Date.now() + 86_400_000) }; } },
+    manualEntryService: { async saveDraft() { writes += 1; return {}; } },
+  }, async (port) => {
+    const response = await request(port, "/api/ingestion/manual/draft", { method: "POST", headers: { cookie: "bnx_session=test-token", "x-csrf-token": "test-csrf" }, body: "{}" });
+    assert.equal(response.status, 402);
+    assert.equal(writes, 0);
+  });
+});
+
+test("an interrupted trial callback returns its authenticated owner to actionable billing", async () => {
+  await withServer({
+    identityRepository: {
+      async authenticate() { return { user: { id: "owner-1" }, session: { activeOrganizationId: "org-1" } }; },
+      async activeMemberships() { return [{ organizationId: "org-1", role: "owner" }]; },
+    },
+    trialService: { async verifyCheckout() { throw new AuthError("Provider unavailable", "BILLING_PROVIDER_FAILED"); } },
+  }, async (port) => {
+    const response = await request(port, "/billing/paystack/trial/callback?reference=bnx_trial_test", { headers: { cookie: "bnx_session=test-token" } });
+    assert.equal(response.status, 302);
+    assert.match(response.headers.location, /\?trial_setup=attention#\/billing$/);
+    assert.equal(response.headers["cache-control"], "no-store");
   });
 });
 

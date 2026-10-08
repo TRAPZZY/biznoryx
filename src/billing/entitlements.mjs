@@ -4,6 +4,16 @@ export function subscriptionHasPremiumAccess(
   subscription,
   { now = () => new Date() } = {},
 ) {
+  if (subscription?.status === "trialing" && subscription.trial) {
+    const trial = subscription.trial;
+    const start = new Date(trial.startedAt ?? "").getTime();
+    const end = new Date(trial.endsAt ?? "").getTime();
+    const instant = now().getTime();
+    return trial.cardSetup?.verified === true && Boolean(trial.providerProvisioned) &&
+      !trial.convertedAt && trial.status !== "setup_failed" &&
+      Number.isFinite(start) && Number.isFinite(end) && end - start === 7 * 86_400_000 &&
+      instant >= start && instant < end;
+  }
   if (
     !subscription ||
     !["active", "non_renewing"].includes(subscription.status)
