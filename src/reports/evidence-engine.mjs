@@ -237,7 +237,7 @@ function combinedPeriods(accepted) {
     const periods = dates ? dates.months : [{ ...item.all, period: source.period }];
     for (const point of periods) {
       const previous = buckets.get(point.period);
-      const mapped = { ...point, sourceIds: [source.id] };
+      const mapped = { ...point, sourceIds: [source.id], partial: source.dataStatus === "partial" };
       if (!previous) { buckets.set(point.period, mapped); continue; }
       previous.value = reportDecimal(parseReportNumber(previous.value) + parseReportNumber(point.value));
       previous.rows += point.rows;
@@ -245,6 +245,7 @@ function combinedPeriods(accepted) {
       previous.invalid += point.invalid;
       previous.observedDays += point.observedDays;
       previous.hasNegativeValues ||= point.hasNegativeValues;
+      previous.partial ||= source.dataStatus === "partial";
       previous.first = [previous.first, point.first].filter(Boolean).sort()[0] ?? null;
       previous.last = [previous.last, point.last].filter(Boolean).sort().at(-1) ?? null;
       previous.sourceIds.push(source.id);
@@ -260,7 +261,7 @@ function combinedPeriods(accepted) {
       }
     }
   }
-  return [...buckets.values()].map((point) => ({ ...point, partial: Boolean(point.first && (point.first !== `${point.period}-01` || point.last !== monthLastDay(point.period))) })).sort((a, b) => a.period.localeCompare(b.period));
+  return [...buckets.values()].map((point) => ({ ...point, partial: Boolean(point.partial || (point.first && (point.first !== `${point.period}-01` || point.last !== monthLastDay(point.period)))) })).sort((a, b) => a.period.localeCompare(b.period));
 }
 
 function decompose(current, previous, dimension) {
@@ -372,7 +373,7 @@ export function buildBusinessReport({ sources, profile = {}, options = {}, polic
   if (!dateColumn) limitations.push({ code: "NO_DATE_FIELD", message: "No unambiguous ISO date field is available. Only declared upload periods can be compared; within-period timing is unknown." });
   if (metric.dates.length > 1) limitations.push({ code: "DATE_CHOICE", message: `This source contains multiple dates. The report currently uses ${dateColumn}; selecting another date changes the analysis.` });
   if (!policy) limitations.push({ code: "MAPPING_UNCONFIRMED", message: "The selected column is not yet an approved business KPI. Confirm its meaning before favorable or adverse labels are assigned." });
-  if (current.partial || previous?.partial) limitations.push({ code: "PARTIAL_PERIOD", message: "A boundary period starts after the first day or ends before the last day of its month. The observed total may represent a partial period; direct comparisons need a coverage check." });
+  if (current.partial || previous?.partial) limitations.push({ code: "PARTIAL_PERIOD", message: "A period contains partial manual records or incomplete date coverage. Its observed total is not a complete business month; direct comparisons need a coverage check." });
   if (previous && monthIndex(current.period) - monthIndex(previous.period) !== 1) limitations.push({ code: "NON_ADJACENT_COMPARISON", message: "These are not consecutive months. The comparison is between the selected periods, not month-on-month growth." });
   if (!previous) limitations.push({ code: "NO_COMPARISON", message: "No earlier period is selected. Movement and recurring strengths cannot yet be assessed." });
   if (previous && parseReportNumber(previous.value) <= 0n) limitations.push({ code: "NONPOSITIVE_BASE", message: "The comparison value is zero or negative. Percentage change is not meaningful; the absolute movement is retained." });

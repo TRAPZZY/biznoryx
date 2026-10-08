@@ -8,6 +8,7 @@ export class PostgresBillingRepository {
   constructor(pool, { now = () => new Date() } = {}) {
     this.pool = pool;
     this.now = now;
+    this.trials = new PostgresTrialRepository(pool, { now });
   }
 
   async organizationForSubscription({ providerSubscriptionCode }) {
@@ -66,7 +67,7 @@ export class PostgresBillingRepository {
            *
            * Active customers are never silently repriced.
            */
-          if (current.status === "trialing" && planIsStale) {
+          if (current.status === "trialing" && planIsStale && !current.provider_subscription_code) {
             const updated = await client.query(
               `update organization_billing_subscriptions
                   set provider = $2,
@@ -80,6 +81,7 @@ export class PostgresBillingRepository {
                       updated_at = $9
                 where organization_id = $1
                   and status = 'trialing'
+                  and not exists (select 1 from billing_trials where organization_id = $1)
                 returning id, organization_id, provider,
                           provider_customer_code,
                           provider_subscription_code,
@@ -176,7 +178,16 @@ export class PostgresBillingRepository {
       },
     );
 
-    return mapSubscription(result);
+    const subscription = mapSubscription(result);
+    const trial = await this.trials.get({ organizationId });
+    subscription.trial = trial ? {
+      status: trial.status, cardSetup: { verified: Boolean(trial.cardVerifiedAt) },
+      providerProvisioned: Boolean(trial.subscriptionCode && trial.provisionStatus === "confirmed" &&
+        trial.subscriptionCode === subscription.providerSubscriptionCode),
+      startedAt: trial.startedAt, endsAt: trial.endsAt, canceledAt: trial.canceledAt,
+      convertedAt: trial.convertedAt,
+    } : null;
+    return subscription;
   }
 
   async createCheckoutSession({
@@ -291,6 +302,15 @@ export class PostgresBillingRepository {
               where organization_id = $1
                 and (status not in ('active', 'non_renewing')
                      or current_period_end is null or current_period_end <= $10)
+                and not exists (
+                  select 1 from billing_trials trial
+                   where trial.organization_id = $1
+                     and trial.converted_at is null
+                     and ((trial.canceled_at is null and trial.state->>'verificationStatus' = 'pending') or
+                          trial.ends_at > $10 or
+                          (trial.state->>'provisionStatus' = 'attempted' and trial.canceled_at is null) or
+                          (trial.provider_subscription_code is not null and trial.canceled_at is null))
+                )
               returning id`,
           [
             organizationId,
@@ -349,6 +369,7 @@ export class PostgresBillingRepository {
 
     if (
       provider !== "paystack" ||
+      normalizedReference.startsWith("bnx_trial_") ||
       !normalizedReference ||
       normalizedReference.length > 160 ||
       status !== "success" ||
@@ -757,6 +778,26 @@ export class PostgresBillingRepository {
     const current = currentResult.rows[0];
     if (!current) return false;
 
+    // Verification charges and scheduled subscription notifications are never paid activation.
+    if (reference?.startsWith("bnx_trial_")) return false;
+    if (status === "active") {
+      const trial = await client.query(
+        `select id from billing_trials where organization_id = $1
+          and converted_at is null and provider_subscription_code = $2`,
+        [organizationId, providerSubscriptionCode],
+      );
+      if (trial.rowCount && !paidAt) return false;
+      if (trial.rowCount) {
+        const payment = await client.query(
+          `select id from billing_payments where organization_id = $1 and reference = $2
+             and amount_minor = (select amount_minor from organization_billing_subscriptions where organization_id = $1)
+             and currency = (select currency from organization_billing_subscriptions where organization_id = $1)`,
+          [organizationId, reference],
+        );
+        if (!payment.rowCount) return false;
+      }
+    }
+
     // Lifecycle notifications may only change the subscription currently bound to this tenant.
     if (status !== "active" && (!providerSubscriptionCode || providerSubscriptionCode !== current.provider_subscription_code)) {
       return false;
@@ -883,6 +924,144 @@ export class PostgresBillingRepository {
       );
     }
     return true;
+  }
+}
+
+// Session advisory locks serialize requests and recovery across processes. Each
+// save commits independently so a provider timeout cannot erase mutation intent.
+export class PostgresTrialRepository {
+  constructor(pool, { now = () => new Date() } = {}) {
+    this.pool = pool;
+    this.now = now;
+  }
+
+  async withLock({ organizationId, actorUserId = null, owner = true }, work) {
+    if (!organizationId) throw new AuthError("Organization is required.", "TENANT_CONTEXT_REQUIRED");
+    const client = await this.pool.connect();
+    let locked = false;
+    let broken = false;
+    const scopedPool = {
+      async connect() { return { query: client.query.bind(client), release() {} }; },
+    };
+    const scoped = new PostgresTrialRepository(scopedPool, { now: this.now });
+    scoped.billing = new PostgresBillingRepository(scopedPool, { now: this.now });
+    try {
+      const lock = await client.query(
+        "select pg_try_advisory_lock(hashtextextended($1, 0)) as locked",
+        [`billing-trial:${organizationId}`],
+      );
+      locked = lock.rows[0]?.locked === true;
+      if (!locked) throw new AuthError("A billing operation is already running. Please retry.", "BILLING_OPERATION_IN_PROGRESS");
+      if (actorUserId) await scoped.authorize({ organizationId, actorUserId, owner });
+      return await work(scoped);
+    } finally {
+      if (locked) {
+        try {
+          await client.query("select pg_advisory_unlock(hashtextextended($1, 0))", [`billing-trial:${organizationId}`]);
+        } catch { broken = true; }
+      }
+      client.release(broken);
+    }
+  }
+
+  async authorize({ organizationId, actorUserId, owner = false }) {
+    if (!actorUserId) throw new AuthError("An authenticated actor is required.", "ORG_ACCESS_DENIED");
+    return withBillingTenant(this.pool, { organizationId, actorUserId }, async (client) => {
+      const result = await client.query(
+        `select membership.role from organization_memberships membership
+           join organizations org on org.id = membership.organization_id
+           join app_users usr on usr.id = membership.user_id
+          where membership.organization_id = $1 and membership.user_id = $2
+            and membership.status = 'active' and org.disabled_at is null and usr.disabled_at is null`,
+        [organizationId, actorUserId],
+      );
+      const capabilities = ROLE_CAPABILITIES[result.rows[0]?.role];
+      if (!capabilities || (owner && !capabilities.includes(CAPABILITIES.MANAGE_ORGANIZATION))) {
+        throw new AuthError("Organization billing access is required.", "ORG_ACCESS_DENIED");
+      }
+    });
+  }
+
+  async get({ organizationId }) {
+    return withBillingTenant(this.pool, { organizationId }, async (client) => {
+      const result = await client.query(
+        `select id, state, card_verified_at, started_at, ends_at, canceled_at, converted_at,
+                provider_subscription_code from billing_trials where organization_id = $1`,
+        [organizationId],
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return { ...row.state, id: row.id, cardVerifiedAt: row.card_verified_at,
+        startedAt: row.started_at, endsAt: row.ends_at, canceledAt: row.canceled_at,
+        convertedAt: row.converted_at, subscriptionCode: row.provider_subscription_code };
+    });
+  }
+
+  async save({ organizationId, actorUserId = null, trial, eventType }) {
+    return withBillingTenant(this.pool, { organizationId, actorUserId }, async (client) => {
+      const result = await client.query(
+        `insert into billing_trials (id, organization_id, reference, provider_subscription_code,
+          card_verified_at, started_at, ends_at, canceled_at, converted_at, state)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         on conflict (organization_id) do update set
+          provider_subscription_code = excluded.provider_subscription_code,
+          card_verified_at = excluded.card_verified_at, started_at = excluded.started_at,
+          ends_at = excluded.ends_at, canceled_at = excluded.canceled_at,
+          converted_at = excluded.converted_at, state = excluded.state,
+          version = billing_trials.version + 1, updated_at = $11
+         where billing_trials.reference = excluded.reference
+         returning id, version`,
+        [trial.id, organizationId, trial.reference, trial.subscriptionCode ?? null,
+          trial.cardVerifiedAt ?? null, trial.startedAt ?? null, trial.endsAt ?? null,
+          trial.canceledAt ?? null, trial.convertedAt ?? null, trial, this.now()],
+      );
+      if (!result.rowCount) throw new AuthError("A trial already exists.", "BILLING_TRIAL_INELIGIBLE");
+      await client.query(
+        `insert into billing_trial_audit (organization_id, trial_id, actor_user_id, version, event_type, metadata)
+         values ($1,$2,$3,$4,$5,$6)`,
+        [organizationId, trial.id, actorUserId, result.rows[0].version, eventType,
+          { reference: trial.reference, status: trial.status, refundStatus: trial.refundStatus }],
+      );
+    });
+  }
+
+  async hasPaidHistory({ organizationId }) {
+    return withBillingTenant(this.pool, { organizationId }, async (client) => {
+      const result = await client.query(
+        `select 1 from organization_billing_subscriptions where organization_id = $1
+          and (active_at is not null or status in ('active','non_renewing','past_due','pending_checkout')
+               or provider_subscription_code is not null)
+         union all select 1 from billing_payments where organization_id = $1 limit 1`,
+        [organizationId],
+      );
+      return result.rowCount > 0;
+    });
+  }
+
+  async publishSubscription({ organizationId, actorUserId = null, trial }) {
+    return withBillingTenant(this.pool, { organizationId, actorUserId }, async (client) => {
+      const result = await client.query(
+        `update organization_billing_subscriptions set status = 'trialing',
+          provider_customer_code = $2, provider_subscription_code = $3,
+          trial_ends_at = $4, updated_at = $5
+         where organization_id = $1 and active_at is null
+          and status in ('trialing','pending_checkout','canceled')
+          and (provider_subscription_code is null or provider_subscription_code = $3)
+         returning id`,
+        [organizationId, trial.customerCode, trial.subscriptionCode, trial.endsAt, this.now()],
+      );
+      if (!result.rowCount) throw new AuthError("Subscription changed during trial setup.", "BILLING_TRIAL_INELIGIBLE");
+    });
+  }
+
+  async resolve({ reference = null, subscriptionCode = null }) {
+    const result = await this.pool.query("select runtime_paystack_trial_organization($1,$2) as organization_id", [reference, subscriptionCode]);
+    return result.rows[0]?.organization_id ?? null;
+  }
+
+  async pendingOrganizations({ limit = 100 } = {}) {
+    const result = await this.pool.query("select organization_id from runtime_pending_trial_organizations($1)", [limit]);
+    return result.rows.map((row) => row.organization_id);
   }
 }
 

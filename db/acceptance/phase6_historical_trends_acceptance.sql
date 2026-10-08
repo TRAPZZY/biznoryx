@@ -43,6 +43,8 @@ values
   ('44000000-0000-4000-8000-000000000061', '10000000-0000-4000-8000-000000000061', 'org/phase6/raw/january.csv', 'january.csv', 'text/csv', 128, 'phase6-checksum-jan', 'accepted', '00000000-0000-4000-8000-000000000061'),
   ('44000000-0000-4000-8000-000000000062', '10000000-0000-4000-8000-000000000061', 'org/phase6/raw/february.csv', 'february.csv', 'text/csv', 128, 'phase6-checksum-feb', 'accepted', '00000000-0000-4000-8000-000000000061');
 
+set local app.current_organization_id = '10000000-0000-4000-8000-000000000061';
+
 insert into ingestion_runs (id, organization_id, data_source_id, data_stream_id, reporting_period_id, raw_data_object_id, schema_version_id, status, schema_drift, row_count, column_count, created_by_user_id)
 values
   ('45000000-0000-4000-8000-000000000061', '10000000-0000-4000-8000-000000000061', '40000000-0000-4000-8000-000000000061', '41000000-0000-4000-8000-000000000061', '43000000-0000-4000-8000-000000000061', '44000000-0000-4000-8000-000000000061', '42000000-0000-4000-8000-000000000061', 'validated', 'none', 2, 2, '00000000-0000-4000-8000-000000000061'),

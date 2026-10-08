@@ -480,7 +480,7 @@ export function reportSourcesFromUploads(uploads) {
     }
     return { id: upload.id, seriesKey: upload.seriesKey, dataSeries: upload.dataSeries,
       period: upload.period, fileName: upload.fileName, checksum: upload.checksum,
-      confirmedAt: upload.confirmedAt, cube: upload.reportCube };
+      confirmedAt: upload.confirmedAt, dataStatus: upload.dataStatus, cube: upload.reportCube };
   });
 }
 

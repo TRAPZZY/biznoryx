@@ -28,6 +28,17 @@ test("actual row dates produce three periods from one file; calendar and rate co
   assert.ok(result.limitations.some((l) => l.code === "DECLARED_PERIOD_MISMATCH"));
 });
 
+test("manual source stays partial even when its dates reach both ends of the month", () => {
+  const policies = [{ seriesKey: "sales", column: "revenue", version: 1, polarity: "higher", materialityPercent: 5, label: "Revenue" }];
+  const result = report({ metric: "revenue" }, [source(rows, { dataStatus: "partial" })], policies);
+  assert.equal(result.current.value, "300");
+  assert.equal(result.current.partial, true);
+  assert.ok(result.timeline.every((point) => point.partial));
+  assert.equal(result.health, "insufficient_evidence");
+  assert.equal(result.strengths.length, 0);
+  assert.ok(result.limitations.some((entry) => entry.code === "PARTIAL_PERIOD"));
+});
+
 test("dimension contribution reconciles exactly with movement, including new and lost categories", () => {
   const result = report({ metric: "revenue", period: "2025-02", dimension: "channel" });
   assert.equal(result.drivers.reconciled, true);

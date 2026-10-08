@@ -83,6 +83,8 @@ values ('42000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-0000000
 insert into raw_data_objects (id, organization_id, storage_key, original_filename, content_type, byte_size, checksum_sha256, status, created_by_user_id)
 values ('44000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', 'org/phase5/raw/sales.csv', 'sales.csv', 'text/csv', 128, 'phase5-checksum', 'accepted', '00000000-0000-4000-8000-000000000041');
 
+set local app.current_organization_id = '10000000-0000-4000-8000-000000000041';
+
 insert into ingestion_runs (id, organization_id, data_source_id, data_stream_id, reporting_period_id, raw_data_object_id, schema_version_id, status, schema_drift, row_count, column_count, created_by_user_id)
 values ('45000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '40000000-0000-4000-8000-000000000041', '41000000-0000-4000-8000-000000000041', '43000000-0000-4000-8000-000000000041', '44000000-0000-4000-8000-000000000041', '42000000-0000-4000-8000-000000000041', 'validated', 'none', 2, 2, '00000000-0000-4000-8000-000000000041');
 

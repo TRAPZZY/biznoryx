@@ -24,6 +24,7 @@ import {
 import assert from "node:assert/strict";
 
 import pg from "pg";
+import { PostgresBillingRepository } from "../src/database/billing-repository.mjs";
 
 import {
   PostgresIdentityRepository,
@@ -386,6 +387,7 @@ try {
   await emailVerification
     .verify({
       email,
+      newPassword: password,
 
       code:
         deliveredCode,
@@ -488,6 +490,11 @@ try {
       .csrfToken,
   );
 
+  const policy = await client.call("/api/account/policy-acceptance", {
+    method: "POST", body: { termsAccepted: true, privacyAccepted: true, dataAuthorityAccepted: true, guideAcknowledged: true },
+  });
+  assert.equal(policy.status, 200, JSON.stringify(policy.body));
+
   process.stdout.write(
     "Production sign-in passed.\n",
   );
@@ -531,6 +538,15 @@ try {
   assert.ok(
     organizationId,
   );
+
+  // Synthetic paid entitlement for this disposable ingestion acceptance tenant.
+  // No Paystack request or real payment is made by the pipeline fixture.
+  const billing = new PostgresBillingRepository(pool);
+  await billing.ensureSubscription({ organizationId, actorUserId: user.id });
+  const checkout = await billing.createCheckoutSession({ organizationId, actorUserId: user.id,
+    provider: "paystack", reference: `acceptance-paid-${nonce}`, authorizationUrl: "https://checkout.paystack.com/test", accessCode: "synthetic" });
+  await billing.applyWebhookEvent({ organizationId, reference: checkout.reference, eventKey: `acceptance-paid-${nonce}`,
+    eventName: "charge.success", payload: Buffer.from("{}"), action: "subscription_activated", paidAt: new Date() });
 
   /*
    * ==================================================

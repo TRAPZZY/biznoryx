@@ -429,12 +429,14 @@ export class PostgresVerifiedMetricsRepository {
                  rp.period_start,
                  rp.period_end,
                  rp.label as reporting_period_label,
+                 rp.data_status,
 
                  row_number() over (
                    partition by
                      md.id,
                      rp.id
                    order by
+                     ir.created_at desc,
                      mp.created_at desc,
                      mp.id desc
                  ) as point_rank
@@ -454,6 +456,9 @@ export class PostgresVerifiedMetricsRepository {
                join reporting_periods rp
                  on rp.id =
                    mp.reporting_period_id
+
+               join ingestion_runs ir on ir.id = mp.ingestion_run_id
+                 and ir.organization_id = mp.organization_id
 
                where md.organization_id = $1
              )
@@ -482,7 +487,8 @@ export class PostgresVerifiedMetricsRepository {
                reporting_period_id,
                period_start,
                period_end,
-               reporting_period_label
+               reporting_period_label,
+               data_status
 
              from ranked_points
 
@@ -1061,6 +1067,8 @@ function buildSeries(
 
       periodLabel:
         row.reporting_period_label,
+
+      dataStatus: row.data_status ?? "complete",
 
       value:
         normalizeDatabaseNumeric(

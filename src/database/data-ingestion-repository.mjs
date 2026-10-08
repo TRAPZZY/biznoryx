@@ -296,21 +296,43 @@ export class PostgresDataIngestionRepository {
     );
   }
 
-  async registerRawUpload({
+  async registerRawUpload(input) {
+    if (input.manualSubmissionId) throw new AuthError("Manual snapshots require their delivery transaction.", "VALIDATION_FAILED");
+    try {
+      return await this._registerRawUpload(input);
+    } catch (error) {
+      if (error.code === "23514" && error.message.includes("SOURCE_MODE_CONFLICT")) {
+        throw new AuthError("This series/month contains manual entries. Continue entering records or use a separate series.", "SOURCE_MODE_CONFLICT");
+      }
+      throw error;
+    }
+  }
+
+  // Internal transaction seam: manual delivery and ingestion commit together.
+  async registerManualSnapshot({ client, ...input }) {
+    if (!client || !input.manualSubmissionId) throw new TypeError("Manual submission transaction is required.");
+    return this._registerRawUpload(input, client);
+  }
+
+  async _registerRawUpload({
     organizationId,
     actorUserId,
     dataSourceId,
     dataStreamId,
     upload,
     reportingPeriod,
-  }) {
+    manualSubmissionId = null,
+  }, transactionClient = null) {
     validateUpload(upload);
 
     validateReportingPeriod(
       reportingPeriod,
     );
 
-    return withTenantTransaction(
+    const transact = transactionClient
+      ? async (_pool, _context, work) => work(transactionClient)
+      : withTenantTransaction;
+    return transact(
       this.pool,
       {
         organizationId,
@@ -339,6 +361,14 @@ export class PostgresDataIngestionRepository {
 
         const validations =
           validateFile(upload);
+
+        // Both input modes claim the same tenant/stream/month lock before
+        // registration. The database trigger also protects direct inserts.
+        await client.query(
+          `select claim_ingestion_period_source($1, $2, $3, $4)`,
+          [organizationId, dataStreamId, String(reportingPeriod.periodStart).slice(0, 7),
+            manualSubmissionId ? "manual_entry" : "full_file"],
+        );
 
         /*
          * The checksum and storage key now
@@ -370,8 +400,8 @@ export class PostgresDataIngestionRepository {
          */
         const existingObject =
           await client.query(
-            `select
-               id
+            `select id, organization_id, storage_key, original_filename, content_type,
+               byte_size, checksum_sha256, status, created_by_user_id, created_at
              from raw_data_objects
              where organization_id = $1
                and checksum_sha256 = $2
@@ -382,15 +412,14 @@ export class PostgresDataIngestionRepository {
             ],
           );
 
-        if (existingObject.rows[0]) {
+        if (existingObject.rows[0] && (!manualSubmissionId || existingObject.rows[0].status !== "accepted")) {
           throw new AuthError(
             "This file has already been uploaded.",
             "VALIDATION_FAILED",
           );
         }
 
-        const rawObjectId =
-          randomUUID();
+        const rawObjectId = existingObject.rows[0]?.id ?? randomUUID();
 
         const rawObjectStatus =
           validations.some(
@@ -401,8 +430,9 @@ export class PostgresDataIngestionRepository {
             ? "rejected"
             : "accepted";
 
-        const rawObject =
-          await client.query(
+        const rawObject = existingObject.rows[0]
+          ? existingObject
+          : await client.query(
             `insert into raw_data_objects (
                id,
                organization_id,
@@ -637,7 +667,8 @@ export class PostgresDataIngestionRepository {
                schema_drift,
                row_count,
                column_count,
-               created_by_user_id
+               created_by_user_id,
+               manual_submission_id
              )
              values (
                $1,
@@ -651,7 +682,8 @@ export class PostgresDataIngestionRepository {
                $9,
                $10,
                $11,
-               $12
+               $12,
+               $13
              )
              returning
                id,
@@ -683,6 +715,7 @@ export class PostgresDataIngestionRepository {
               upload.rowCount,
               normalizedColumns.length,
               actorUserId,
+              manualSubmissionId,
             ],
           );
 
