@@ -1243,6 +1243,10 @@ function verifyEmail() {
             ${esc(email || "your work email")}.
           </p>
 
+          <p class="input-help">
+            Please check your inbox and spam or junk folder for your verification code.
+          </p>
+
           ${
             pendingVerification?.reviewCode
               ? `
