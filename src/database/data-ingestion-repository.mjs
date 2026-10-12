@@ -362,12 +362,11 @@ export class PostgresDataIngestionRepository {
         const validations =
           validateFile(upload);
 
-        // Both input modes claim the same tenant/stream/month lock before
-        // registration. The database trigger also protects direct inserts.
+        // Serialize schema/source decisions, but reserve an input mode only for
+        // accepted runs. Rejected evidence must not lock out another input mode.
         await client.query(
-          `select claim_ingestion_period_source($1, $2, $3, $4)`,
-          [organizationId, dataStreamId, String(reportingPeriod.periodStart).slice(0, 7),
-            manualSubmissionId ? "manual_entry" : "full_file"],
+          `select pg_advisory_xact_lock(hashtextextended($1 || ':' || $2 || ':' || $3, 0))`,
+          [organizationId, dataStreamId, String(reportingPeriod.periodStart).slice(0, 7)],
         );
 
         /*

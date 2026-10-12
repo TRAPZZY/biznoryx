@@ -3,6 +3,34 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { createReviewApp } from '../src/webapp/review-app.mjs';
 
+test('review authentication quotas remain enforced and isolated between runtimes', async () => {
+  const first = createReviewApp();
+  const second = createReviewApp();
+  const firstUrl = await listen(first.server);
+  const secondUrl = await listen(second.server);
+  const signIn = (url, account) => fetch(`${url}/api/sign-in`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(account)
+  });
+  try {
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const response = await signIn(firstUrl, first.runtime.reviewAccount);
+      assert.equal(response.status, 200);
+      await response.json();
+    }
+    const blocked = await signIn(firstUrl, first.runtime.reviewAccount);
+    assert.equal(blocked.status, 429);
+    assert.equal((await blocked.json()).error, 'RATE_LIMITED');
+    const isolated = await signIn(secondUrl, second.runtime.reviewAccount);
+    assert.equal(isolated.status, 200);
+    await isolated.json();
+  } finally {
+    await close(first.server);
+    await close(second.server);
+  }
+});
+
 test('review app protects dashboard behind an authenticated session', async () => {
   const app = createReviewApp();
   const baseUrl = await listen(app.server);

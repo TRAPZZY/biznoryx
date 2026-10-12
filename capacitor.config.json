@@ -1,0 +1,8 @@
+{
+  "appId": "com.biznoryx.app",
+  "appName": "BIZNORYX",
+  "webDir": "mobile/www",
+  "server": { "androidScheme": "https", "cleartext": false },
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "automatic" }
+}

@@ -10,6 +10,8 @@ import pg from "pg";
 import { PostgresBillingRepository } from "../src/database/billing-repository.mjs";
 import { SevenDayTrialService, trialConfiguration } from "../src/billing/trial-service.mjs";
 import { startTrialMaintenance } from "../src/worker/trial-maintenance.mjs";
+import { PostgresAccountDeletionRepository } from "../src/database/account-deletion-repository.mjs";
+import { AccountDeletionService, startAccountDeletionMaintenance } from "../src/compliance/account-deletion-service.mjs";
 
 import {
   PostgresMetricComparisonRepository,
@@ -155,6 +157,7 @@ const controller =
 let stopping =
   false;
 let stopTrialMaintenance;
+let stopAccountDeletion;
 
 process.on(
   "SIGINT",
@@ -173,6 +176,12 @@ try {
 
   await objectStorage
     .healthCheck();
+
+  const deletionBilling = new PostgresBillingRepository(pool);
+  stopAccountDeletion = startAccountDeletionMaintenance({ service: new AccountDeletionService({
+    repository: new PostgresAccountDeletionRepository(pool), pool, billing: deletionBilling,
+    trials: new SevenDayTrialService({ billingRepository: deletionBilling }), objectStorage, onError: reportWorkerError,
+  }), onError: reportWorkerError });
 
   if (process.env.BIZNORYX_TRIAL_VERIFICATION_AMOUNT_MINOR || process.env.BIZNORYX_BILLING_ENCRYPTION_KEY) {
     trialConfiguration();
@@ -210,6 +219,7 @@ try {
     1;
 } finally {
   await stopTrialMaintenance?.();
+  await stopAccountDeletion?.();
   await pool.end();
 }
 

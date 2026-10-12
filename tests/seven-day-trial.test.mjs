@@ -16,6 +16,24 @@ const start = { organizationId: "org-A", actorUserId: "owner-A", email: "owner@e
 const nowDate = new Date("2026-10-07T12:00:00.000Z");
 const rejected = (code) => (error) => error.code === code;
 
+test("a closed workspace retains only sealed refund recovery and refunds a late verification payment once",async()=>{
+  const f=fixture();await f.service.startCheckout(start);
+  await f.service.cancelTrial(start);
+  const original=f.rows.get("org-A");let recovery;
+  f.repo.saveClosedCheckout=async({encryptedState,organizationId})=>{recovery={encrypted_state:encryptedState,organization_id:organizationId};};
+  f.repo.closedCheckout=async()=>recovery;
+  await f.service.archiveClosedCheckout(f.repo,original);
+  const decoded=decryptTrialAuthorization(recovery.encrypted_state,{key:trialConfiguration(env).key,organizationId:"org-A",reference:original.reference+":closed-refund"});
+  assert.equal(decoded.email,undefined);assert.equal(decoded.authorization,undefined);assert.equal(decoded.emailHash.length,64);
+  f.rows.delete("org-A");f.repo.resolve=async()=>"org-A";
+  f.provider.verify=async()=>({id:61,reference:original.reference,status:"success",amount:original.verificationAmountMinor,currency:original.currency,
+    customer:{id:51,customer_code:"CUS_A",email:start.email},metadata:{organization_id:original.organizationId,actor_user_id:original.actorUserId,trial_id:original.id,billing_purpose:"trial_card_verification"}});
+  const event={event:"charge.success",data:{reference:original.reference}};
+  await f.webhook(event);await f.webhook(event);
+  assert.equal(f.calls.filter(call=>call.createRefund).length,1);
+  assert.equal(f.calls.filter(call=>call.createSubscription).length,0);
+});
+
 function fixture() {
   const rows = new Map();
   const events = [];
@@ -243,6 +261,41 @@ test("ambiguous provider absence never blindly retries provisioning or grants ac
   await assert.rejects(f.service.verifyCheckout({ ...start, reference: checkout.checkout.reference }));
   await assert.rejects(f.service.verifyCheckout({ ...start, reference: checkout.checkout.reference }), rejected("BILLING_RECONCILIATION_REQUIRED"));
   assert.equal(f.rows.get("org-A").startedAt, undefined);
+});
+
+test("fractional-second requests accept whole-second provider timestamps and remain cancellable", async () => {
+  const f = fixture();
+  f.setNow("2026-10-07T12:00:00.500Z");
+  const create = f.provider.createSubscription.bind(f.provider);
+  f.provider.createSubscription = async (body) => ({ ...(await create(body)), createdAt: "2026-10-07T12:00:00Z" });
+  const result = await f.begin();
+  assert.equal(result.trial.startedAt, "2026-10-07T12:00:00.000Z");
+  assert.equal(result.trial.firstBillingDate, "2026-10-14T12:01:01.000Z");
+  await f.service.cancelTrial(start);
+  assert.equal(f.calls.filter((call) => call === "disable").length, 1);
+});
+
+test("an invalid entitlement schedule retains its exact binding and cancels provider billing", async () => {
+  const f = fixture();
+  const create = f.provider.createSubscription.bind(f.provider);
+  f.provider.createSubscription = async (body) => ({ ...(await create(body)), createdAt: "2026-10-07T12:02:00Z" });
+  const checkout = await f.service.startCheckout(start);
+  await assert.rejects(f.service.verifyCheckout({ ...start, reference: checkout.checkout.reference }), rejected("BILLING_RECONCILIATION_REQUIRED"));
+  assert.equal(f.rows.get("org-A").subscriptionCode, "SUB_A");
+  assert.ok(f.rows.get("org-A").canceledAt);
+  assert.equal(f.rows.get("org-A").startedAt, undefined);
+  assert.equal(f.getProviderSubscription().status, "non-renewing");
+});
+
+test("canceling an abandoned checkout allows recovery and refunds a late payment without provisioning", async () => {
+  const f = fixture();
+  const checkout = await f.service.startCheckout(start);
+  assert.equal((await f.service.getTrial(start)).canCancel, true);
+  await f.service.cancelTrial(start);
+  await f.webhook({ event: "charge.success", data: { reference: checkout.checkout.reference } });
+  assert.equal(f.rows.get("org-A").refundStatus, "processed");
+  assert.equal(f.calls.filter((call) => call.createSubscription).length, 0);
+  await f.service.cancelTrial(start);
 });
 
 test("refund lost-response recovery uses provider lookup and never submits a second refund", async () => {

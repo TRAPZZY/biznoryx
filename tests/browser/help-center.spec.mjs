@@ -1,4 +1,4 @@
-﻿import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 test("Help Center searches and filters troubleshooting articles", async ({
   page,

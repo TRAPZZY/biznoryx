@@ -7,6 +7,8 @@ import {
 } from "./evidence-report.js";
 import { mountManualEntry } from "./manual-entry.js";
 import { mountTrialBilling } from "./trial-billing.js";
+import { mountAccountSettings, mountDeletionStatus } from "./account-settings.js";
+import { mountStoreBilling } from "./store-billing.js";
 
 let csrfToken;
 let session;
@@ -18,6 +20,7 @@ let navigationVersion = 0;
 let activeSeriesKey;
 let dataEntryMode = "upload";
 let disposeManualEntry;
+let accountReturnRequested = false;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
@@ -187,6 +190,7 @@ function performanceLineChart(series) {
 }
 
 async function api(path, body) {
+  if (window.biznoryxNative) return window.biznoryxNative.request(path, body);
   const response = await fetch(`/api/${path}`, {
     method: body ? "POST" : "GET",
     credentials: "same-origin",
@@ -258,6 +262,7 @@ function go(path) {
 }
 
 function workspaceEntryPath(shellState) {
+  if (accountReturnRequested) { accountReturnRequested = false; return "/account"; }
   return shellState?.state === "empty" ? "/business" : "/dashboard";
 }
 
@@ -1408,6 +1413,7 @@ function policyOnboarding() {
             ${icon("log-out")}
             Sign out
           </button>
+          <a href="#/account">Account</a>
         </aside>
 
         <main class="policy-gate-main">
@@ -1481,6 +1487,8 @@ function policyOnboarding() {
                     historical comparison, metrics and
                     evidence reports.
                   </p>
+
+                  <p><a href="/privacy.html">Read the full BIZNORYX Privacy Policy</a>.</p>
 
                   <p>
                     Do not upload passwords, authentication
@@ -1948,6 +1956,7 @@ function shell(content, active) {
     ["/billing", "credit-card", "Billing"],
 
     ["/activity", "history", "Activity"],
+    ["/account", "user-round", "Account"],
   ];
 
   mount(`
@@ -2128,7 +2137,7 @@ function shell(content, active) {
                   >
                     ${esc(subscription.status.replaceAll("_", " "))}
                     ·
-                    ${esc(subscription.priceLabel)}
+                    ${esc(window.biznoryxNative ? "Subscription" : subscription.priceLabel)}
                   </span>
                 `
                 : ""
@@ -2287,12 +2296,12 @@ function subscriptionBanner(subscription) {
 
       <div>
         <strong>
-          ${esc(subscription.priceLabel)}
+          ${esc(window.biznoryxNative ? "Subscription" : subscription.priceLabel)}
           BIZNORYX workspace
         </strong>
 
         <p>
-          ${esc(subscription.nextStep)}
+          ${esc(window.biznoryxNative ? "Review your subscription status in Billing." : subscription.nextStep)}
         </p>
       </div>
 
@@ -2808,6 +2817,7 @@ function dataPage() {
       disposeManualEntry = mountManualEntry({
         container: manualPanel,
         api,
+        recoveryScope: `${session?.shell?.user?.id}:${dashboard?.shell?.activeOrganization?.id || session?.shell?.activeOrganization?.id}`,
         onSubmitted: async () => { dashboard = await api("dashboard"); },
       });
     }
@@ -4738,6 +4748,13 @@ function bindReportControls() {
       try {
         const format = button.dataset.reportExport;
 
+        if (window.biznoryxNative) {
+          await window.biznoryxNative.exportReport({ path: "evidence-report?" + new URLSearchParams({ ...reportOptions, format }),
+            filename: "biznoryx-evidence-" + currentReport.current.period + "." + format });
+          if (status) status.textContent = "Report ready to share.";
+          return;
+        }
+
         const response = await fetch(
           "/api/evidence-report?" +
             new URLSearchParams({
@@ -4893,6 +4910,10 @@ function formatBillingPaymentAmount(amountMinor, currency) {
 }
 
 function billingPage() {
+  if (window.biznoryxNative || ["app_store","play_store"].includes(dashboard?.subscription?.provider)) {
+    shell('<div class="section-heading"><h1>Billing</h1></div><div id="store-billing"></div>',"/billing");
+    return mountStoreBilling({container:document.querySelector("#store-billing"),api,subscription:dashboard?.subscription});
+  }
   const paymentHistoryRequest = api("billing/history");
   const subscription = dashboard?.subscription ?? null;
 
@@ -5993,6 +6014,7 @@ async function route() {
 
   try {
     if (path === "/") {
+      if (window.biznoryxNative) return go(session?.authenticated ? "/dashboard" : "/sign-in");
       return landing();
     }
 
@@ -6008,6 +6030,7 @@ async function route() {
         "/data-types",
       ].includes(path)
     ) {
+      if (window.biznoryxNative) return go("/sign-in");
       return publicPage(path);
     }
 
@@ -6023,8 +6046,23 @@ async function route() {
       return auth(path === "/register");
     }
 
+    if (path === "/deletion-status") {
+      mount('<main id="account-panel"></main>');
+      return mountDeletionStatus({container:document.querySelector("#account-panel"),api,receipt:window.biznoryxDeletionReceipt || ""});
+    }
+
     if (!session?.authenticated) {
+      if (path === "/account") accountReturnRequested = true;
       return go("/sign-in");
+    }
+
+    if (path === "/account") {
+      mount('<main class="account-settings"><a href="#/dashboard">Back to workspace</a><h1>Account</h1><div id="account-panel"></div></main>');
+      return await mountAccountSettings({container:document.querySelector("#account-panel"),api,onDeleted:async result=>{
+        window.biznoryxDeletionReceipt = result.receipt;
+        session = null; dashboard = null; csrfToken = null;
+        go("/deletion-status");
+      }});
     }
 
     if (session.shell.state === "policy_required") {
