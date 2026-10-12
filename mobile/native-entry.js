@@ -61,6 +61,7 @@ async function request(path, body) {
     if (generationAtSave !== sessionGeneration) throw new Error("Your session changed while the request was running. Please try again.");
   }
   if (path === "session" && payload.authenticated === false && token === sessionAtRequest) await clearIdentity();
+  if (path === "organizations/switch" && body) sessionGeneration++;
   if (path === "sign-out" || path === "account/deletion" && body) await clearIdentity({clearDrafts:true});
   return payload;
 }
@@ -96,12 +97,22 @@ window.biznoryxNative = {
   },
   async exportReport({path,filename}) {
     if (!token || !/^[a-zA-Z0-9._-]+$/.test(filename) || !path.startsWith("evidence-report?")) throw new Error("Invalid report export.");
+    const generationAtExport = sessionGeneration;
+    const sessionAtExport = token;
+    const assertCurrentSession = () => {
+      if (generationAtExport !== sessionGeneration || sessionAtExport !== token) throw new Error("Your session changed while the export was running. Please try again.");
+    };
     const result = await CapacitorHttp.get({url:config.apiOrigin + "/api/" + path,responseType:"arraybuffer",
-      headers:{"X-Biznoryx-Client":"mobile-v1",Authorization:`Bearer ${token}`},readTimeout:60000});
+      headers:{"X-Biznoryx-Client":"mobile-v1",Authorization:`Bearer ${sessionAtExport}`},readTimeout:60000});
+    assertCurrentSession();
     if (result.status !== 200) throw new Error("Report export failed. Please try again.");
-    const file = await Filesystem.writeFile({path:filename,data:result.data,directory:Directory.Cache});
-    try { await Share.share({title:"BIZNORYX evidence report",files:[file.uri]}); }
-    finally { await Filesystem.deleteFile({path:filename,directory:Directory.Cache}); }
+    const cachePath = crypto.randomUUID() + "-" + filename;
+    const file = await Filesystem.writeFile({path:cachePath,data:result.data,directory:Directory.Cache});
+    try {
+      assertCurrentSession();
+      await Share.share({title:"BIZNORYX evidence report",files:[file.uri]});
+    }
+    finally { await Filesystem.deleteFile({path:cachePath,directory:Directory.Cache}); }
   },
 };
 

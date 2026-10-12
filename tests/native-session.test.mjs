@@ -10,7 +10,7 @@ async function nativeHarness({ token = "a".repeat(43), responses = [] } = {}) {
     Capacitor: { isNativePlatform: () => true, getPlatform: () => "android" },
     CapacitorHttp: { async request(input) { calls.push(input); const next = responses.shift(); return typeof next === "function" ? next(input) : next; } },
     App: { async addListener(name, handler) { listeners.set(name, handler); }, async minimizeApp() {} },
-    Browser: {}, Filesystem: {}, Directory: {}, Share: {}, Purchases: {}, KeychainAccess: {},
+    Browser: {}, Filesystem: {}, Directory: { Cache: "CACHE" }, Share: {}, Purchases: {}, KeychainAccess: {},
     SecureStorage: {
       async setKeyPrefix() {}, async setSynchronize() {}, async setDefaultKeychainAccess() {},
       async get(key) { return records.get(key); }, async set(key, value) { records.set(key, value); },
@@ -34,7 +34,8 @@ async function nativeHarness({ token = "a".repeat(43), responses = [] } = {}) {
   globalThis.document = { body: { classList: { add() {} } }, addEventListener() {}, querySelector() { return {}; } };
   try {
     await import("data:text/javascript;base64," + Buffer.from(bundled.outputFiles[0].text).toString("base64"));
-    return { native: globalThis.window.biznoryxNative, records, calls, listeners, storage: state.SecureStorage };
+    return { native: globalThis.window.biznoryxNative, records, calls, listeners, storage: state.SecureStorage,
+      http: state.CapacitorHttp, filesystem: state.Filesystem, share: state.Share };
   } finally {
     globalThis.window = priorWindow;
     globalThis.document = priorDocument;
@@ -102,4 +103,75 @@ test("native malformed responses fail visibly and invalid cached credentials are
   assert.equal(harness.records.has("session"), false);
   await assert.rejects(harness.native.request("session"), /unreadable response/);
   assert.equal(harness.calls[0].headers.Authorization, undefined);
+});
+
+test("native organization switching rejects responses from the previous organization", async () => {
+  let finishDashboard;
+  const harness = await nativeHarness({ responses: [
+    () => new Promise(resolve => { finishDashboard = resolve; }),
+    { status: 200, data: { organizationId: "org-b" } },
+  ] });
+  const dashboard = harness.native.request("dashboard");
+  await harness.native.request("organizations/switch", { organizationId: "org-b" });
+  finishDashboard({ status: 200, data: { organizationId: "org-a" } });
+  await assert.rejects(dashboard, /session changed/i);
+  assert.equal(harness.records.get("session"), "a".repeat(43));
+});
+
+test("native export cannot write or share a report delivered after sign out", async () => {
+  let finishExport;
+  const harness = await nativeHarness({ responses: [{ status: 200, data: {} }] });
+  let writes = 0;
+  let shares = 0;
+  harness.http.get = () => new Promise(resolve => { finishExport = resolve; });
+  harness.filesystem.writeFile = async () => { writes++; return { uri: "file://report" }; };
+  harness.filesystem.deleteFile = async () => {};
+  harness.share.share = async () => { shares++; };
+  const pending = harness.native.exportReport({ path: "evidence-report?format=pdf", filename: "report.pdf" });
+  await harness.native.request("sign-out", {});
+  finishExport({ status: 200, data: "report-bytes" });
+  await assert.rejects(pending, /session changed/i);
+  assert.equal(writes, 0);
+  assert.equal(shares, 0);
+});
+
+test("native export clears the cached file if organization changes during a write", async () => {
+  let finishWrite;
+  const harness = await nativeHarness({ responses: [{ status: 200, data: { organizationId: "org-b" } }] });
+  let written;
+  let removed;
+  let shares = 0;
+  harness.http.get = async () => ({ status: 200, data: "report-bytes" });
+  harness.filesystem.writeFile = input => { written = input; return new Promise(resolve => { finishWrite = resolve; }); };
+  harness.filesystem.deleteFile = async input => { removed = input; };
+  harness.share.share = async () => { shares++; };
+  const pending = harness.native.exportReport({ path: "evidence-report?format=pdf", filename: "report.pdf" });
+  await new Promise(resolve => setImmediate(resolve));
+  await harness.native.request("organizations/switch", { organizationId: "org-b" });
+  finishWrite({ uri: "file://report" });
+  await assert.rejects(pending, /session changed/i);
+  assert.equal(shares, 0);
+  assert.deepEqual(removed, { path: written.path, directory: "CACHE" });
+});
+
+test("native successful report exports use isolated cache paths and clean up after sharing", async () => {
+  const harness = await nativeHarness();
+  const written = [];
+  const shared = [];
+  const removed = [];
+  harness.http.get = async input => {
+    assert.equal(input.headers.Authorization, "Bearer " + "a".repeat(43));
+    return { status: 200, data: "report-bytes" };
+  };
+  harness.filesystem.writeFile = async input => { written.push(input); return { uri: "file://" + input.path }; };
+  harness.filesystem.deleteFile = async input => { removed.push(input); };
+  harness.share.share = async input => { shared.push(input); };
+  await Promise.all([1, 2].map(() => harness.native.exportReport({ path: "evidence-report?format=pdf", filename: "report.pdf" })));
+  assert.notEqual(written[0].path, written[1].path);
+  for (let index = 0; index < 2; index++) {
+    assert.match(written[index].path, /^[0-9a-f-]{36}-report\.pdf$/);
+    assert.equal(written[index].data, "report-bytes");
+    assert.deepEqual(shared[index].files, ["file://" + written[index].path]);
+    assert.deepEqual(removed[index], { path: written[index].path, directory: "CACHE" });
+  }
 });
