@@ -27,6 +27,15 @@ jobs:
       - run: npm run mobile:android:sync
       - run: chmod +x gradlew && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:bundleRelease --no-daemon
         working-directory: android
+      - name: Inspect compiled debug package metadata
+        run: '"$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging app/build/outputs/apk/debug/app-debug.apk'
+        working-directory: android
+      - name: Inspect compiled debug manifest
+        run: '"$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml'
+        working-directory: android
+      - name: Inspect Android runtime dependency inventory
+        run: ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --no-daemon
+        working-directory: android
       - uses: actions/upload-artifact@v4
         with:
           name: android-check-builds-not-for-play-upload
