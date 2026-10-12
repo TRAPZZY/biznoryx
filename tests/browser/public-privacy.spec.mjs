@@ -1,6 +1,23 @@
 import { test, expect } from "@playwright/test";
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`landing and public-page footers link to privacy at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    for (const path of ["/", "/#/product", "/#/pricing", "/#/security", "/#/solutions", "/#/resources"]) {
+      await page.goto(path);
+      const footer = page.getByRole("contentinfo");
+      const privacy = footer.getByRole("link", { name: "Privacy Policy", exact: true });
+      await expect(privacy).toHaveAttribute("href", "/privacy.html");
+      await privacy.scrollIntoViewIfNeeded();
+      await expect(privacy).toBeInViewport();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      if (path === "/") await page.screenshot({ path: testInfo.outputPath("landing-footer.png") });
+      await privacy.click();
+      await expect(page).toHaveURL(/\/privacy\.html$/);
+      await expect(page.getByRole("heading", { name: "BIZNORYX Privacy Policy", exact: true })).toBeVisible();
+    }
+  });
+
   test(`public privacy resources are readable at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     const errors = [];

@@ -680,6 +680,7 @@ function landing() {
       ${link("/product", "Product")}
       ${link("/pricing", "Pricing")}
       ${link("/security", "Security")}
+      <a href="/privacy.html">Privacy Policy</a>
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
@@ -920,6 +921,7 @@ function publicPage(path) {
         Business performance, with a memory.
       </p>
 
+      <a href="/privacy.html">Privacy Policy</a>
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
