@@ -1846,6 +1846,8 @@ async function routeRequest({ request, response, runtime }) {
 
       content: body.content,
 
+      contentBase64: body.contentBase64,
+
       period: body.period,
 
       dataSeries,

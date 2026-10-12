@@ -4,6 +4,7 @@ import {
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { tablePdf } from "./helpers/pdf-fixtures.mjs";
 
 import {
   deriveCsvMetrics,
@@ -243,6 +244,39 @@ function durableJob({
       "ingestion.verify_storage",
   };
 }
+
+test("PDF durable jobs verify original bytes before metrics and retain retryable failures", async () => {
+  const original = await tablePdf();
+  for (const scenario of ["valid", "corrupt", "foreign-key", "foreign-job"]) {
+    const context = verifiedContext({ content: original });
+    context.rawObject.contentType = "application/pdf";
+    context.rawObject.originalFilename = "sales.pdf";
+    context.rawObject.storageKey = `organizations/org-1/uploads/hash/sales.pdf`;
+    if (scenario === "foreign-key") context.rawObject.storageKey = "organizations/org-2/uploads/hash/sales.pdf";
+    if (scenario === "foreign-job") context.organizationId = "org-2";
+    const body = Buffer.from(original);
+    if (scenario === "corrupt") body[body.length - 1] ^= 1;
+    const repository = new FakeWorkerRepository({ job: durableJob(), context });
+    const metricsRepository = new FakeMetricsRepository();
+    let reads = 0;
+    const worker = new ProductionWorker({ repository, metricsRepository, workerId: "pdf-test-worker", objectStorage: {
+      async getObject() { reads++; return { body }; },
+    } });
+    await worker.runOnce();
+    if (scenario === "valid") {
+      assert.equal(repository.failed.length, 0);
+      assert.equal(repository.completed.length, 1);
+      assert.equal(metricsRepository.calls[0].metrics[0].value, "200");
+      assert.equal(metricsRepository.calls[0].metrics[0].evidence.parser, "pdf-text-table");
+    } else {
+      assert.equal(repository.failed.length, 1);
+      assert.equal(repository.completed.length, 0);
+      assert.equal(metricsRepository.calls.length, 0);
+      if (scenario.startsWith("foreign")) assert.equal(reads, 0);
+    }
+    await worker.stop();
+  }
+});
 
 test(
   "production worker completes only after metrics comparisons and findings succeed",

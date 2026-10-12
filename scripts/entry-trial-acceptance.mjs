@@ -33,7 +33,7 @@ try {
   url.password = adminPassword;
   const adminUrl = url.href;
   url.pathname = `/${database}`;
-  const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", "tests/postgres-manual-entry.test.mjs", "tests/billing-trial-postgres.test.mjs", "tests/account-deletion-postgres.test.mjs", "tests/store-billing-postgres.test.mjs"], {
+  const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", "tests/postgres-manual-entry.test.mjs", "tests/billing-trial-postgres.test.mjs", "tests/account-deletion-postgres.test.mjs", "tests/store-billing-postgres.test.mjs", "tests/postgres-pdf-ingestion.test.mjs"], {
     stdio: "inherit", env: { ...process.env, TEST_DATABASE_URL: url.href, TRIAL_TEST_ADMIN_DATABASE_URL: adminUrl },
   });
   if (result.status !== 0) throw new Error("Entry/trial database acceptance failed.");

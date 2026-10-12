@@ -1,4 +1,5 @@
 import { validateCsvHeaderSizes } from "../ingestion/csv-limits.mjs";
+import { extractPdfTable } from "../ingestion/pdf-ingestion.mjs";
 import {
   createHash,
 } from "node:crypto";
@@ -328,6 +329,9 @@ export class ProductionWorker {
     validateIngestionContext(
       context,
     );
+    if (context.organizationId !== job.organizationId || context.ingestionRunId !== job.ingestionRunId) {
+      throw new WorkerProcessingError("The ingestion context does not match the leased tenant job.", "INGESTION_TENANT_MISMATCH");
+    }
 
     const object =
       await this.objectStorage
@@ -370,19 +374,17 @@ export class ProductionWorker {
         .trim()
         .toLowerCase();
 
-    if (
-      contentType !==
-      "text/csv"
-    ) {
+    if (!["text/csv", "application/pdf"].includes(contentType)) {
       throw new WorkerProcessingError(
-        "Verified metric extraction currently requires CSV raw data.",
+        "Verified metric extraction requires CSV or supported PDF raw data.",
         "METRIC_SOURCE_FORMAT_UNSUPPORTED",
       );
     }
 
     const metrics =
-      deriveCsvMetrics({
+      await deriveSourceMetrics({
         body,
+        contentType,
 
         originalFilename:
           context.rawObject
@@ -509,6 +511,20 @@ export class WorkerProcessingError
     this.code =
       code;
   }
+}
+
+export async function deriveSourceMetrics({ body, contentType = "text/csv", originalFilename }) {
+  if (contentType === "text/csv") return deriveCsvMetrics({ body, originalFilename });
+  if (contentType !== "application/pdf") throw new WorkerProcessingError("Unsupported metric source format.", "METRIC_SOURCE_FORMAT_UNSUPPORTED");
+  const table = await extractPdfTable(normalizeObjectBody(body));
+  const metrics = deriveCsvMetrics({ body: Buffer.from(table.csv, "utf8"), originalFilename });
+  for (const metric of metrics) {
+    metric.evidence = { ...metric.evidence, parser: "pdf-text-table", parserVersion: table.parserVersion,
+      sourceChecksumSha256: createHash("sha256").update(body).digest("hex"),
+      extractedTableChecksumSha256: createHash("sha256").update(table.csv).digest("hex"),
+      pageRanges: table.pageRanges, transformation: "Explicit cells to CSV; repeated page headers excluded; no inferred values." };
+  }
+  return metrics;
 }
 
 export function deriveCsvMetrics({
@@ -810,6 +826,9 @@ function validateIngestionContext(
       "Raw object storage key is missing.",
       "RAW_OBJECT_CONTEXT_INVALID",
     );
+  }
+  if (!context.rawObject.storageKey.startsWith(`organizations/${context.organizationId}/`)) {
+    throw new WorkerProcessingError("The raw object does not belong to the ingestion organization.", "RAW_OBJECT_TENANT_MISMATCH");
   }
 
   if (

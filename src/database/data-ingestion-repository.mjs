@@ -19,12 +19,14 @@ import {
 
 const ALLOWED_EXTENSIONS = new Set([
   "csv",
+  "pdf",
   "json",
   "xlsx",
 ]);
 
 const ALLOWED_CONTENT_TYPES = new Set([
   "text/csv",
+  "application/pdf",
   "application/json",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
