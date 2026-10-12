@@ -11,6 +11,7 @@ let token;
 let purchaseIdentity;
 let purchaseConfigured = false;
 let storageWrites = Promise.resolve();
+let sessionGeneration = 0;
 
 function draftKey(scope) {
   if (!token || !/^[\w-]+:[\w-]+$/.test(scope) || scope.includes("undefined")) throw new Error("Draft recovery is unavailable. Sign in again.");
@@ -23,6 +24,7 @@ function updateStorage(work) {
 }
 
 async function clearIdentity({clearDrafts=false}={}) {
+  sessionGeneration++;
   token = null;
   purchaseIdentity = null;
   await updateStorage(()=>clearDrafts ? SecureStorage.clear() : SecureStorage.remove("session"));
@@ -31,21 +33,34 @@ async function clearIdentity({clearDrafts=false}={}) {
 async function request(path, body) {
   if (!/^[a-z][a-z0-9/?&=%_.+-]*$/i.test(path) || path.includes("..")) throw new Error("Invalid API request.");
   const sessionAtRequest = token;
+  const generationAtRequest = sessionGeneration;
   const response = await CapacitorHttp.request({ url: config.apiOrigin + "/api/" + path,
     method: body === undefined ? "GET" : "POST", responseType: "json", connectTimeout: 15000, readTimeout: 30000,
     headers: { "Content-Type": "application/json", "X-Biznoryx-Client": "mobile-v1", ...(token ? {Authorization:`Bearer ${token}`} : {}) },
     ...(body === undefined ? {} : {data:body}) });
-  const payload = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+  if (generationAtRequest !== sessionGeneration) throw new Error("Your session changed while the request was running. Please try again.");
+  let payload;
+  try { payload = typeof response.data === "string" ? JSON.parse(response.data) : response.data; }
+  catch { throw new Error("The server returned an unreadable response. Please retry."); }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("The server returned an unreadable response. Please retry.");
   if (response.status === 401 && token === sessionAtRequest && ["SESSION_INVALID","USER_DISABLED","MEMBERSHIP_DISABLED"].includes(payload?.error)) await clearIdentity();
   if (response.status < 200 || response.status >= 300) {
     const error = new Error(payload?.message || "Request failed. Please try again.");
     error.status = response.status; error.payload = payload; throw error;
   }
-  if (payload?.sessionToken) {
+  if (Object.hasOwn(payload, "sessionToken")) {
+    if (typeof payload.sessionToken !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(payload.sessionToken)) throw new Error("The server returned an invalid session credential. Please sign in again.");
+    const generationAtSave = ++sessionGeneration;
     token = payload.sessionToken;
-    await SecureStorage.set("session", token);
+    try { await updateStorage(()=>SecureStorage.set("session", payload.sessionToken)); }
+    catch {
+      if (sessionGeneration === generationAtSave) await clearIdentity();
+      throw new Error("Your session could not be saved in protected storage. Please sign in again.");
+    }
     delete payload.sessionToken;
+    if (generationAtSave !== sessionGeneration) throw new Error("Your session changed while the request was running. Please try again.");
   }
+  if (path === "session" && payload.authenticated === false && token === sessionAtRequest) await clearIdentity();
   if (path === "sign-out" || path === "account/deletion" && body) await clearIdentity({clearDrafts:true});
   return payload;
 }
@@ -96,6 +111,7 @@ try {
   await SecureStorage.setSynchronize(false);
   await SecureStorage.setDefaultKeychainAccess(KeychainAccess.whenUnlockedThisDeviceOnly);
   token = await SecureStorage.get("session");
+  if (token && (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))) await clearIdentity();
   document.body.classList.add("native-app");
   await App.addListener("pause",()=>window.dispatchEvent(new Event("biznoryx:pause")));
   await App.addListener("backButton", () => {
