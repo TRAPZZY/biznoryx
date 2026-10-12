@@ -1,0 +1,31 @@
+import { test, expect } from "@playwright/test";
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`public privacy resources are readable at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const errors = [];
+    const requests = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => requests.push(request.url()));
+
+    await page.goto("/privacy.html");
+    await expect(page.getByRole("heading", { name: "BIZNORYX Privacy Policy", exact: true })).toBeVisible();
+    await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute("href", "/privacy.css");
+    expect(await page.locator("body").evaluate((body) => getComputedStyle(body).fontFamily)).toContain("Arial");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("privacy-viewport.png") });
+    await page.getByRole("navigation").getByRole("link", { name: "Retention", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "8. Retention and its limits", exact: true })).toBeInViewport();
+    await page.getByRole("banner").getByRole("link", { name: "Privacy contact" }).click();
+    await expect(page.getByRole("heading", { name: "13. Privacy contact", exact: true })).toBeInViewport();
+
+    await page.getByRole("contentinfo").getByRole("link", { name: "Account deletion requests" }).click();
+    await expect(page).toHaveURL(/\/account-deletion\.html$/);
+    await expect(page.getByRole("heading", { name: "Account deletion requests", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("deletion-viewport.png") });
+    expect(errors).toEqual([]);
+    expect(requests.every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
+    expect(requests.some((url) => new URL(url).pathname.startsWith("/api/"))).toBe(false);
+  });
+}
