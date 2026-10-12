@@ -24,13 +24,28 @@
     "app:production": "node scripts/production-server.mjs",
     "app:postgres": "node --env-file=.env.local scripts/production-server.mjs",
     "build": "node scripts/build-check.mjs",
+    "mobile:build": "node scripts/mobile-build.mjs",
+    "mobile:sync": "npm run mobile:build && cap sync",
+    "mobile:android:sync": "npm run mobile:build && cap sync android",
     "verify": "npm run format && npm run lint && npm run typecheck && npm run migrations:check && npm run security:check && npm test && npm run build"
   },
   "engines": {
     "node": ">=24.0.0"
   },
+  "overrides": {
+    "xcode": { "uuid": "11.1.1" }
+  },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "8.0.1",
     "@aws-sdk/client-s3": "^3.1141.0",
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/browser": "8.0.5",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.4",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/share": "8.0.3",
+    "@revenuecat/purchases-capacitor": "13.7.3",
     "csv-parse": "^7.0.3",
     "lucide": "^1.47.0",
     "pdf-parse": "^2.4.5",
@@ -39,7 +54,9 @@
     "simple-statistics": "7.8.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.3",
     "@playwright/test": "^1.63.0",
+    "esbuild": "0.28.2",
     "prettier": "^3.9.9"
   }
 }

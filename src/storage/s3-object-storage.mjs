@@ -1,5 +1,7 @@
 import {
   DeleteObjectCommand,
+  GetBucketVersioningCommand,
+  ListObjectVersionsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -11,6 +13,25 @@ const MAX_OBJECT_SIZE =
   25 * 1024 * 1024;
 
 export class S3ObjectStorage {
+  async purgeObject({ key }) {
+    key = validateStorageKey(key);
+    const versioning = await this.client.send(new GetBucketVersioningCommand({ Bucket: this.bucket }));
+    if (!versioning.Status) return this.deleteObject({ key });
+    let keyMarker; let versionMarker;
+    do {
+      const page = await this.client.send(new ListObjectVersionsCommand({ Bucket: this.bucket,
+        Prefix: key, KeyMarker: keyMarker, VersionIdMarker: versionMarker }));
+      for (const version of [...(page.Versions ?? []), ...(page.DeleteMarkers ?? [])]) {
+        if (version.Key === key && version.VersionId) {
+          await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: version.VersionId }));
+        }
+      }
+      keyMarker = page.IsTruncated ? page.NextKeyMarker : undefined;
+      versionMarker = page.IsTruncated ? page.NextVersionIdMarker : undefined;
+      if (page.IsTruncated && !keyMarker) throw new ObjectStorageError("Storage version pagination failed.", "OBJECT_STORAGE_ERROR");
+    } while (keyMarker);
+  }
+
   constructor({
     endpoint,
     region = "us-east-1",

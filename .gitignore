@@ -5,3 +5,13 @@ playwright-report/
 .env
 .env.*
 !.env.example
+mobile/www/
+android/.gradle/
+android/**/build/
+android/local.properties
+ios/App/Pods/
+ios/App/build/
+*.keystore
+*.jks
+*.p12
+*.mobileprovision

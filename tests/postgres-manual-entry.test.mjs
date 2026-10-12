@@ -229,6 +229,19 @@ test("PostgreSQL manual entry: runtime grants, durable ledger, worker, retries, 
       assert.equal(modes.rows.length, 1);
     });
 
+    await t.test("a rejected full file does not reserve a month against subsequent manual entry", async () => {
+      const scope = await tenant();
+      await ingestion.upload({ ...scope, fileName: "baseline.csv", dataSeries: "Sales", period: "2026-09",
+        content: "date,product,quantity,revenue\n2026-09-01,A,1,1\n" });
+      const rejectedUpload = await ingestion.upload({ ...scope, fileName: "rejected.csv", dataSeries: "Sales", period: "2026-10",
+        content: "date,product,quantity\n2026-10-01,A,1\n" });
+      assert.equal(rejectedUpload.ingestionRun.status, "rejected");
+      const reservations = await admin.query("select input_mode from manual_entry_period_sources where organization_id = $1 and period = '2026-10'", [scope.organizationId]);
+      assert.equal(reservations.rowCount, 0);
+      const submitted = await submit(scope, await save(scope));
+      assert.equal(submitted.upload.ingestionRun.status, "validated");
+    });
+
     await t.test("tenant ownership, RLS, viewers and disabled actors are enforced on the server", async () => {
       const scope = await tenant();
       const other = await tenant();

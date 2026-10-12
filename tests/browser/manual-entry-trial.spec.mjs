@@ -50,6 +50,11 @@ for (const width of [1440, 390]) {
     await page.getByRole("button", { name: "Review and submit", exact: true }).click();
     await expect(page.getByLabel("Row 1, quantity", { exact: true })).toHaveAttribute("aria-invalid", "true");
     await page.getByLabel("Row 1, quantity", { exact: true }).fill("1");
+    if (width === 390) {
+      await expect(page.locator(".entry-records")).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await page.getByRole("button",{name:"Spreadsheet",exact:true}).click();
+    }
     await expect(page.getByRole("button", { name: "Move date left", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page.locator("#entry-status")).toHaveText("Draft saved");

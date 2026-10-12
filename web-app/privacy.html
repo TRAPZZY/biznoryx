@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BIZNORYX Privacy Policy</title>
+  <link rel="stylesheet" href="/privacy.css">
+</head>
+<body>
+  <header class="policy-header"><span class="wordmark">BIZNORYX</span><a href="#contact">Privacy contact</a></header>
+  <main class="privacy-policy">
+    <h1>BIZNORYX Privacy Policy</h1>
+    <p class="policy-date">Policy version: 12 October 2026</p>
+    <p>This policy describes how BIZNORYX handles information in its business performance service, website and mobile application. It covers account administration, business workspaces, data entry and uploads, historical analysis, evidence reports, support and account deletion. It also explains the differences between account data, an organization's business records and information held by external service providers.</p>
+    <nav class="policy-contents" aria-label="Policy contents"><a href="#workspaces">Business workspaces</a><a href="#information">Information collected</a><a href="#purposes">How information is used</a><a href="#providers">Providers</a><a href="#device">Device storage</a><a href="#retention">Retention</a><a href="#deletion">Deletion</a><a href="#choices">Your choices</a><a href="#contact">Contact</a></nav>
+
+    <section id="workspaces">
+      <h2>1. Accounts and business workspaces</h2>
+      <p>BIZNORYX provides organization-based workspaces. Your account identifies you; your organization controls membership, permissions and the business information submitted to its workspace. An authorized owner may invite members, change their roles and remove access. Information you contribute may remain part of the organization's historical record even after you leave it.</p>
+      <p>The business submitting customer, employee or other third-party information is responsible for its authority to use that information, its own notices and any required permissions. If your information appears in a business's records but you do not have a BIZNORYX account, contact that business first. We can assist with requests concerning information we process for it, subject to verification and the applicable requirements.</p>
+    </section>
+
+    <section id="information">
+      <h2>2. Information collected</h2>
+      <dl class="data-list">
+        <div><dt>Account and authentication information</dt><dd>Your name, email address, password submitted for authentication, account identifier, email verification state, verification and reset challenges, sessions, organization memberships and policy acknowledgements. Passwords are stored as salted password hashes, not plaintext. We use passwords and short-lived codes to verify requests; do not send them in support messages.</dd></div>
+        <div><dt>Organization and business configuration</dt><dd>Workspace name, business profile, reporting currency, goals, KPI definitions, reporting periods, member roles and invitations, and other business settings you provide. We distinguish verified calculations from interpretations and recommendations.</dd></div>
+        <div><dt>Business records you submit</dt><dd>Selected CSV files, their names and processing metadata, and records entered through the data-entry interface. These may include sales, transaction amounts and dates, product or channel labels, and other columns present in your records. Original uploads, accepted records and transformation lineage support validation and historical comparisons. Their contents may include personal or commercially sensitive information if you submit it.</dd></div>
+        <div><dt>Analysis and workspace activity</dt><dd>Validation results, mapping choices, data-source history, calculated metrics, comparisons, findings, supporting evidence, reports, business events, recorded actions and outcomes. Drafts and edits may also be saved so you can continue an unfinished entry. Access and changes may create audit records.</dd></div>
+        <div><dt>Billing information</dt><dd>Subscription provider, plan, status, billing period, transaction and customer references, payment verification and refund records. Website payments use Paystack. Where a website card trial or renewal needs it, the service stores an encrypted reusable provider authorization; it does not store your full card number or card security code. Store subscriptions, if enabled in a release, involve the store and its disclosed verification provider. Account deletion does not itself cancel an independently managed store subscription.</dd></div>
+        <div><dt>Support information</dt><dd>Messages, contact details and any information you voluntarily send through support, including attachments if the support channel offers them. Share only the information necessary to describe a problem. Do not include passwords, access tokens, complete card details or unnecessary customer records.</dd></div>
+        <div><dt>Security and operational information</dt><dd>Authentication attempts, request and job identifiers, audit events, error codes, processing and delivery states, and network metadata used to operate and protect the service. Network addresses may be used by security controls and processed by infrastructure providers. Log contents and expiry depend on the production deployment and its configured logging systems.</dd></div>
+      </dl>
+      <p>Do not upload secrets, government identity documents, medical records, complete payment-card information or other highly sensitive information for which this service has not been specifically configured. Choosing a file authorizes processing of that selected file, not unrelated files on your device.</p>
+    </section>
+
+    <section id="purposes">
+      <h2>3. How information is used</h2>
+      <ul>
+        <li>Create and secure accounts, verify email ownership, authenticate requests, manage invitations and enforce workspace permissions.</li>
+        <li>Receive, validate and store business data; preserve its origin; identify inconsistent submissions; and maintain recurring historical series.</li>
+        <li>Calculate business metrics, compare reporting periods, explain evidence and provide reports, recorded actions and outcomes.</li>
+        <li>Save drafts, support recovery from interrupted work and produce exports you request.</li>
+        <li>Verify subscription access, prevent conflicting billing, process website payment verification and refunds, and handle billing support.</li>
+        <li>Send account verification, password reset, invitation and other necessary service messages.</li>
+        <li>Investigate faults, prevent abuse, enforce tenant isolation, answer support and privacy requests, and execute account and workspace cleanup.</li>
+      </ul>
+      <p>The reviewed analysis pipeline calculates metrics from submitted data using deterministic processing. It does not send business uploads to an external generative-AI model provider. Adding such a provider would require an updated disclosure before that data flow is enabled. Reports do not automatically move funds or make binding financial decisions on your behalf.</p>
+    </section>
+
+    <section id="sharing">
+      <h2>4. Access, sharing and exports</h2>
+      <p>Authorized members can access information allowed by their organization role. Owners control invitations and membership. We use scoped server-side authorization and database controls to separate organizations; a workspace is not a public publication of its records.</p>
+      <p>Service providers process the information necessary for their functions described below. We may also disclose information where required by applicable law or a valid legal process, or where necessary to protect the service and its users. Any material change in operator or data use requires appropriate notice and safeguards.</p>
+      <p>When you export or share a report, the recipient and the application you choose may receive business and personal information included in it. You are responsible for choosing recipients you are authorized to share with. Deleting data from BIZNORYX does not remove copies already downloaded or sent to someone else.</p>
+    </section>
+
+    <section id="providers">
+      <h2>5. Service providers and external pages</h2>
+      <ul>
+        <li><strong>Hosting, database and file storage:</strong> the production deployment uses Northflank and its configured database and private S3-compatible object storage. These systems process account records, business data and operational records required to run the service. The actual storage location and backup configuration are deployment-specific.</li>
+        <li><strong>Resend:</strong> processes recipient email addresses, service-message content and delivery information for account verification, invitations and other account emails.</li>
+        <li><strong>Paystack:</strong> processes website payment and subscription information. Its own payment interfaces handle card details. BIZNORYX receives provider references, payment and subscription states and, where needed for website billing, provider authorization data.</li>
+        <li><strong>3CX live support:</strong> the website's support integration may load third-party resources before you start a conversation. This can expose connection metadata to the support provider. Messages and details you send are processed through 3CX. The native application does not bundle that website chat script; opening a support webpage can still use the webpage's external services.</li>
+        <li><strong>Website presentation resources:</strong> website pages may request fonts or images from external resource providers, including Google Fonts and hosted image services. These requests can disclose network metadata. The native app bundles its primary interface resources locally.</li>
+      </ul>
+      <p>Apple distribution and RevenueCat configuration are deferred from the current Android release preparation. Before store purchasing or a verification provider is activated, the operator must identify the enabled providers and their actual data flows in this policy and the store's disclosures. A provider being supported by source code is not evidence that it is configured in production.</p>
+      <p>Providers may process information in countries different from yours. Their access, locations, retention and transfer safeguards depend on the operator's service agreements and production configuration. Contact us for information about the providers used for your workspace. This policy does not claim a particular certification, hosting region or legal transfer mechanism that has not been verified.</p>
+    </section>
+
+    <section id="device">
+      <h2>6. Cookies, device storage and permissions</h2>
+      <p>The website uses session cookies and request-protection mechanisms for authentication. The native app uses a session credential held in operating-system protected storage instead of treating browser local storage as a secure credential vault. Server sessions can expire or be revoked independently of local storage.</p>
+      <p>Unsubmitted mobile record drafts may be cached in protected storage, scoped to the signed-in user and business. Explicit sign-out and account-deletion flows clear the app's session and local draft recovery records. An expired session may preserve a draft for recovery after signing back in to the same account. Server-side drafts have a separate lifecycle from device caches.</p>
+      <p>CSV import uses the system file picker to select a file. Report sharing writes a temporary file into app cache and attempts to remove it when the share flow returns. An interrupted process can leave a cache file until later cleanup or operating-system cache removal. Copies received by another app are controlled by that app.</p>
+      <p>The reviewed app workflows do not request contacts, SMS, microphone, camera or precise location. The Android configuration disables automatic application backup and cleartext network traffic. Device protection still depends on the operating system, device security and the final installed build. External support pages may have their own browser permission requests; grant only permissions you intend to use.</p>
+    </section>
+
+    <section id="security">
+      <h2>7. Security</h2>
+      <p>Controls include HTTPS connections, salted password hashing, server-side permission checks, organization-scoped database access, restricted private file storage, protected mobile credential storage, encrypted reusable payment authorizations, validation of uploads, and verification and audit records for sensitive operations.</p>
+      <p>We do not represent these controls as a guarantee that a system can never be compromised. Keep your device and account secure, avoid sharing credentials, check workspace membership, and report suspected unauthorized access through the contact mechanism below. Access to production systems and provider credentials must be limited to authorized operators.</p>
+    </section>
+
+    <section id="retention">
+      <h2>8. Retention and its limits</h2>
+      <p>Account and workspace records are kept while needed to operate the account and the organization's historical service, subject to account and workspace deletion. Accepted original records and evidence have an immutable history; editing a later entry does not silently erase the underlying historical record.</p>
+      <p>Session, reset, verification and invitation expiry limits how long a credential can be used. Expiry is not a promise that every associated database or audit record is automatically erased at that exact time.</p>
+      <p>After deletion, limited status receipts, anonymous historical actor references and records needed for security, dispute resolution or payment recovery may remain. A closed website checkout can leave a sealed refund-recovery record so a late verification payment can be refunded. It uses a hashed email binding rather than the original email or reusable card authorization. If store billing is enabled, limited transaction hashes can prevent a purchase from being reassigned to a different business after closure.</p>
+      <p>The current cleanup implementation does not automatically expire every deletion receipt, transaction hash or sealed recovery record. These require an operator-approved retention and cleanup procedure. Infrastructure backups, infrastructure logs, support messages and email-delivery records have separate provider or operator retention settings. Active-system deletion is not a claim that every backup and third-party record has immediately disappeared.</p>
+      <p>No fixed number of backup-retention days is asserted here because the production schedule has not been confirmed for this release. Contact the operator for the actual schedule and applicable exceptions. Restoring backups must preserve prior deletion requests and reapply cleanup before deleted accounts or records are made accessible.</p>
+    </section>
+
+    <section id="deletion">
+      <h2>9. Account deletion and business closure</h2>
+      <p>Request deletion from <strong>Account</strong> in the app or from the public <a href="/account-deletion.html">BIZNORYX account deletion page</a>. The flow verifies your current password and asks for explicit confirmation. If you are the last owner of a business, you must transfer ownership to an eligible member or expressly choose to close that business; deletion is not an implicit authorization to remove someone else's workspace.</p>
+      <p>After an accepted request, account access is revoked immediately. Cleanup is performed by a durable background process. Immediate loss of access is not the same as completed deletion. Payment, provider or file-storage failures can delay cleanup and may require operator assistance. The private deletion reference lets you check whether cleanup is queued, processing, completed or needs attention. Keep it private.</p>
+      <p>Cleanup removes personal account identifiers and credentials. Closed workspaces and their uploaded objects, including accessible storage versions and deletion markers, are removed. Records belonging to a business that remains open stay with that business; an anonymous actor reference preserves their lineage without retaining your account name or email.</p>
+      <p>A limited deletion receipt and processing record remains to verify the request and its outcome. The request's contact email is cleared when cleanup completes. The retention exceptions in section 8 still apply to protected recovery records, provider records, backups and copies exported outside the service.</p>
+      <p>Website subscription and pending-verification cleanup is processed as part of the applicable closure workflow. If an independent store subscription exists, cancel it through the relevant store account as well. Cancellation does not have to be completed before you can request account deletion. If a configured verification provider holds a closed business's customer profile, cleanup requests its deletion and retries provider failures.</p>
+    </section>
+
+    <section id="choices">
+      <h2>10. Your choices and privacy requests</h2>
+      <p>You can choose what business information to submit, manage authorized workspace members, use available exports, sign out and request account deletion. Where applicable law provides access, correction, erasure, portability, restriction, objection or other rights, contact us to make a request. Their scope depends on your location, the information concerned and the organization's responsibilities.</p>
+      <p>We may need to verify your identity and authority before disclosing or changing information. Start with the account email and a description of the request; do not send passwords, verification codes, complete card details or identity documents in an initial support message. Requests about information controlled by another business may need that business's participation.</p>
+    </section>
+
+    <section id="children">
+      <h2>11. Intended use</h2>
+      <p>BIZNORYX is a business-management service for authorized business users, not a child-directed service. Business administrators must not submit children's personal information without the authority and safeguards required for their situation. Contact us if information has been submitted without proper authority.</p>
+    </section>
+
+    <section id="changes">
+      <h2>12. Changes to this policy</h2>
+      <p>The policy version appears at the top of this page. Material changes to data use, providers or account terms require appropriate notice before the changed processing is enabled. Where the account flow requires acknowledgement, a new privacy-policy version is recorded separately from earlier acceptance. Account deletion remains available independently of accepting a new policy.</p>
+    </section>
+
+    <section id="contact">
+      <h2>13. Privacy contact</h2>
+      <p>Use <a href="/help.html#live-support">BIZNORYX support</a> for privacy, access, correction and deletion enquiries. Say that the request concerns privacy, identify the account email or business concerned, and describe the assistance required without sending sensitive credentials. The public <a href="/account-deletion.html">account deletion resource</a> also explains the self-service deletion route.</p>
+    </section>
+  </main>
+  <footer class="policy-footer"><span>BIZNORYX</span><span>Privacy Policy - 12 October 2026</span></footer>
+</body>
+</html>

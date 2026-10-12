@@ -10,7 +10,7 @@ const localMonth = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 };
 
-export function mountManualEntry({ container, api, onSubmitted }) {
+export function mountManualEntry({ container, api, onSubmitted, recoveryScope }) {
   let disposed = false;
   let timer;
   let saveInFlight;
@@ -29,6 +29,7 @@ export function mountManualEntry({ container, api, onSubmitted }) {
   let statusError = false;
   let review = null;
   let retryDispose;
+  let recordView = window.matchMedia("(max-width: 600px)").matches;
 
   const current = () => !disposed && container.isConnected;
   const emptyRow = () => draft.columns.map(() => "");
@@ -49,6 +50,7 @@ export function mountManualEntry({ container, api, onSubmitted }) {
   };
   const dirty = () => {
     changed += 1;
+    window.biznoryxNative?.saveDraftSnapshot(recoveryScope, clone(draft)).catch(error=>report(error.message,true));
     issues = [];
     report("Unsaved changes");
     clearTimeout(timer);
@@ -83,6 +85,8 @@ export function mountManualEntry({ container, api, onSubmitted }) {
         draft.id = result.draft.id;
         draft.version = result.draft.version;
         saved = revision;
+        if (saved === changed) await window.biznoryxNative?.clearDraftSnapshot(recoveryScope);
+        else await window.biznoryxNative?.saveDraftSnapshot(recoveryScope,clone(draft));
         if (current()) {
           report(saved === changed ? "Draft saved" : "Unsaved changes");
           const existing = context.drafts.findIndex((item) => item.id === draft.id);
@@ -112,6 +116,13 @@ export function mountManualEntry({ container, api, onSubmitted }) {
     const position = scroll?.scrollLeft ?? 0;
     const host = container.querySelector("#entry-grid");
     if (!host) return;
+    scroll?.classList.toggle("entry-record-scroll",recordView);
+    if (recordView) {
+      host.innerHTML = `<div class="entry-records">${draft.rows.map((row,index)=>`<fieldset><legend>Record ${index + 1}</legend>${draft.columns.map((column,col)=>{
+        const cellIssues = issues.filter(issue=>issue.row===index+1 && (issue.column===column.name || issue.column===col+1));
+        return `<label>${escape(column.name)}<input data-entry-cell data-row="${index}" data-column="${col}" aria-label="Row ${index + 1}, ${escape(column.name)}" value="${escape(row[col] ?? "")}" maxlength="1000" ${["number","decimal","numeric","integer"].includes(column.type)?'inputmode="decimal"':""} ${cellIssues.length?`aria-invalid="true" aria-describedby="entry-error-${index}-${col}"`:""}>${cellIssues.length?`<small id="entry-error-${index}-${col}" class="entry-cell-error">${escape(cellIssues[0].message)}</small>`:""}</label>`;
+      }).join("")}<button type="button" class="entry-icon-button" data-remove-row="${index}" title="Remove record" aria-label="Remove row ${index + 1}">${icon("trash-2")}</button></fieldset>`).join("")}</div>`;
+    } else {
     host.innerHTML = `<table class="entry-grid" style="min-width:${Math.max(760, draft.columns.length * 180 + 88)}px" aria-label="Business records">
       <thead><tr><th class="entry-row-number" scope="col">#</th>${draft.columns.map((column, index) => `
         <th scope="col"><div class="entry-column-heading"><span>${escape(column.name)}</span>
@@ -125,6 +136,7 @@ export function mountManualEntry({ container, api, onSubmitted }) {
         ${cellIssues.length ? `<small id="entry-error-${index}-${col}" class="entry-cell-error">${escape(cellIssues[0].message)}</small>` : ""}</td>`;
       }).join("")}<td class="entry-row-action"><button type="button" class="entry-icon-button" data-remove-row="${index}" aria-label="Remove row ${index + 1}" title="Remove row">${icon("trash-2")}</button></td></tr>`).join("")}</tbody>
     </table>`;
+    }
     icons();
     if (scroll) scroll.scrollLeft = position;
     if (focusCell) {
@@ -152,6 +164,7 @@ export function mountManualEntry({ container, api, onSubmitted }) {
       ${!draft.columns.some((column) => column.type === "date") ? `<label class="entry-date-field">Entry date<input type="date" id="entry-date" value="${escape(draft.entryDate || "")}" required></label>` : ""}
       ${draft.correctionOf ? '<p class="entry-notice">Correction of a submitted batch. The original records remain in your history.</p>' : ""}
       <div class="entry-toolbar">
+        <div class="entry-toolbar-group" role="group" aria-label="Entry view"><button type="button" class="secondary" data-entry-view="records" aria-pressed="${recordView}">${icon("list")} Records</button><button type="button" class="secondary" data-entry-view="grid" aria-pressed="${!recordView}">${icon("table")} Spreadsheet</button></div>
         <div class="entry-toolbar-group">
           <button type="button" class="secondary" data-add-row>${icon("plus")} Add row</button>
           <button type="button" class="entry-icon-button" data-entry-undo title="Undo" aria-label="Undo">${icon("undo-2")}</button>
@@ -203,6 +216,11 @@ export function mountManualEntry({ container, api, onSubmitted }) {
   }
 
   function bind() {
+    for (const button of container.querySelectorAll("[data-entry-view]")) button.onclick = () => {
+      recordView = button.dataset.entryView === "records";
+      for (const item of container.querySelectorAll("[data-entry-view]")) item.setAttribute("aria-pressed",String(item.dataset.entryView === button.dataset.entryView));
+      renderGrid();
+    };
     const grid = container.querySelector("#entry-grid");
     grid.addEventListener("input", (event) => {
       if (!event.target.matches("[data-entry-cell]")) return;
@@ -365,24 +383,47 @@ export function mountManualEntry({ container, api, onSubmitted }) {
   }
 
   container.innerHTML = '<div class="entry-loading" role="status">Loading data entry...</div>';
-  api("ingestion/manual").then((result) => {
+  const onPause = () => { if (!disposed && changed !== saved) saveDraft().catch(()=>{}); };
+  window.addEventListener("biznoryx:pause", onPause);
+  api("ingestion/manual").then(async (result) => {
     if (!current()) return;
     context = result;
     context.drafts ||= []; context.series ||= [];
     if (result.template?.columns?.length) draft.columns = clone(result.template.columns);
     draft.rows = [emptyRow()];
     render();
+    const snapshot = await window.biznoryxNative?.loadDraftSnapshot(recoveryScope);
+    if (!current() || !snapshot) return;
+    const notice = document.createElement("div"); notice.className = "entry-notice";
+    notice.innerHTML = '<p>Unsaved records were recovered from this device.</p><button type="button" class="secondary" data-recover-draft>Review recovered records</button><button type="button" class="secondary" data-discard-draft>Discard</button>';
+    container.prepend(notice);
+    notice.querySelector("[data-recover-draft]").onclick = async () => {
+      try {
+        if (snapshot.id) {
+          const server = await api(`ingestion/manual?draftId=${encodeURIComponent(snapshot.id)}`);
+          if (server.draft.version !== snapshot.version) throw new Error("This draft changed on another device. Load the saved draft before entering these records again.");
+        }
+        draft = clone(snapshot); changed = 1; saved = 0; status = "Recovered records. Review before submitting.";
+        render();
+      } catch (error) { report(error.message,true); }
+    };
+    notice.querySelector("[data-discard-draft]").onclick = async () => {
+      try { await window.biznoryxNative.clearDraftSnapshot(recoveryScope); notice.remove(); }
+      catch(error) { report(error.message,true); }
+    };
   }).catch((error) => {
     if (!current()) return;
     container.innerHTML = `<div class="entry-loading"><p class="error-text" role="alert">${escape(error.message)}</p><button type="button" class="secondary" id="retry-entry">${icon("rotate-cw")} Retry</button></div>`;
     container.querySelector("#retry-entry").onclick = () => {
       disposed = true;
-      retryDispose = mountManualEntry({ container, api, onSubmitted });
+      window.removeEventListener("biznoryx:pause",onPause);
+      retryDispose = mountManualEntry({ container, api, onSubmitted, recoveryScope });
     };
     icons();
   });
   return () => {
     retryDispose?.();
+    window.removeEventListener("biznoryx:pause",onPause);
     clearTimeout(timer);
     if (!disposed && changed !== saved) saveDraft().catch(() => {});
     disposed = true;
