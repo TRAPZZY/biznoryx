@@ -4351,6 +4351,11 @@ function overview() {
             </div>
           </article>
         </section>
+        <nav class="overview-v2-account-links" aria-label="Account privacy">
+          <a href="/account-deletion.html">
+            ${icon("user-round-x")} Request account deletion
+          </a>
+        </nav>
       </section>
     `,
     "/dashboard",
