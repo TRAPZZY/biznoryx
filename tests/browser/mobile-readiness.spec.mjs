@@ -26,9 +26,10 @@ test("account deletion phone UI supports transfer, errors and a private status r
   await expect(page.getByLabel("Private deletion reference")).toHaveValue("a".repeat(43));
 });
 test("public privacy, terms and deletion resources are reachable",async({page})=>{
-  for (const path of ["/privacy.html","/terms.html","/account-deletion.html"]) {
+  for (const [path, heading] of [["/privacy.html","BIZNORYX Privacy Policy"],["/terms.html","BIZNORYX Terms of Use"],["/account-deletion.html","Account deletion requests"]]) {
     const response=await page.goto(path);expect(response.status()).toBe(200);
-    await expect(page.getByRole("heading",{level:1})).toContainText("BIZNORYX");
+    await expect(page.getByRole("heading",{level:1})).toHaveText(heading);
+    await expect(page.locator("body")).toContainText("BIZNORYX");
   }
 });
 
@@ -39,8 +40,9 @@ test("the public privacy policy is readable without scripts or a login on deskto
     expect(response.status()).toBe(200);
     await expect(page.getByRole("heading",{name:"BIZNORYX Privacy Policy",exact:true})).toBeVisible();
     expect(await page.locator("script").count()).toBe(0);
-    await expect(page.locator("#retention")).toContainText("does not automatically expire");
-    await expect(page.locator("#deletion")).toContainText("not the same as completed deletion");
+    await expect(page.locator("#retention")).toContainText("not automatically deleted");
+    await expect(page.locator("#retention")).toContainText("expiry periods have not been confirmed");
+    await expect(page.locator("#deletion")).toContainText("support-assisted");
     const responseCss=await page.request.get("/privacy.css");
     expect(responseCss.status()).toBe(200);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1)).toBe(true);

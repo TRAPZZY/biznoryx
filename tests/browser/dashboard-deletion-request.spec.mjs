@@ -1,4 +1,4 @@
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect } from "./helpers/review-fixtures.mjs";
 import { createReviewApp } from "../../src/webapp/review-app.mjs";
 
 const test = base.extend({
