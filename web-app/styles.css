@@ -2711,6 +2711,8 @@ td > svg {
 
 .overview-v2-account-links {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
   justify-content: flex-end;
   border-top: 1px solid var(--border);
   padding-top: 8px;

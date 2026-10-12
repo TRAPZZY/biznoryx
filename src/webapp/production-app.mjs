@@ -3528,7 +3528,9 @@ function serveStatic({ request, response, url, publicDir }) {
     return;
   }
 
-  const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+  const pathname = ["/delete-data", "/delete-data/"].includes(url.pathname)
+    ? "/delete-data.html"
+    : url.pathname === "/" ? "/index.html" : url.pathname;
 
   const safePath = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
 
