@@ -17,7 +17,7 @@ section { margin-top: 36px; scroll-margin-top: 24px; }
 .data-list > div { padding: 16px 0; border-bottom: 1px solid #dde4df; }
 dt { font-weight: 700; margin-bottom: 6px; }
 dd { margin: 0; }
-ul { padding-left: 22px; }
+ul, ol { padding-left: 22px; }
 li { margin-bottom: 12px; }
 .policy-footer { border-top: 1px solid #dde4df; font-size: 14px; color: #57645c; }
 @media (max-width: 480px) {

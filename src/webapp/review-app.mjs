@@ -1405,7 +1405,9 @@ function serveStatic(url, response) {
     );
     return;
   }
-  const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+  const pathname = ["/delete-data", "/delete-data/"].includes(url.pathname)
+    ? "/delete-data.html"
+    : url.pathname === "/" ? "/index.html" : url.pathname;
   const safePath = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   const filePath = join(publicDir, safePath);
   if (!filePath.startsWith(publicDir)) {
