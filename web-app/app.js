@@ -681,6 +681,7 @@ function landing() {
       ${link("/pricing", "Pricing")}
       ${link("/security", "Security")}
       <a href="/privacy.html">Privacy Policy</a>
+      <a href="/delete-data">Data deletion</a>
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
@@ -922,6 +923,7 @@ function publicPage(path) {
       </p>
 
       <a href="/privacy.html">Privacy Policy</a>
+      <a href="/delete-data">Data deletion</a>
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
@@ -4352,6 +4354,9 @@ function overview() {
           </article>
         </section>
         <nav class="overview-v2-account-links" aria-label="Account privacy">
+          <a href="/delete-data">
+            ${icon("database")} Request data deletion
+          </a>
           <a href="/account-deletion.html">
             ${icon("user-round-x")} Request account deletion
           </a>

@@ -84,6 +84,23 @@ for (const membershipRole of ["owner", "viewer"]) {
         await expect(page.locator(".overview-v2")).toBeVisible();
         await expect(link).toBeAttached();
         expect(writes).toEqual([]);
+
+        const dataLink = page.locator(".overview-v2").getByRole("link", {
+          name: "Request data deletion", exact: true,
+        });
+        await expect(dataLink).toHaveAttribute("href", "/delete-data");
+        await dataLink.scrollIntoViewIfNeeded();
+        await expect(dataLink).toBeInViewport();
+        await dataLink.click();
+        await expect(page).toHaveURL(/\/delete-data$/);
+        await expect(page.getByRole("heading", {
+          name: "BIZNORYX Data Deletion Requests", exact: true,
+        })).toBeVisible();
+        await expect(page.getByText(/without deleting your account/)).toBeVisible();
+        expect(writes).toEqual([]);
+        await page.goBack();
+        await expect(page.locator(".overview-v2")).toBeVisible();
+        expect(writes).toEqual([]);
       });
     }
   });

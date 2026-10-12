@@ -13,7 +13,7 @@ test("privacy resources are public HTML with working local links and no authenti
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
-    for (const path of ["/privacy.html", "/account-deletion.html"]) {
+    for (const path of ["/privacy.html", "/account-deletion.html", "/delete-data", "/delete-data/", "/delete-data.html"]) {
       const response = await fetch(origin + path);
       assert.equal(response.status, 200, path);
       assert.match(response.headers.get("content-type"), /^text\/html/);
@@ -39,10 +39,30 @@ test("privacy resources are public HTML with working local links and no authenti
       assert.equal(head.status, 200);
       assert.equal(await head.text(), "");
     }
+    for (const method of ["POST", "DELETE"]) {
+      const response = await fetch(origin + "/delete-data", { method });
+      assert.equal(response.status, 405);
+      await response.text();
+    }
+    const missing = await fetch(origin + "/delete-data-not-a-route");
+    assert.equal(missing.status, 404);
+    await missing.text();
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("data-only removal resource distinguishes a request from completed erasure", () => {
+  const html = readFileSync("web-app/delete-data.html", "utf8");
+  assert.match(html, /BIZNORYX Data Deletion Requests/);
+  assert.match(html, /without deleting your account/);
+  assert.match(html, /href="\/help\.html#live-support"/);
+  assert.match(html, /does not submit a request or delete/);
+  assert.match(html, /uploaded datasets/);
+  assert.match(html, /reports and metrics/);
+  assert.match(html, /backup and log expiry periods have not been confirmed/);
+  assert.doesNotMatch(html, /automatically deleted|within \d+ days|instant deletion/);
 });
 
 test("published notice describes current providers and support-assisted deletion, not unreleased mobile cleanup", () => {
