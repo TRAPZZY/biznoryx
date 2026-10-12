@@ -2709,6 +2709,29 @@ td > svg {
   flex-shrink: 0;
 }
 
+.overview-v2-account-links {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.overview-v2-account-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: #b13e3e;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.overview-v2-account-links svg {
+  width: 16px;
+  height: 16px;
+}
+
 .overview-v2-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
