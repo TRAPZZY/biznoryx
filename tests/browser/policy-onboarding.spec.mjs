@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 import { acceptRequiredPolicy } from "./helpers/policy-onboarding.mjs";
 

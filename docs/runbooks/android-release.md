@@ -64,14 +64,21 @@ Submission remains blocked until billing scope, operator/privacy details and ret
 
 ## Fresh Local Verification
 
-- `npm run verify`: exit 0; 373 tests, 357 passed, 16 PostgreSQL-dependent tests skipped. Formatting, lint, JavaScript syntax, migrations, static security checks and web packaging passed. The repository's `typecheck` command checks JavaScript syntax, not semantic TypeScript types.
+- `npm run verify`: exit 0; 374 tests, 358 passed, 16 PostgreSQL-dependent tests skipped. Formatting, lint, JavaScript syntax, migrations, static security checks and web packaging passed. The repository's `typecheck` command checks JavaScript syntax, not semantic TypeScript types.
 - `npm run test:browser`: exit 0; all 36 Chromium journeys passed, including public policy access, no horizontal overflow at 390px/1440px, new privacy acknowledgement, account deletion and existing business workflows. Native contract tests use explicit doubles, not Android hardware.
 - `npm run mobile:android:sync`: exit 0. Bundling and Android project sync passed. The store SDK remains unconfigured and purchasing unavailable; sync is not native compilation.
 - `npm audit`: exit 0; no reported npm advisories. This is not a native SDK or security certification.
-- Fresh local PostgreSQL acceptance could not start because Docker's engine was unavailable. Do not substitute the earlier successful local run for this attempt. The PR's PostgreSQL CI jobs must pass before merge.
+- Fresh local PostgreSQL acceptance initially could not start because Docker's engine was unavailable. After the engine and existing local PostgreSQL container were started, `node --env-file=.env.local scripts/entry-trial-acceptance.mjs` passed all 16 tests with zero skips against disposable databases and restricted runtime roles. The PR's full PostgreSQL CI jobs must also pass before merge.
 - Local policy preview: `http://127.0.0.1:4188/privacy.html`, backed by the existing review runtime. It is not the public production URL.
+- `release:check` and `compliance:check` remain blocked in this shell: production settings were not loaded and accountable release/deployment/privacy approval has not been asserted. Missing local environment values do not establish Northflank's configuration.
 
-No production migration, runtime deployment, store enrollment, purchase or submission was performed by this task. Native compilation is delegated to the draft PR's Android job and must be checked before this branch is called build-ready.
+Android CI run `38251349325` passed on commit `9f0253a`: debug APK, Android test package and unsigned release AAB compiled and the check-build artifact was uploaded. Device tests were compiled, not executed. The initial SDK setup failed because the older action requested Google's retired `tools` package; updated setup and an explicit package list resolved that failure.
+
+The downloaded APK and AAB were inspected as ZIP archives; neither contains `.so` native-library files. This removes ELF shared-library alignment from the current dependency inventory, but does not replace real-device compatibility tests. The release AAB has no JAR signature entries and is not ready for Play upload.
+
+The first remote browser run hit the unchanged review runtime's authentication rate limit because separate tests shared one fast-running backend. Tests now share the existing manual-entry test pattern: each test owns a real review backend and its authentication quota. No production or review rate limit was relaxed. The fresh local full run passed all 36 journeys; a new regression test verifies that attempt 16 is still rate-limited and a separate runtime keeps its own quota. Remote CI must verify the integrated change as well.
+
+No production migration, runtime deployment, store enrollment, purchase or submission was performed by this task. PR: [Android preparation #7](https://github.com/TRAPZZY/biznoryx/pull/7), kept in draft until the gates above are resolved.
 
 ## Official References
 

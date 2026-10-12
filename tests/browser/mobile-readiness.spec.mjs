@@ -1,4 +1,4 @@
-import {test,expect} from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 async function signIn(page) {
   await page.goto("/#/sign-in");
