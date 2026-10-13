@@ -61,10 +61,11 @@
     },
     {
       "id": "data_retention",
-      "status": "implemented",
+      "status": "pending_verification",
       "owner": "data",
       "evidence": [
-        "compliance/security-controls.manifest.json"
+        "docs/runbooks/retention-controls.md",
+        "src/compliance/retention-maintenance.mjs"
       ]
     },
     {
@@ -77,7 +78,7 @@
     },
     {
       "id": "backup_recovery",
-      "status": "implemented",
+      "status": "pending_verification",
       "owner": "operations",
       "evidence": [
         "deploy/production.manifest.json",
@@ -104,13 +105,13 @@
       },
       {
         "name": "account_data",
-        "retention": "account_lifetime_plus_90_days",
+        "retention": "operator_verified_schedule_required",
         "encryptionAtRest": true,
         "encryptionInTransit": true
       },
       {
         "name": "audit_data",
-        "retention": "seven_years",
+        "retention": "operator_verified_schedule_required",
         "encryptionAtRest": true,
         "encryptionInTransit": true
       },
