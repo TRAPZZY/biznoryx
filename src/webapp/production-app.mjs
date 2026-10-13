@@ -550,6 +550,14 @@ async function routeRequest({ request, response, runtime }) {
 
   enforceAllowedOrigin(request, runtime.production);
 
+  if (isMobileTransport(request) && request.method === "POST" && [
+    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/renew",
+    "/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update",
+  ].includes(url.pathname)) {
+    await authenticateRequest({ request, runtime, requireCsrf: true });
+    throw new AuthError("Manage this subscription through Apple or Google.", "VALIDATION_FAILED");
+  }
+
   if (isAuthEndpoint(url.pathname)) {
     enforceAuthRateLimit(request, runtime, url.pathname);
   }
@@ -689,7 +697,7 @@ async function routeRequest({ request, response, runtime }) {
 
     const result = await runtime.identity.createSessionForUser(user);
 
-    response.setHeader("Set-Cookie", result.cookie);
+    if (!isMobileTransport(request)) response.setHeader("Set-Cookie", result.cookie);
 
     const shell = await postgresAppShellState({
       user,
@@ -701,6 +709,8 @@ async function routeRequest({ request, response, runtime }) {
 
     sendJson(response, 200, {
       authenticated: true,
+
+      ...(isMobileTransport(request) ? { sessionToken: result.token } : {}),
 
       csrfToken: result.csrfToken,
 
@@ -760,7 +770,7 @@ async function routeRequest({ request, response, runtime }) {
       throw error;
     }
 
-    response.setHeader("Set-Cookie", result.cookie);
+    if (!isMobileTransport(request)) response.setHeader("Set-Cookie", result.cookie);
 
     const shell = await postgresAppShellState({
       user: result.user,
@@ -772,6 +782,8 @@ async function routeRequest({ request, response, runtime }) {
 
     sendJson(response, 200, {
       authenticated: true,
+
+      ...(isMobileTransport(request) ? { sessionToken: result.token } : {}),
 
       csrfToken: result.csrfToken,
 
@@ -824,7 +836,7 @@ async function routeRequest({ request, response, runtime }) {
           error.code,
         )
       ) {
-        response.setHeader(
+        if (!isMobileTransport(request)) response.setHeader(
           "Set-Cookie",
           clearSessionCookie(runtime.production),
         );
@@ -934,7 +946,7 @@ async function routeRequest({ request, response, runtime }) {
 
     await runtime.identity.revokeSession(context.session.id, context.user.id);
 
-    response.setHeader("Set-Cookie", clearSessionCookie(runtime.production));
+    if (!isMobileTransport(request)) response.setHeader("Set-Cookie", clearSessionCookie(runtime.production));
 
     sendJson(response, 200, {
       signedOut: true,
@@ -2453,7 +2465,7 @@ async function authenticateRequest({
   const context = await runtime.identity.authenticate({
     token,
     csrfToken,
-    requireCsrf,
+    requireCsrf: requireCsrf && !mobileBearerToken(request),
   });
 
   if (requirePolicy && typeof runtime.identity.policyStatus === "function") {
@@ -2484,7 +2496,24 @@ function requireActiveOrganization(context, message) {
 }
 
 function sessionTokenFromRequest(request) {
+  if (request.headers.authorization) {
+    const bearer = mobileBearerToken(request);
+    if (!bearer) throw new AuthError("Session is not active.", "SESSION_INVALID");
+    return bearer;
+  }
+  // Native requests never authenticate through an ambient WebView cookie.
+  if (isMobileTransport(request)) return null;
   return parseCookies(request.headers.cookie ?? "").bnx_session;
+}
+
+function isMobileTransport(request) {
+  return request.headers["x-biznoryx-client"] === "mobile-v1" &&
+    !request.headers.origin && !request.headers["sec-fetch-site"];
+}
+
+function mobileBearerToken(request) {
+  if (!isMobileTransport(request)) return null;
+  return /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(request.headers.authorization ?? ""))?.[1] ?? null;
 }
 
 function applySecurityHeaders(response, production) {
