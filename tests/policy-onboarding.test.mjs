@@ -9,6 +9,15 @@ import {
 } from "../src/auth/core.mjs";
 
 import { appShellState } from "../src/server/app-shell.mjs";
+import { createCurrentPolicyAcceptance, policyStatus } from "../src/compliance/user-policy.mjs";
+
+test("the detailed privacy policy requires fresh acknowledgement without changing other policies", () => {
+  const current = createCurrentPolicyAcceptance("2026-10-12T12:00:00.000Z");
+  assert.equal(current.privacyVersion, "2026-10-12");
+  assert.equal(current.termsVersion, "2026-10-03");
+  assert.equal(policyStatus(current).required, false);
+  assert.equal(policyStatus({...current, privacyVersion:"2026-10-03"}).required, true);
+});
 
 test("policy acceptance gates a verified account and records immutable audit evidence", () => {
   const store = createEmptyStore();

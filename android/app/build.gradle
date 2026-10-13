@@ -1,0 +1,95 @@
+apply plugin: 'com.android.application'
+
+def uploadSigning = [
+    path: System.getenv('ANDROID_UPLOAD_KEYSTORE_PATH'),
+    storePassword: System.getenv('ANDROID_UPLOAD_STORE_PASSWORD'),
+    alias: System.getenv('ANDROID_UPLOAD_KEY_ALIAS'),
+    keyPassword: System.getenv('ANDROID_UPLOAD_KEY_PASSWORD')
+]
+def hasUploadSigning = uploadSigning.values().every { it != null && !it.isBlank() }
+if (uploadSigning.values().any { it != null && !it.isBlank() } && !hasUploadSigning) {
+    throw new GradleException('All four ANDROID_UPLOAD_* signing settings must be provided together.')
+}
+if (hasUploadSigning && (!new File(uploadSigning.path).isAbsolute() || !file(uploadSigning.path).isFile())) {
+    throw new GradleException('The configured Android upload keystore does not exist.')
+}
+
+android {
+    namespace = "com.biznoryx.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.biznoryx.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (hasUploadSigning) {
+            upload {
+                storeFile file(uploadSigning.path)
+                storePassword uploadSigning.storePassword
+                keyAlias uploadSigning.alias
+                keyPassword uploadSigning.keyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (hasUploadSigning) signingConfig signingConfigs.upload
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+tasks.register('verifyUploadSigning') {
+    doLast {
+        if (!hasUploadSigning) {
+            throw new GradleException('Upload signing is not configured; this bundle is not ready for Google Play.')
+        }
+    }
+}
+tasks.register('bundleSignedRelease') {
+    dependsOn 'verifyUploadSigning', 'bundleRelease'
+}
+tasks.configureEach {
+    if (name == 'preReleaseBuild' && gradle.startParameter.taskNames.any { it.endsWith('bundleSignedRelease') }) {
+        dependsOn 'verifyUploadSigning'
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

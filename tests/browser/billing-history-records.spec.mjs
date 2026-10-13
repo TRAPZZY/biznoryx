@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 test("billing history renders verified payment records", async ({ page }) => {
   await page.route("**/api/billing/history", (route) =>

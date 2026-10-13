@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const files = listFiles(process.cwd()).filter((file) => /\.(mjs|json|md|sql)$/.test(file));
+const files = listFiles(process.cwd()).filter((file) => /\.(mjs|json|md|sql)$/.test(file) &&
+  !/[\\/](?:android[\\/]app[\\/]src[\\/]main[\\/]assets|ios[\\/]App[\\/]App)[\\/]capacitor\.(?:config|plugins)\.json$/.test(file));
 const offenders = files.filter((file) => /\t|[ \t]$/m.test(readFileSync(file, 'utf8')));
 if (offenders.length > 0) {
   console.error(`Formatting check failed:\n${offenders.join('\n')}`);

@@ -1,8 +1,8 @@
-export const POLICY_EFFECTIVE_DATE = "2026-10-03";
+export const POLICY_EFFECTIVE_DATE = "2026-10-12";
 
 export const CURRENT_POLICY_VERSIONS = Object.freeze({
   termsVersion: "2026-10-03",
-  privacyVersion: "2026-10-03",
+  privacyVersion: "2026-10-12",
   dataUseVersion: "2026-10-03",
   guideVersion: "2026-10-03",
 });

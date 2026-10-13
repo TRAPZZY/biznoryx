@@ -64,6 +64,8 @@ import { ProductionIngestionService } from "../ingestion/production-ingestion-se
 import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
 import { ManualEntryService } from "../ingestion/manual-entry.mjs";
 import { SevenDayTrialService } from "../billing/trial-service.mjs";
+import { StoreBillingService } from "../billing/store-service.mjs";
+import { PostgresAccountDeletionRepository } from "../database/account-deletion-repository.mjs";
 
 import {
   ObjectStorageError,
@@ -139,6 +141,7 @@ export function createProductionApp({
   ingestionService,
   manualEntryService,
   trialService,
+  accountDeletionRepository,
   paystackFetch = fetch,
   healthChecks,
   publicDir = join(process.cwd(), "web-app"),
@@ -208,6 +211,7 @@ export function createProductionApp({
   const activity =
     activityRepository ?? (pool ? new PostgresActivityRepository(pool) : null);
   const storage = objectStorage ?? objectStorageFromEnvironment();
+  if (pool && billing) billing.store = new StoreBillingService({pool,billing});
 
   const ingestion =
     ingestionService ??
@@ -290,6 +294,7 @@ export function createProductionApp({
       ? new ManualEntryService({ repository: new PostgresManualEntryRepository(pool), objectStorage: storage }) : null),
     trials: trialService ?? (billing?.trials
       ? new SevenDayTrialService({ billingRepository: billing, fetchImpl: paystackFetch }) : null),
+    accountDeletion: accountDeletionRepository ?? (pool ? new PostgresAccountDeletionRepository(pool) : null),
 
     paystackFetch,
 
@@ -550,6 +555,54 @@ async function routeRequest({ request, response, runtime }) {
 
   enforceAllowedOrigin(request, runtime.production);
 
+  if (isMobileTransport(request) && request.method === "POST" && ["/api/billing/checkout","/api/billing/verify","/api/billing/cancel","/api/billing/renew",
+    "/api/billing/trial/checkout","/api/billing/trial/verify","/api/billing/trial/cancel","/api/billing/trial/payment-update"].includes(url.pathname)) {
+    await authenticateRequest({request,runtime,requireCsrf:true});
+    throw new AuthError("Manage this subscription through Apple or Google.","VALIDATION_FAILED");
+  }
+
+  if (["/api/billing/store/context","/api/billing/store/sync"].includes(url.pathname)) {
+    const sync = url.pathname.endsWith("/sync");
+    if (request.method !== (sync ? "POST" : "GET")) throw new AuthError("Unsupported request.","VALIDATION_FAILED");
+    const {context} = await authenticateRequest({request,runtime,requireCsrf:sync});
+    const organizationId = requireActiveOrganization(context,"Select a business before managing billing.");
+    if (!runtime.billing?.store) throw new AuthError("Store subscriptions are unavailable.","SERVICE_UNAVAILABLE");
+    const input = {organizationId,actorUserId:context.user.id};
+    enforceAuthRateLimit(request,runtime,url.pathname,context.user.id);
+    if (sync) {
+      await readJson(request);
+      await runtime.billing.store.sync(input);
+      sendJson(response,200,{subscription:publicSubscription(await runtime.billing.ensureSubscription({...input,skipStoreRefresh:true}))});
+    } else {
+      const result = await runtime.billing.store.context(input);
+      sendJson(response,200,{...result,subscription:publicSubscription(result.subscription)});
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/account/deletion/status" && request.method === "POST") {
+    enforceAuthRateLimit(request, runtime, url.pathname);
+    const body = await readJson(request);
+    if (!runtime.accountDeletion) throw new AuthError("Account controls are unavailable.", "SERVICE_UNAVAILABLE");
+    sendJson(response, 200, await runtime.accountDeletion.status(body.receipt));
+    return;
+  }
+
+  if (url.pathname === "/api/account/deletion" && ["GET", "POST"].includes(request.method)) {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: request.method === "POST", requirePolicy: false });
+    if (!runtime.accountDeletion) throw new AuthError("Account controls are unavailable.", "SERVICE_UNAVAILABLE");
+    if (request.method === "GET") {
+      sendJson(response, 200, await runtime.accountDeletion.context(context.user.id));
+    } else {
+      enforceAuthRateLimit(request, runtime, url.pathname, context.user.id);
+      const body = await readJson(request);
+      const result = await runtime.accountDeletion.request({ ...body, userId: context.user.id });
+      response.setHeader("Set-Cookie", clearSessionCookie(runtime.production));
+      sendJson(response, 202, result);
+    }
+    return;
+  }
+
   if (isAuthEndpoint(url.pathname)) {
     enforceAuthRateLimit(request, runtime, url.pathname);
   }
@@ -689,7 +742,7 @@ async function routeRequest({ request, response, runtime }) {
 
     const result = await runtime.identity.createSessionForUser(user);
 
-    response.setHeader("Set-Cookie", result.cookie);
+    if (!isMobileTransport(request)) response.setHeader("Set-Cookie", result.cookie);
 
     const shell = await postgresAppShellState({
       user,
@@ -701,6 +754,7 @@ async function routeRequest({ request, response, runtime }) {
 
     sendJson(response, 200, {
       authenticated: true,
+      ...(isMobileTransport(request) ? { sessionToken: result.token } : {}),
 
       csrfToken: result.csrfToken,
 
@@ -760,7 +814,7 @@ async function routeRequest({ request, response, runtime }) {
       throw error;
     }
 
-    response.setHeader("Set-Cookie", result.cookie);
+    if (!isMobileTransport(request)) response.setHeader("Set-Cookie", result.cookie);
 
     const shell = await postgresAppShellState({
       user: result.user,
@@ -772,6 +826,7 @@ async function routeRequest({ request, response, runtime }) {
 
     sendJson(response, 200, {
       authenticated: true,
+      ...(isMobileTransport(request) ? { sessionToken: result.token } : {}),
 
       csrfToken: result.csrfToken,
 
@@ -1227,6 +1282,7 @@ async function routeRequest({ request, response, runtime }) {
     });
 
     if (subscription.status === "non_renewing") {
+      requireWebsiteBilling(subscription);
       sendJson(response, 200, {
         subscription: publicSubscription(subscription),
       });
@@ -1241,6 +1297,7 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    requireWebsiteBilling(subscription);
     let subscriptionCode = subscription.providerSubscriptionCode;
 
     let emailToken = subscription.providerEmailToken;
@@ -1331,6 +1388,7 @@ async function routeRequest({ request, response, runtime }) {
     });
 
     if (subscription.status === "active") {
+      requireWebsiteBilling(subscription);
       sendJson(response, 200, {
         subscription: publicSubscription(subscription),
       });
@@ -1345,6 +1403,7 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    requireWebsiteBilling(subscription);
     let subscriptionCode = subscription.providerSubscriptionCode;
 
     let emailToken = subscription.providerEmailToken;
@@ -1504,6 +1563,7 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
+    requireWebsiteBilling(currentSubscription);
     if (runtime.trials) {
       const trial = await runtime.trials.getTrial({ organizationId, actorUserId: context.user.id });
       if (trial?.startedAt && !trial.canceledAt && !["converted", "active"].includes(trial.status)) {
@@ -1785,6 +1845,8 @@ async function routeRequest({ request, response, runtime }) {
       fileName: body.fileName,
 
       content: body.content,
+
+      contentBase64: body.contentBase64,
 
       period: body.period,
 
@@ -2453,7 +2515,7 @@ async function authenticateRequest({
   const context = await runtime.identity.authenticate({
     token,
     csrfToken,
-    requireCsrf,
+    requireCsrf: requireCsrf && !mobileBearerToken(request),
   });
 
   if (requirePolicy && typeof runtime.identity.policyStatus === "function") {
@@ -2484,7 +2546,22 @@ function requireActiveOrganization(context, message) {
 }
 
 function sessionTokenFromRequest(request) {
+  if (request.headers.authorization) {
+    const bearer = mobileBearerToken(request);
+    if (!bearer) throw new AuthError("Session is not active.", "SESSION_INVALID");
+    return bearer;
+  }
   return parseCookies(request.headers.cookie ?? "").bnx_session;
+}
+
+function isMobileTransport(request) {
+  return request.headers["x-biznoryx-client"] === "mobile-v1" &&
+    !request.headers.origin && !request.headers["sec-fetch-site"];
+}
+
+function mobileBearerToken(request) {
+  if (!isMobileTransport(request)) return null;
+  return /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(request.headers.authorization ?? ""))?.[1] ?? null;
 }
 
 function applySecurityHeaders(response, production) {
@@ -2666,6 +2743,10 @@ function isProductionPaystackConfigured(plan = monthlyPlanFromEnv()) {
   );
 }
 
+function requireWebsiteBilling(subscription) {
+  if (["app_store","play_store"].includes(subscription?.provider)) throw new AuthError("Manage this subscription through Apple or Google.","VALIDATION_FAILED");
+}
+
 function publicSubscription(subscription) {
   if (!subscription) {
     return null;
@@ -2688,11 +2769,11 @@ function publicSubscription(subscription) {
 
     planName: subscription.planName,
 
-    priceLabel: `${price}/mo`,
+    priceLabel: ["app_store","play_store"].includes(subscription.provider) ? "Managed by app store" : `${price}/mo`,
 
-    currency: subscription.currency,
+    currency: ["app_store","play_store"].includes(subscription.provider) ? null : subscription.currency,
 
-    amountMinor: subscription.amountMinor,
+    amountMinor: ["app_store","play_store"].includes(subscription.provider) ? null : subscription.amountMinor,
 
     interval: subscription.interval,
 
@@ -2949,12 +3030,14 @@ async function verifyAndActivateBillingCheckout({
   });
 
   validateVerifiedPaystackPayment({
+    // A retired website checkout cannot replace a store subscription.
     verified,
     reference,
     organizationId,
 
     subscription: currentSubscription,
   });
+  requireWebsiteBilling(currentSubscription);
 
   await runtime.billing.recordPayment({
     organizationId,

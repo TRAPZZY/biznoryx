@@ -7,6 +7,8 @@ import {
 } from "./evidence-report.js";
 import { mountManualEntry } from "./manual-entry.js";
 import { mountTrialBilling } from "./trial-billing.js";
+import { mountAccountSettings, mountDeletionStatus } from "./account-settings.js";
+import { mountStoreBilling } from "./store-billing.js";
 
 let csrfToken;
 let session;
@@ -18,6 +20,7 @@ let navigationVersion = 0;
 let activeSeriesKey;
 let dataEntryMode = "upload";
 let disposeManualEntry;
+let accountReturnRequested = false;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
@@ -187,6 +190,7 @@ function performanceLineChart(series) {
 }
 
 async function api(path, body) {
+  if (window.biznoryxNative) return window.biznoryxNative.request(path, body);
   const response = await fetch(`/api/${path}`, {
     method: body ? "POST" : "GET",
     credentials: "same-origin",
@@ -258,6 +262,7 @@ function go(path) {
 }
 
 function workspaceEntryPath(shellState) {
+  if (accountReturnRequested) { accountReturnRequested = false; return "/account"; }
   return shellState?.state === "empty" ? "/business" : "/dashboard";
 }
 
@@ -1412,6 +1417,7 @@ function policyOnboarding() {
             ${icon("log-out")}
             Sign out
           </button>
+          <a href="#/account">Account</a>
         </aside>
 
         <main class="policy-gate-main">
@@ -1485,6 +1491,8 @@ function policyOnboarding() {
                     historical comparison, metrics and
                     evidence reports.
                   </p>
+
+                  <p><a href="/privacy.html">Read the full BIZNORYX Privacy Policy</a>.</p>
 
                   <p>
                     Do not upload passwords, authentication
@@ -1952,6 +1960,7 @@ function shell(content, active) {
     ["/billing", "credit-card", "Billing"],
 
     ["/activity", "history", "Activity"],
+    ["/account", "user-round", "Account"],
   ];
 
   mount(`
@@ -2132,7 +2141,7 @@ function shell(content, active) {
                   >
                     ${esc(subscription.status.replaceAll("_", " "))}
                     ·
-                    ${esc(subscription.priceLabel)}
+                    ${esc(window.biznoryxNative ? "Subscription" : subscription.priceLabel)}
                   </span>
                 `
                 : ""
@@ -2291,12 +2300,12 @@ function subscriptionBanner(subscription) {
 
       <div>
         <strong>
-          ${esc(subscription.priceLabel)}
+          ${esc(window.biznoryxNative ? "Subscription" : subscription.priceLabel)}
           BIZNORYX workspace
         </strong>
 
         <p>
-          ${esc(subscription.nextStep)}
+          ${esc(window.biznoryxNative ? "Review your subscription status in Billing." : subscription.nextStep)}
         </p>
       </div>
 
@@ -2556,14 +2565,13 @@ function dataPage() {
             </span>
 
             <small>
-              CSV, TSV, JSON, TXT, PDF, XLSX
-              &middot; up to 25 MB each
+              CSV up to 25 MiB &middot; PDF up to 8 MiB
             </small>
 
             <input
               type="file"
               name="file"
-              accept=".csv,.tsv,.json,.txt,.pdf,.xlsx,.xls,text/csv,application/json,application/pdf,text/plain"
+              accept=".csv,.pdf,text/csv,application/pdf"
               multiple
               required
             >
@@ -2630,11 +2638,8 @@ function dataPage() {
 
           <p class="input-help">
             Use the same data series and column layout for
-            recurring periods. CSV, TSV, JSON, TXT and
-            text-based PDF statements can be analyzed now.
-            Excel files are accepted for intake review and
-            should be exported as CSV until the audited
-            spreadsheet parser is connected.
+            recurring periods. Use CSV or supported text-table PDFs.
+            Export spreadsheets, other formats and scanned reports as CSV.
           </p>
 
           <button
@@ -2812,6 +2817,7 @@ function dataPage() {
       disposeManualEntry = mountManualEntry({
         container: manualPanel,
         api,
+        recoveryScope: `${session?.shell?.user?.id}:${dashboard?.shell?.activeOrganization?.id || session?.shell?.activeOrganization?.id}`,
         onSubmitted: async () => { dashboard = await api("dashboard"); },
       });
     }
@@ -2884,8 +2890,16 @@ function dataPage() {
       throw new Error("Choose at least one business file.");
     }
 
+    if (files.some((file) => !/\.(csv|pdf)$/i.test(file.name))) {
+      throw new Error("Choose CSV or supported text-table PDF files. Export other formats as CSV.");
+    }
+
+    if (files.some((file) => /\.pdf$/i.test(file.name) && file.size > 8 * 1024 * 1024)) {
+      throw new Error("Choose PDF files no larger than 8 MiB each.");
+    }
+
     if (files.some((file) => file.size > 25 * 1024 * 1024)) {
-      throw new Error("Choose files smaller than 25 MB each.");
+      throw new Error("Choose CSV files no larger than 25 MiB each.");
     }
 
     const result = await api("ingestion/upload", {
@@ -4750,6 +4764,13 @@ function bindReportControls() {
       try {
         const format = button.dataset.reportExport;
 
+        if (window.biznoryxNative) {
+          await window.biznoryxNative.exportReport({ path: "evidence-report?" + new URLSearchParams({ ...reportOptions, format }),
+            filename: "biznoryx-evidence-" + currentReport.current.period + "." + format });
+          if (status) status.textContent = "Report ready to share.";
+          return;
+        }
+
         const response = await fetch(
           "/api/evidence-report?" +
             new URLSearchParams({
@@ -4905,6 +4926,10 @@ function formatBillingPaymentAmount(amountMinor, currency) {
 }
 
 function billingPage() {
+  if (window.biznoryxNative || ["app_store","play_store"].includes(dashboard?.subscription?.provider)) {
+    shell('<div class="section-heading"><h1>Billing</h1></div><div id="store-billing"></div>',"/billing");
+    return mountStoreBilling({container:document.querySelector("#store-billing"),api,subscription:dashboard?.subscription});
+  }
   const paymentHistoryRequest = api("billing/history");
   const subscription = dashboard?.subscription ?? null;
 
@@ -6005,6 +6030,7 @@ async function route() {
 
   try {
     if (path === "/") {
+      if (window.biznoryxNative) return go(session?.authenticated ? "/dashboard" : "/sign-in");
       return landing();
     }
 
@@ -6020,6 +6046,7 @@ async function route() {
         "/data-types",
       ].includes(path)
     ) {
+      if (window.biznoryxNative) return go("/sign-in");
       return publicPage(path);
     }
 
@@ -6035,8 +6062,23 @@ async function route() {
       return auth(path === "/register");
     }
 
+    if (path === "/deletion-status") {
+      mount('<main id="account-panel"></main>');
+      return mountDeletionStatus({container:document.querySelector("#account-panel"),api,receipt:window.biznoryxDeletionReceipt || ""});
+    }
+
     if (!session?.authenticated) {
+      if (path === "/account") accountReturnRequested = true;
       return go("/sign-in");
+    }
+
+    if (path === "/account") {
+      mount('<main class="account-settings"><a href="#/dashboard">Back to workspace</a><h1>Account</h1><div id="account-panel"></div></main>');
+      return await mountAccountSettings({container:document.querySelector("#account-panel"),api,onDeleted:async result=>{
+        window.biznoryxDeletionReceipt = result.receipt;
+        session = null; dashboard = null; csrfToken = null;
+        go("/deletion-status");
+      }});
     }
 
     if (session.shell.state === "policy_required") {

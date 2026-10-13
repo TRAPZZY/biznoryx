@@ -67,8 +67,7 @@ export function publicTrial(trial, { configured, eligible, actorUserId, verifica
     convertedAt: iso(trial?.convertedAt),
     providerProvisioned: Boolean(trial?.subscriptionCode && trial.provisionStatus === "confirmed"),
     paymentUpdateAvailable: Boolean(trial?.paymentUpdateRequired && trial?.subscriptionCode && !trial?.canceledAt),
-    canCancel: Boolean(trial && !trial.convertedAt && !trial.canceledAt &&
-      (trial.subscriptionCode || trial.provisionStatus === "attempted")),
+    canCancel: Boolean(trial && !trial.convertedAt && !trial.canceledAt),
     verificationAmountMinor: trial?.verificationAmountMinor ?? verificationAmountMinor ?? null,
     currency: trial?.currency ?? currency,
     verificationCharge: { status: trial?.verificationStatus ?? "not_started", reference: trial?.reference ?? null },
@@ -192,7 +191,8 @@ export class SevenDayTrialService {
         Number(transaction.amount) !== trial.verificationAmountMinor || transaction.currency !== trial.currency ||
         meta.organization_id !== trial.organizationId || meta.actor_user_id !== trial.actorUserId ||
         meta.trial_id !== trial.id || meta.billing_purpose !== "trial_card_verification" ||
-        String(transaction.customer?.email ?? "").toLowerCase() !== trial.email ||
+        (trial.emailHash ? hash(String(transaction.customer?.email ?? "").toLowerCase()) !== trial.emailHash :
+          String(transaction.customer?.email ?? "").toLowerCase() !== trial.email) ||
         !transaction.customer?.customer_code || !Number.isSafeInteger(transaction.customer.id) ||
         !Number.isSafeInteger(transaction.id)) fail("Verification transaction does not match this trial.", "BILLING_BINDING_MISMATCH");
     if (trial.customerCode && trial.customerCode !== transaction.customer.customer_code) fail("Customer changed during trial setup.", "BILLING_BINDING_MISMATCH");
@@ -285,25 +285,36 @@ export class SevenDayTrialService {
       this.validatePlan(await this.provider.plan(trial.plan.planCode), trial.plan);
       // Persist the schedule and intent before the non-idempotent provider POST.
       // Entitlement is published only once the provider confirms this schedule.
-      trial.provisionRequestedAt = new Date(Math.ceil(this.now().getTime() / 1000) * 1000).toISOString();
+      trial.provisionRequestedAt = this.now().toISOString();
       // Allow provider confirmation time without scheduling a debit before seven
       // full days of access. The debit can be at most one minute after expiry.
-      trial.firstBillingDate = new Date(new Date(trial.provisionRequestedAt).getTime() + 7 * DAY + 60_000).toISOString();
+      trial.firstBillingDate = new Date(Math.ceil(new Date(trial.provisionRequestedAt).getTime() / 1000) * 1000 + 7 * DAY + 60_000).toISOString();
       trial.provisionStatus = "attempted";
       await save("trial.provision_requested");
       subscription = await this.provider.createSubscription({ customer: trial.customerCode,
         plan: trial.plan.planCode, authorization: authorization.code, start_date: trial.firstBillingDate });
     }
     if (!this.subscriptionMatches(subscription, trial, authorization) || !subscription.email_token ||
-        subscription.status !== "active") fail("Scheduled subscription binding could not be confirmed.", "BILLING_RECONCILIATION_REQUIRED");
-    const confirmedCreation = new Date(subscription.createdAt ?? subscription.created_at);
-    const trialEnd = new Date(confirmedCreation.getTime() + 7 * DAY);
-    if (!Number.isFinite(confirmedCreation.getTime()) || confirmedCreation < new Date(trial.provisionRequestedAt) ||
-        trialEnd > new Date(trial.firstBillingDate)) {
-      fail("Provider creation time does not confirm seven full trial days.", "BILLING_RECONCILIATION_REQUIRED");
+        !["active", "non-renewing", "cancelled", "completed"].includes(subscription.status)) {
+      fail("Scheduled subscription binding could not be confirmed.", "BILLING_RECONCILIATION_REQUIRED");
     }
+    // Save cancellation credentials before checking entitlement timing. A provider
+    // schedule must remain cancellable even when it cannot grant trial access.
     trial.subscriptionCode = subscription.subscription_code;
     trial.authorization = this.seal({ code: authorization.code, emailToken: subscription.email_token }, trial, config);
+    await save("trial.subscription_bound");
+    if (trial.cancelStatus === "requested") return;
+    const confirmedCreation = new Date(subscription.createdAt ?? subscription.created_at);
+    const trialEnd = new Date(confirmedCreation.getTime() + 7 * DAY);
+    const earliestCreation = Math.floor(new Date(trial.provisionRequestedAt).getTime() / 1000) * 1000 - 1000;
+    if (subscription.status !== "active" || !Number.isFinite(confirmedCreation.getTime()) ||
+        confirmedCreation.getTime() < earliestCreation || trialEnd > new Date(trial.firstBillingDate)) {
+      trial.status = "setup_failed";
+      trial.cancelStatus = "requested";
+      await save("trial.schedule_rejected");
+      await this.cancelLocked(repo, trial, config, actorUserId);
+      fail("Provider creation time does not confirm seven full trial days.", "BILLING_RECONCILIATION_REQUIRED");
+    }
     trial.provisionStatus = "confirmed";
     trial.startedAt = confirmedCreation.toISOString();
     trial.endsAt = trialEnd.toISOString();
@@ -406,6 +417,11 @@ export class SevenDayTrialService {
     if (!organizationId) return { handled: false };
     const config = this.configuration();
     return this.repository.withLock({ organizationId }, async (repo) => {
+      const recovery = reference ? await repo.closedCheckout?.(reference) : null;
+      if (recovery) {
+        await this.refundClosedCheckout(repo,reference,recovery,config);
+        return {handled:true,received:true,action:"closed_checkout_refund"};
+      }
       const trial = await repo.get({ organizationId });
       if ((subscriptionCode && trial.subscriptionCode !== subscriptionCode) ||
           (reference?.startsWith("bnx_trial_") && reference !== trial.reference)) fail("Webhook identity does not match this trial.", "BILLING_BINDING_MISMATCH");
@@ -497,6 +513,14 @@ export class SevenDayTrialService {
     const config = this.configuration();
     if (!organizationId) {
       const results = [];
+      for (const recovery of await this.repository.pendingClosedCheckouts?.() ?? []) {
+        try {
+          await this.repository.withLock({organizationId:recovery.organization_id},async repo=>{
+            const fresh = await repo.closedCheckout(recovery.reference);
+            await this.refundClosedCheckout(repo,recovery.reference,fresh,config);
+          });
+        } catch(error) { results.push({organizationId:recovery.organization_id,errorCode:error.code ?? "BILLING_PROVIDER_FAILED"}); }
+      }
       for (const tenantId of await this.repository.pendingOrganizations({ limit: 100 })) {
         try { results.push({ organizationId: tenantId, ...(await this.processPending({ organizationId: tenantId })) }); }
         catch (error) { results.push({ organizationId: tenantId, errorCode: error.code ?? "BILLING_PROVIDER_FAILED" }); }
@@ -526,7 +550,8 @@ export class SevenDayTrialService {
       }
       return { processed: true, trial: await this.view(organizationId, trial) };
       } finally {
-        trial.nextProcessAt = new Date(this.now().getTime() + 5 * 60_000).toISOString();
+        trial.nextProcessAt = new Date(this.now().getTime() +
+          (trial.verificationStatus === "pending" && !trial.cardVerifiedAt ? 60 * 60_000 : 5 * 60_000)).toISOString();
         await repo.save({ organizationId, trial, eventType: "trial.maintenance_checked" });
       }
     });
@@ -539,5 +564,33 @@ export class SevenDayTrialService {
       monthlyAmountMinor: trial.plan.amountMinor, currency: trial.currency,
       billingUrl: `${this.configuration().origin}/#/billing`,
     });
+  }
+
+  async archiveClosedCheckout(repo,trial) {
+    const config=this.configuration();
+    const minimal={id:trial.id,reference:trial.reference,organizationId:trial.organizationId,actorUserId:trial.actorUserId,
+      emailHash:hash(trial.email),verificationAmountMinor:trial.verificationAmountMinor,currency:trial.currency,
+      verificationStatus:"pending",refundStatus:"not_required"};
+    await repo.saveClosedCheckout({organizationId:trial.organizationId,reference:trial.reference,
+      encryptedState:encryptTrialAuthorization(minimal,{key:config.key,organizationId:trial.organizationId,reference:trial.reference+":closed-refund"}),
+      nextAttemptAt:this.now()});
+  }
+
+  async refundClosedCheckout(repo,reference,recovery,config) {
+    const trial=decryptTrialAuthorization(recovery.encrypted_state,{key:config.key,organizationId:recovery.organization_id,reference:reference+":closed-refund"});
+    const save=async()=>repo.saveClosedCheckout({organizationId:trial.organizationId,reference,
+      encryptedState:encryptTrialAuthorization(trial,{key:config.key,organizationId:trial.organizationId,reference:reference+":closed-refund"}),
+      completed:trial.refundStatus==="processed",nextAttemptAt:new Date(this.now().getTime()+60*60_000)});
+    try {
+      if (!trial.transactionId) {
+        const verified=await this.provider.verify(reference);
+        if (verified.status !== "success") return;
+        this.validateVerification(verified,trial);
+        trial.transactionId=verified.id;trial.refundStatus="pending";
+        await save();
+      }
+      const refundRepository={save:async({trial:updated})=>{Object.assign(trial,updated);await save();}};
+      await this.refundLocked(refundRepository,trial);
+    } finally {await save();}
   }
 }

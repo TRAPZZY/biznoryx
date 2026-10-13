@@ -26,6 +26,7 @@ export class PostgresBillingRepository {
     organizationId,
     actorUserId = null,
     provider = "paystack",
+    skipStoreRefresh = false,
   }) {
     const plan = monthlyPlanFromEnv();
 
@@ -67,7 +68,7 @@ export class PostgresBillingRepository {
            *
            * Active customers are never silently repriced.
            */
-          if (current.status === "trialing" && planIsStale && !current.provider_subscription_code) {
+          if (current.provider === "paystack" && current.status === "trialing" && planIsStale && !current.provider_subscription_code) {
             const updated = await client.query(
               `update organization_billing_subscriptions
                   set provider = $2,
@@ -179,6 +180,10 @@ export class PostgresBillingRepository {
     );
 
     const subscription = mapSubscription(result);
+    if (["app_store","play_store"].includes(subscription.provider) && !skipStoreRefresh && this.store) {
+      await this.store.sync({organizationId,force:false});
+      return this.ensureSubscription({organizationId,actorUserId,skipStoreRefresh:true});
+    }
     const trial = await this.trials.get({ organizationId });
     subscription.trial = trial ? {
       status: trial.status, cardSetup: { verified: Boolean(trial.cardVerifiedAt) },
@@ -205,6 +210,8 @@ export class PostgresBillingRepository {
       this.pool,
       { organizationId, actorUserId },
       async (client) => {
+        const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as locked",[`billing-trial:${organizationId}`]);
+        if (!lock.rows[0]?.locked) throw new AuthError("A billing operation is already running. Please retry.","BILLING_OPERATION_IN_PROGRESS");
         const membership = await client.query(
           `select role from organization_memberships
             where organization_id = $1 and user_id = $2 and status = 'active'`,
@@ -300,6 +307,7 @@ export class PostgresBillingRepository {
                     updated_by_user_id = $3,
                     updated_at = $10
               where organization_id = $1
+                and provider = 'paystack'
                 and (status not in ('active', 'non_renewing')
                      or current_period_end is null or current_period_end <= $10)
                 and not exists (
@@ -769,7 +777,7 @@ export class PostgresBillingRepository {
     const now = this.now();
 
     const currentResult = await client.query(
-      `select provider_subscription_code, checkout_reference, status, current_period_end
+        `select provider, provider_subscription_code, checkout_reference, status, current_period_end
          from organization_billing_subscriptions
         where organization_id = $1
         for update`,
@@ -777,6 +785,7 @@ export class PostgresBillingRepository {
     );
     const current = currentResult.rows[0];
     if (!current) return false;
+    if (["app_store","play_store"].includes(current.provider)) return false;
 
     // Verification charges and scheduled subscription notifications are never paid activation.
     if (reference?.startsWith("bnx_trial_")) return false;
@@ -1056,7 +1065,18 @@ export class PostgresTrialRepository {
 
   async resolve({ reference = null, subscriptionCode = null }) {
     const result = await this.pool.query("select runtime_paystack_trial_organization($1,$2) as organization_id", [reference, subscriptionCode]);
-    return result.rows[0]?.organization_id ?? null;
+    if (result.rows[0]?.organization_id) return result.rows[0].organization_id;
+    return reference ? (await this.closedCheckout(reference))?.organization_id ?? null : null;
+  }
+
+  async closedCheckout(reference) {
+    return (await this.pool.query("select recovery.* from runtime_closed_checkout($1) recovery",[reference])).rows[0] ?? null;
+  }
+  async saveClosedCheckout({organizationId,reference,encryptedState,completed=false,nextAttemptAt}) {
+    await this.pool.query("select runtime_save_closed_checkout($1,$2,$3,$4,$5)",[organizationId,reference,encryptedState,completed,nextAttemptAt]);
+  }
+  async pendingClosedCheckouts() {
+    return (await this.pool.query("select recovery.* from runtime_pending_closed_checkouts() recovery")).rows;
   }
 
   async pendingOrganizations({ limit = 100 } = {}) {

@@ -1,22 +1,4 @@
-import { test as base, expect } from "@playwright/test";
-import { createReviewApp } from "../../src/webapp/review-app.mjs";
-
-// Each journey owns its state and auth quota without changing runtime limits.
-const test = base.extend({
-  baseURL: async ({}, use) => {
-    const { server } = createReviewApp();
-    await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    try {
-      await use(`http://127.0.0.1:${server.address().port}`);
-    } finally {
-      server.closeAllConnections?.();
-      await new Promise((resolve) => server.close(resolve));
-    }
-  },
-});
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 async function signIn(page, path) {
   await page.goto("/#/sign-in");
@@ -50,6 +32,11 @@ for (const width of [1440, 390]) {
     await page.getByRole("button", { name: "Review and submit", exact: true }).click();
     await expect(page.getByLabel("Row 1, quantity", { exact: true })).toHaveAttribute("aria-invalid", "true");
     await page.getByLabel("Row 1, quantity", { exact: true }).fill("1");
+    if (width === 390) {
+      await expect(page.locator(".entry-records")).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await page.getByRole("button",{name:"Spreadsheet",exact:true}).click();
+    }
     await expect(page.getByRole("button", { name: "Move date left", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page.locator("#entry-status")).toHaveText("Draft saved");

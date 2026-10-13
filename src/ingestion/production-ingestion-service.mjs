@@ -1,4 +1,5 @@
 import { validateCsvHeaderSizes } from "./csv-limits.mjs";
+import { decodePdfUpload, extractPdfTable } from "./pdf-ingestion.mjs";
 import {
   parse,
 } from "csv-parse/sync";
@@ -52,6 +53,7 @@ export class ProductionIngestionService {
     actorUserId,
     fileName,
     content,
+    contentBase64,
     period,
     dataSeries =
       "Business data",
@@ -68,26 +70,20 @@ export class ProductionIngestionService {
         "Data series is required.",
       );
 
-    validateRawContent(
-      content,
-    );
-
-    if (
-      !normalizedFileName
-        .toLowerCase()
-        .endsWith(".csv")
-    ) {
+    const isPdf = normalizedFileName.toLowerCase().endsWith(".pdf");
+    if (!isPdf && !normalizedFileName.toLowerCase().endsWith(".csv")) {
       throw new AuthError(
-        "Only CSV uploads are supported in the current production ingestion phase.",
+        "Only CSV and supported text-table PDF uploads are available.",
         "VALIDATION_FAILED",
       );
     }
-
-    const rawBytes =
-      Buffer.from(
-        content,
-        "utf8",
-      );
+    const reportingPeriod = parseMonthlyPeriod(period);
+    if (isPdf && (normalizedFileName.length > 180 || /[\\/\x00-\x1f]/.test(normalizedFileName))) {
+      throw new AuthError("Use a plain PDF filename without paths or control characters.", "VALIDATION_FAILED");
+    }
+    if (!isPdf) validateRawContent(content);
+    const rawBytes = isPdf ? decodePdfUpload(contentBase64) : Buffer.from(content, "utf8");
+    const contentType = isPdf ? "application/pdf" : "text/csv";
 
     if (
       rawBytes.byteLength >
@@ -99,13 +95,9 @@ export class ProductionIngestionService {
       );
     }
 
-    const parsed =
-      parseCsv(content);
-
-    const reportingPeriod =
-      parseMonthlyPeriod(
-        period,
-      );
+    const table = isPdf ? await extractPdfTable(rawBytes) : null;
+    const parsed = parseCsv(table?.csv ?? content);
+    const rawContent = isPdf ? rawBytes : content;
 
     /*
      * Create or reuse the tenant's manual
@@ -151,7 +143,7 @@ export class ProductionIngestionService {
         originalFilename:
           normalizedFileName,
 
-        content,
+        content: rawContent,
       });
 
     const writeLock =
@@ -185,8 +177,7 @@ export class ProductionIngestionService {
             body:
               rawBytes,
 
-            contentType:
-              "text/csv",
+            contentType,
 
             metadata: {
               organization:
@@ -218,10 +209,9 @@ export class ProductionIngestionService {
               originalFilename:
                 normalizedFileName,
 
-              contentType:
-                "text/csv",
+              contentType,
 
-              content,
+              content: rawContent,
 
               byteSize:
                 rawBytes.byteLength,
@@ -291,6 +281,8 @@ export class ProductionIngestionService {
 
           content:
             file?.content,
+
+          contentBase64: file?.contentBase64,
 
           period,
 

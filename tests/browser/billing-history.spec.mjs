@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 test("billing history loads from the API and shows an honest empty state", async ({ page }) => {
   await page.goto("/#/sign-in");

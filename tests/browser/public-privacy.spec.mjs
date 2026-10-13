@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/review-fixtures.mjs";
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
   test(`landing and public-page footers link to privacy at ${viewport.width}px`, async ({ page }, testInfo) => {
