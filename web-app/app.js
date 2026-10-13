@@ -2565,14 +2565,13 @@ function dataPage() {
             </span>
 
             <small>
-              CSV, TSV, JSON, TXT, PDF, XLSX
-              &middot; PDF up to 8 MiB; other files up to 25 MiB
+              CSV up to 25 MiB &middot; PDF up to 8 MiB
             </small>
 
             <input
               type="file"
               name="file"
-              accept=".csv,.tsv,.json,.txt,.pdf,.xlsx,.xls,text/csv,application/json,application/pdf,text/plain"
+              accept=".csv,.pdf,text/csv,application/pdf"
               multiple
               required
             >
@@ -2639,12 +2638,8 @@ function dataPage() {
 
           <p class="input-help">
             Use the same data series and column layout for
-            recurring periods. CSV, TSV, JSON, TXT and
-            supported text-table PDFs can be analyzed now.
-            Scanned PDFs require a CSV export.
-            Excel files are accepted for intake review and
-            should be exported as CSV until the audited
-            spreadsheet parser is connected.
+            recurring periods. Use CSV or supported text-table PDFs.
+            Export spreadsheets, other formats and scanned reports as CSV.
           </p>
 
           <button
@@ -2895,12 +2890,16 @@ function dataPage() {
       throw new Error("Choose at least one business file.");
     }
 
+    if (files.some((file) => !/\.(csv|pdf)$/i.test(file.name))) {
+      throw new Error("Choose CSV or supported text-table PDF files. Export other formats as CSV.");
+    }
+
     if (files.some((file) => /\.pdf$/i.test(file.name) && file.size > 8 * 1024 * 1024)) {
       throw new Error("Choose PDF files no larger than 8 MiB each.");
     }
 
     if (files.some((file) => file.size > 25 * 1024 * 1024)) {
-      throw new Error("Choose files smaller than 25 MB each.");
+      throw new Error("Choose CSV files no larger than 25 MiB each.");
     }
 
     const result = await api("ingestion/upload", {

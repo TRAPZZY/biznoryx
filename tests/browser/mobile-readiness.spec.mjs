@@ -22,6 +22,21 @@ test("phone upload rejects PDFs over the secure parser limit before sending byte
   expect(uploads).toBe(0);
 });
 
+test("upload chooser matches production formats and rejects unsupported files before sending bytes", async ({page}) => {
+  await signIn(page);
+  await page.goto("/#/data");
+  let uploads = 0;
+  await page.route("**/api/ingestion/upload", route => {
+    uploads++;
+    return route.fulfill({status:400,json:{message:"The unsupported file should not reach the server."}});
+  });
+  await page.locator('input[name="file"]').setInputFiles({name:"sales.tsv",mimeType:"text/tab-separated-values",buffer:Buffer.from("product\trevenue\nA\t20")});
+  await page.getByRole("button",{name:"Validate files"}).click();
+  await expect(page.locator("#upload-form .form-message")).toContainText("Export other formats as CSV");
+  expect(uploads).toBe(0);
+  await expect(page.locator('input[name="file"]')).toHaveAttribute("accept",".csv,.pdf,text/csv,application/pdf");
+});
+
 test("account deletion phone UI supports transfer, errors and a private status receipt",async({page},info)=>{
   await page.setViewportSize({width:390,height:844});
   await page.route("**/api/account/deletion",route=>route.request().method()==="GET" ? route.fulfill({json:{organizations:[{id:"org-a",name:"Shared business",lastOwner:true,members:[{id:"member-a",name:"Replacement Owner"}]}]}}) :

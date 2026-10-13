@@ -4,7 +4,7 @@
 
 This branch starts with the existing Capacitor implementation from PR #7 and merges the published resources from main. It does not replace the platform, modify iOS source, deploy production, apply production migrations, configure new billing providers, or generate signing credentials.
 
-The PDF patch extends upload validation, binary raw-object registration and verified worker metrics. Original PDF bytes remain private evidence. It uses existing database columns and needs no additional migration. See `pdf-ingestion.md` for the supported table contract and explicit OCR/format limitations.
+The PDF patch extends upload validation, binary raw-object registration and verified worker metrics. Original PDF bytes remain private evidence. The chooser and preflight accept only production-supported CSV/text-table PDF formats, with a CSV-export message for other formats and the parser's 8 MiB PDF limit. It uses existing database columns and needs no additional migration. See `pdf-ingestion.md` for the supported table contract and explicit OCR/format limitations.
 
 Native authentication retains PR #7's server-side bearer transport and the website's cookie/CSRF rules. New fixes remove revoked/expired or invalid cached tokens, validate login credentials before persistence, serialize storage writes, reject stale responses after identity/organization changes, and fail visibly when protected storage fails. Report exports verify the same session before writing/sharing and use isolated cache paths with cleanup. Browser/native token response boundaries and server-selected upload tenants have HTTP contract tests. The native bridge tests use plugin doubles, not an emulator or real device.
 
@@ -28,7 +28,7 @@ Rollback restrictions: 0033 does not restore rejected-only source reservations. 
 Local verification on 12 October 2026 (final-commit CI results are recorded in PR #12):
 
 - `npm run verify`: passed formatting, lint, JavaScript syntax, migration/security checks and the web build; 391 tests passed, 19 database-dependent tests skipped, none failed.
-- `npm run test:browser`: 45 journeys passed, including the oversized-PDF preflight regression and desktop/phone screenshots. These use the review backend and controlled responses, not production accounts or physical Android devices.
+- `npm run test:browser`: 46 journeys passed, including the oversized-PDF/unsupported-format preflight regressions and desktop/phone screenshots. These use the review backend and controlled responses, not production accounts or physical Android devices.
 - `node --env-file=.env.local scripts/entry-trial-acceptance.mjs`: 19 disposable PostgreSQL tests passed with no skips, including retention cleanup, restricted-role rejection and Android-only billing configuration.
 - `npm run db:runtime`: 12 durable-runtime/helper tests passed with no skips against disposable local PostgreSQL.
 - `npm run mobile:android:sync`: frontend bundle and Android asset/plugin sync passed. This is not native compilation.
