@@ -137,6 +137,8 @@ try {
 
         "tests/postgres-runtime.test.mjs",
 
+        "tests/postgres-native-auth.test.mjs",
+
         "tests/postgres-business-onboarding.test.mjs",
 
         "tests/postgres-data-ingestion.test.mjs",
