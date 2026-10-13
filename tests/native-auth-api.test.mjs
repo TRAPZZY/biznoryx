@@ -42,10 +42,11 @@ async function authRuntime(work) {
     production: false });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const request = (path, { body, headers = {}, method = body === undefined ? "GET" : "POST" } = {}) => fetch(base + "/api/" + path, {
+  const requestRoute = (path, { body, headers = {}, method = body === undefined ? "GET" : "POST" } = {}) => fetch(base + path, {
     method, headers: { "content-type": "application/json", ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  try { await work({ request, token, state, base }); }
+  const request = (path, options) => requestRoute("/api/" + path, options);
+  try { await work({ request, requestRoute, token, state, base }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 
@@ -163,4 +164,23 @@ test("native authentication does not enable Paystack purchase or management endp
     assert.equal((await response.json()).message, "Manage this subscription through Apple or Google.");
     assert.equal((await request(path, { headers: { "x-biznoryx-client": "mobile-v1" }, body: {} })).status, 401);
   }
+}));
+
+test("native bearer requests cannot reach browser Paystack callbacks", async () => authRuntime(async ({ requestRoute, token, base }) => {
+  const native = { "x-biznoryx-client": "mobile-v1", authorization: `Bearer ${token}` };
+  for (const path of ["/billing/paystack/callback", "/billing/paystack/trial/callback"]) {
+    const denied = await requestRoute(path, { headers: native });
+    assert.equal(denied.status, 400);
+    assert.equal((await denied.json()).message, "Manage this subscription through Apple or Google.");
+    const invalid = await requestRoute(path, { headers: { ...native, authorization: "Bearer invalid", cookie: `bnx_session=${token}` } });
+    assert.equal(invalid.status, 401);
+    assert.equal((await requestRoute(path, { headers: { "x-biznoryx-client": "mobile-v1" } })).status, 401);
+  }
+  const browser = { origin: base, "sec-fetch-site": "same-origin", cookie: `bnx_session=${token}` };
+  const standard = await requestRoute("/billing/paystack/callback", { headers: browser });
+  assert.equal(standard.status, 400);
+  assert.equal((await standard.json()).message, "Billing reference is required.");
+  const trial = await requestRoute("/billing/paystack/trial/callback", { headers: browser });
+  assert.equal(trial.status, 503);
+  assert.equal((await trial.json()).message, "Trial billing is unavailable.");
 }));

@@ -480,6 +480,13 @@ async function routeRequest({ request, response, runtime }) {
    * the subscription is activated.
    */
 
+  if (isMobileTransport(request) && request.method === "GET" && [
+    "/billing/paystack/callback", "/billing/paystack/trial/callback",
+  ].includes(url.pathname)) {
+    await authenticateRequest({ request, runtime, requireCsrf: false });
+    throw new AuthError("Manage this subscription through Apple or Google.", "VALIDATION_FAILED");
+  }
+
   if (url.pathname === "/billing/paystack/trial/callback" && request.method === "GET") {
     const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
     const organizationId = requireActiveOrganization(context, "Select a business before completing card setup.");
