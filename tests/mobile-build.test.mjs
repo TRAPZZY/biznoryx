@@ -15,6 +15,14 @@ test("Android launcher and splash use the complete approved artwork without imag
   assert.match(theme,/postSplashScreenTheme/);
 });
 
+test("Android-only packaging does not label missing iOS configuration as an Android failure",()=>{
+  const result=spawnSync(process.execPath,["scripts/mobile-build.mjs"],{encoding:"utf8",env:{...process.env,
+    MOBILE_API_ORIGIN:"https://biznoryx.com",MOBILE_REVENUECAT_APPLE_KEY:"",MOBILE_REVENUECAT_GOOGLE_KEY:"goog_syntheticPublicKey"}});
+  assert.equal(result.status,0);
+  assert.match(result.stdout,/iOS purchasing remains unavailable/);
+  assert.doesNotMatch(result.stdout,/Android purchasing remains unavailable/);
+});
+
 for (const [name,invalid] of [
   ["cleartext API",{MOBILE_API_ORIGIN:"http://example.invalid"}],
   ["credential-bearing API",{MOBILE_API_ORIGIN:"https://user:password@example.invalid"}],

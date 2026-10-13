@@ -28,7 +28,7 @@ export class StoreBillingService {
     const key = this.env.REVENUECAT_SECRET_API_KEY;
     const entitlement = this.env.REVENUECAT_ENTITLEMENT_ID;
     const products = {app_store:(this.env.REVENUECAT_APPLE_PRODUCT_IDS || "").split(",").filter(Boolean),play_store:(this.env.REVENUECAT_GOOGLE_PRODUCT_IDS || "").split(",").filter(Boolean)};
-    if (!key || !entitlement || !products.app_store.length || !products.play_store.length) throw new AuthError("Store subscriptions are not configured yet.","SERVICE_UNAVAILABLE");
+    if (!key || !entitlement || !(products.app_store.length || products.play_store.length)) throw new AuthError("Store subscriptions are not configured yet.","SERVICE_UNAVAILABLE");
     return {key,entitlement,products,allowSandbox:this.env.NODE_ENV !== "production" && this.env.REVENUECAT_ALLOW_SANDBOX === "true"};
   }
 
@@ -63,6 +63,9 @@ export class StoreBillingService {
         allowSandbox:config.allowSandbox || sandboxOrganizations.includes(organizationId),customerId:account.customer_id,now:this.now()});
       const current = (await client.query("select provider,status,provider_subscription_code from organization_billing_subscriptions where organization_id=$1 for update",[organizationId])).rows[0];
       if (!current) throw new AuthError("Billing account is unavailable.","SERVICE_UNAVAILABLE");
+      if (["app_store","play_store"].includes(current.provider) && !config.products[current.provider].length) {
+        throw new AuthError("This subscription's store is not configured. Restore its configuration before verification.","SERVICE_UNAVAILABLE");
+      }
       if (access) {
         const pendingTrial = await client.query("select 1 from billing_trials where organization_id=$1 and canceled_at is null and converted_at is null limit 1",[organizationId]);
         if (pendingTrial.rowCount) throw new AuthError("Resolve the website trial before adding store billing.","BILLING_OPERATION_IN_PROGRESS");

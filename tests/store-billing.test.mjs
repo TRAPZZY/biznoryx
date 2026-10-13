@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { verifiedStoreEntitlement } from "../src/billing/store-service.mjs";
+import { StoreBillingService, verifiedStoreEntitlement } from "../src/billing/store-service.mjs";
 
 const customerId = "18f31a25-7020-4f13-87b3-846b900bb49b";
 const config = {customerId,entitlement:"business",products:{app_store:["biznoryx.monthly"],play_store:["biznoryx_monthly:monthly"]},now:new Date("2026-10-11T12:00:00Z")};
@@ -8,6 +8,16 @@ function fixture() {
   return {subscriber:{original_app_user_id:customerId,entitlements:{business:{product_identifier:"biznoryx.monthly",expires_date:"2026-11-10T12:00:00Z"}},
     subscriptions:{"biznoryx.monthly":{store:"app_store",is_sandbox:false,ownership_type:"PURCHASED",purchase_date:"2026-10-10T12:00:00Z",expires_date:"2026-11-10T12:00:00Z",store_transaction_id:"transaction-1"}}}};
 }
+
+test("Android-only configuration does not require Apple products or authorize Apple entitlements",()=>{
+  const service = new StoreBillingService({env:{REVENUECAT_SECRET_API_KEY:"synthetic-unit-key",REVENUECAT_ENTITLEMENT_ID:"business",REVENUECAT_GOOGLE_PRODUCT_IDS:"monthly"}});
+  const android = service.configuration();
+  assert.deepEqual(android.products,{app_store:[],play_store:["monthly"]});
+  assert.equal(verifiedStoreEntitlement(fixture(),{...android,customerId,now:config.now}),null);
+  for (const env of [{},{REVENUECAT_SECRET_API_KEY:"synthetic-unit-key",REVENUECAT_ENTITLEMENT_ID:"business"}]) {
+    assert.throws(()=>new StoreBillingService({env}).configuration(),{code:"SERVICE_UNAVAILABLE"});
+  }
+});
 test("verified store access uses provider dates, supports cancellation through the paid period",()=>{
   const payload=fixture(); const access=verifiedStoreEntitlement(payload,config);
   assert.equal(access.status,"active"); assert.equal(access.end.toISOString(),"2026-11-10T12:00:00.000Z"); assert.equal(access.transactionHash.length,64);

@@ -31,6 +31,10 @@ test("PostgreSQL store billing verifies provider access and isolates identities 
     const active=await billing.ensureSubscription({...scope,skipStoreRefresh:true});
     assert.equal(active.provider,"app_store");assert.equal(active.amountMinor,null);assert.equal(active.currency,null);
     assert.equal(subscriptionHasPremiumAccess(active,{now:()=>now}),true);
+    delete service.env.REVENUECAT_APPLE_PRODUCT_IDS;
+    await assert.rejects(service.sync(scope),{code:"SERVICE_UNAVAILABLE"});
+    assert.equal((await billing.ensureSubscription({...scope,skipStoreRefresh:true})).status,"active");
+    service.env.REVENUECAT_APPLE_PRODUCT_IDS="monthly";
     await assert.rejects(service.sync({...scope,organizationId:second.id}),{code:"BILLING_IDENTITY_CONFLICT"});
     payload.subscriber.original_app_user_id=other.customerId;
     await assert.rejects(service.sync({...scope,organizationId:second.id}),{code:"BILLING_IDENTITY_CONFLICT"});
@@ -56,5 +60,27 @@ test("PostgreSQL store billing verifies provider access and isolates identities 
     assert.equal(removed.length,2);
     const verified=await pool.query("select runtime_store_transaction_retired($1) as retired",[createHash("sha256").update(`app_store:${payload.subscriber.subscriptions.monthly.store_transaction_id}`).digest("hex")]);
     assert.equal(verified.rows[0].retired,true);
+  } finally {await pool.end();}
+});
+
+test("PostgreSQL Android-only configuration verifies Google access without Apple products",{skip:!process.env.TEST_DATABASE_URL},async()=>{
+  const pool=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL,options:"-c role=biznoryx_app"});
+  const identity=new PostgresIdentityRepository(pool); const billing=new PostgresBillingRepository(pool);
+  const now=new Date("2026-10-11T12:00:00Z"); let customerId;
+  const service=new StoreBillingService({pool,billing,now:()=>now,env:{REVENUECAT_SECRET_API_KEY:"synthetic-key",REVENUECAT_ENTITLEMENT_ID:"business",REVENUECAT_GOOGLE_PRODUCT_IDS:"monthly"},fetchImpl:async()=>({ok:true,json:async()=>({subscriber:{
+    original_app_user_id:customerId,entitlements:{business:{product_identifier:"monthly",expires_date:"2026-11-10T12:00:00Z"}},
+    subscriptions:{monthly:{store:"play_store",is_sandbox:false,ownership_type:"PURCHASED",purchase_date:"2026-10-10T12:00:00Z",expires_date:"2026-11-10T12:00:00Z",store_transaction_id:customerId}}
+  }})})});
+  billing.store=service;
+  try {
+    const owner=await identity.createUser({email:`android-${randomUUID()}@test.invalid`,displayName:"Android test",password:"SyntheticAcceptance2026!"});
+    const org=await identity.createOrganization({actorUserId:owner.id,name:"Android test",slug:randomUUID()});
+    const scope={organizationId:org.id,actorUserId:owner.id};
+    const context=await service.context(scope); customerId=context.customerId;
+    assert.deepEqual(context.products,{app_store:[],play_store:["monthly"]});
+    await service.sync(scope);
+    const active=await billing.ensureSubscription({...scope,skipStoreRefresh:true});
+    assert.equal(active.provider,"play_store");
+    assert.equal(subscriptionHasPremiumAccess(active,{now:()=>now}),true);
   } finally {await pool.end();}
 });
