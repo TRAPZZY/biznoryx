@@ -7,6 +7,21 @@ async function signIn(page) {
   await page.getByRole("button",{name:"Sign in",exact:true}).click();
   await expect(page.locator("#workspace-sidebar")).toBeAttached();
 }
+test("phone upload rejects PDFs over the secure parser limit before sending bytes", async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await signIn(page);
+  await page.goto("/#/data");
+  let uploads = 0;
+  await page.route("**/api/ingestion/upload", route => {
+    uploads++;
+    return route.fulfill({status:400,json:{message:"The upload should not reach the server."}});
+  });
+  await page.locator('input[name="file"]').setInputFiles({name:"oversized.pdf",mimeType:"application/pdf",buffer:Buffer.alloc(8 * 1024 * 1024 + 1)});
+  await page.getByRole("button",{name:"Validate files"}).click();
+  await expect(page.locator("#upload-form .form-message")).toContainText("8 MiB");
+  expect(uploads).toBe(0);
+});
+
 test("account deletion phone UI supports transfer, errors and a private status receipt",async({page},info)=>{
   await page.setViewportSize({width:390,height:844});
   await page.route("**/api/account/deletion",route=>route.request().method()==="GET" ? route.fulfill({json:{organizations:[{id:"org-a",name:"Shared business",lastOwner:true,members:[{id:"member-a",name:"Replacement Owner"}]}]}}) :
