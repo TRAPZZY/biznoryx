@@ -11,7 +11,11 @@
 - No Reply-To is configured. Do not invent an unmonitored support mailbox.
 - Both versions contain the same code and expiration instruction. They contain
   no links, redirects, external images, attachments or promotional material.
-  Resend's domain-level open/click tracking still needs dashboard verification;
+  Resend's received-message Insights marks its open/click tracking checks as
+  good. The domain's Configure link opens a new tracking-subdomain form, not an
+  existing custom tracking domain. That form's preselected checkbox is a setup
+  default, not evidence that tracking is enabled. No form was submitted.
+  Exact per-message tracking settings were not independently retrieved;
   absence of a tracking image in source does not prove provider tracking is off.
 - Public DNS queried through Cloudflare: DMARC is `v=DMARC1; p=none;`;
   `resend._domainkey.biznoryx.com` publishes a DKIM public key;
@@ -22,10 +26,18 @@
   and an MX pointing to `feedback.forge.rmta.net` with priority 10.
   No apex TXT SPF record was returned. This alone is not a defect: SPF evaluates
   the actual SMTP envelope domain, not necessarily the visible From domain.
-- The user reports verified Resend domain/DKIM/sending records and delivered
-  messages that sometimes land in Gmail spam. Received-message authentication,
-  sending reputation, bounce/complaint/suppression metrics and inbox placement
-  have not been independently verified. Do not treat DELIVERED as inbox proof.
+- The authenticated Resend dashboard independently confirms domain, DKIM and
+  both sending CNAMEs are Verified, sending enabled and receiving disabled.
+  Over its selected Last 15 days window (30 September to 14 October), it reports
+  10 messages, 100% delivery, 0% bounces and 0% complaints. The all-time
+  suppression page shows No suppressions yet. These are provider-reported
+  statistics for a very small sample, not independent mailbox outcomes.
+- All ten listed messages are marked Delivered. Insights for a recent
+  verification message confirms the same From, valid DMARC, plain text and
+  1.27 KB HTML; its only Possible improvements item is Use a subdomain.
+  Its body/code was not read or captured. The user reports Gmail spam placement;
+  received-message authentication, reputation and inbox placement remain
+  unverified. Do not treat DELIVERED or Insights as inbox/authentication proof.
 
 ## Application correction
 
