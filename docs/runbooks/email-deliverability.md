@@ -11,7 +11,7 @@
 - No Reply-To is configured. Do not invent an unmonitored support mailbox.
 - Both versions contain the same code and expiration instruction. They contain
   no links, redirects, external images, attachments or promotional material.
-  Resend's received-message Insights marks its open/click tracking checks as
+  Resend's sent-message Insights marks its open/click tracking checks as
   good. The domain's Configure link opens a new tracking-subdomain form, not an
   existing custom tracking domain. That form's preselected checkbox is a setup
   default, not evidence that tracking is enabled. No form was submitted.
