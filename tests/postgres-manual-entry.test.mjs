@@ -125,6 +125,11 @@ test("PostgreSQL manual entry: runtime grants, durable ledger, worker, retries, 
       assert.equal(first.submission.dataSeries, "Sales");
       assert.equal(first.submission.reportingPeriodId, first.upload.reportingPeriod.id);
       assert.equal(first.upload.ingestionRun.dataStatus, "partial");
+      const sourceFile = await ingestion.download({ ...scope, uploadId: first.upload.ingestionRun.id });
+      assert.equal(sourceFile.contentType, "text/csv");
+      assert.deepEqual(parse(sourceFile.body, { columns: true, bom: true }), [
+        { date: "2026-10-01", product: "A", quantity: "1", revenue: "0.10" },
+      ]);
       const secondDraft = await save(scope, { rows: [["2026-10-02", "A", "2", "0.20"], ["2026-10-02", "A", "2", "0.20"]] });
       const secondInput = await validate(scope, secondDraft);
       await assert.rejects(service.submit(secondInput), { code: "MANUAL_PROCESSING_PENDING" });

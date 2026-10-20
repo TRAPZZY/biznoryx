@@ -34,6 +34,7 @@ import {
 import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource } from "../reports/evidence-engine.mjs";
 import { sendEvidenceExport } from "../reports/export.mjs";
 import { ReviewManualEntry } from "../preview/manual-entry.mjs";
+import { serveSourceDownload } from "../ingestion/source-download.mjs";
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -735,6 +736,23 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
+  const sourceDownload = url.pathname.match(/^\/api\/ingestion\/uploads\/([^/]+)\/download$/);
+  if (sourceDownload && request.method === "GET") {
+    const context = authenticateFromRequest(request, runtime);
+    const { organizationId } = requireCapability(runtime, context, CAPABILITIES.READ_BUSINESS_DATA);
+    const upload = runtime.uploads.get(sourceDownload[1]);
+    if (!upload || upload.organizationId !== organizationId ||
+        (!upload.sourceBytes && upload.fileExtension !== ".csv")) {
+      throw new AuthError("Source file was not found.", "NOT_FOUND");
+    }
+    await serveSourceDownload(response, async () => ({
+      fileName: upload.fileName,
+      contentType: upload.fileExtension === ".csv" ? "text/csv" : "application/octet-stream",
+      body: upload.sourceBytes ?? Buffer.from(upload.content, "utf8"),
+    }));
+    return;
+  }
+
   if (url.pathname === "/api/ingestion/upload" && request.method === "POST") {
     const context = authenticateFromRequest(request, runtime, {
       requireCsrf: true,
@@ -788,7 +806,10 @@ async function routeRequest({ request, response, runtime }) {
         "This workspace has reached its current upload capacity.",
         "VALIDATION_FAILED",
       );
-    for (const upload of uploads) {
+    for (const [index, upload] of uploads.entries()) {
+      const payload = payloads[index];
+      upload.sourceBytes = typeof payload.contentBase64 === "string"
+        ? Buffer.from(payload.contentBase64, "base64") : Buffer.from(payload.content, "utf8");
       runtime.uploads.set(upload.id, upload);
       runtime.auditLog.record({
         organizationId,

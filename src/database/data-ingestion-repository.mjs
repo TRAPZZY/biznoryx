@@ -848,6 +848,28 @@ export class PostgresDataIngestionRepository {
     );
   }
 
+  async getSourceFile({ organizationId, actorUserId, uploadId }) {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(uploadId))) {
+      throw new AuthError("Source file was not found.", "NOT_FOUND");
+    }
+    return withTenantTransaction(this.pool, { organizationId, actorUserId }, async (client) => {
+      await requireReadAccess({ client, organizationId, actorUserId });
+      const result = await client.query(
+        `select rdo.*
+         from ingestion_runs ir
+         join raw_data_objects rdo
+           on rdo.id = ir.raw_data_object_id
+          and rdo.organization_id = ir.organization_id
+         where ir.id = $1 and ir.organization_id = $2
+           and rdo.organization_id = $2 and rdo.status <> 'quarantined'
+         limit 1`,
+        [uploadId, organizationId],
+      );
+      if (!result.rows[0]) throw new AuthError("Source file was not found.", "NOT_FOUND");
+      return mapRawObject(result.rows[0]);
+    });
+  }
+
   async listUploads({
     organizationId,
     actorUserId,

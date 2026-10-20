@@ -466,7 +466,7 @@ function normalizeRow(row) {
 }
 
 export function publicUpload(upload) {
-  const { content, organizationId, reportCube, ...publicFields } = upload;
+  const { content, sourceBytes, organizationId, reportCube, ...publicFields } = upload;
   return publicFields;
 }
 

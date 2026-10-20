@@ -1,4 +1,6 @@
 import { validateCsvHeaderSizes } from "./csv-limits.mjs";
+import { createHash } from "node:crypto";
+import { ObjectStorageError } from "../storage/s3-object-storage.mjs";
 import {
   parse,
 } from "csv-parse/sync";
@@ -45,6 +47,31 @@ export class ProductionIngestionService {
       objectStorage;
     this.inflightObjectWrites =
       new Map();
+  }
+
+  async download({ organizationId, actorUserId, uploadId }) {
+    const source = await this.repository.getSourceFile({ organizationId, actorUserId, uploadId });
+    if (!source.storageKey.startsWith(`org/${organizationId}/raw/`)) {
+      throw new AuthError("Source file was not found.", "NOT_FOUND");
+    }
+    if (!Number.isSafeInteger(source.byteSize) || source.byteSize <= 0 || source.byteSize > MAX_UPLOAD_BYTES) {
+      throw new ObjectStorageError("Stored source size is invalid.");
+    }
+    let object;
+    try {
+      object = await this.objectStorage.getObject({ key: source.storageKey });
+    } catch (error) {
+      if (error instanceof ObjectStorageError && error.code === "OBJECT_NOT_FOUND") {
+        throw new AuthError("Source file was not found.", "NOT_FOUND");
+      }
+      throw error;
+    }
+    const body = object.body;
+    if (!Buffer.isBuffer(body) || body.byteLength !== source.byteSize ||
+        createHash("sha256").update(body).digest("hex") !== source.checksumSha256) {
+      throw new ObjectStorageError("Stored source integrity check failed.");
+    }
+    return { body, fileName: source.originalFilename, contentType: source.contentType };
   }
 
   async upload({

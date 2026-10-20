@@ -74,7 +74,7 @@ jobs:
           BIZNORYX_APP_DB_PASSWORD: biznoryx_runtime_ci_password
 
       - name: Verify durable runtime behavior
-        run: node --test tests/postgres-runtime.test.mjs tests/postgres-native-auth.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs
+        run: node --test tests/postgres-runtime.test.mjs tests/postgres-native-auth.test.mjs tests/postgres-data-ingestion.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs
         env:
           TEST_DATABASE_URL: postgresql://biznoryx_app:biznoryx_runtime_ci_password@localhost:5432/biznoryx
 

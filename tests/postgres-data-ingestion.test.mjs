@@ -316,6 +316,13 @@ test(
         2,
       );
 
+      const downloadable = await restartedRepository.getSourceFile({
+        organizationId: organization.id, actorUserId: owner.id, uploadId: first.ingestionRun.id,
+      });
+      assert.equal(downloadable.storageKey, first.rawObject.storageKey);
+      assert.equal(downloadable.checksumSha256, first.rawObject.checksumSha256);
+      assert.equal(downloadable.originalFilename, "sales-2026-01.csv");
+
       assert.deepEqual(
         uploads.map(
           (entry) =>
@@ -436,6 +443,13 @@ test(
       assert.ok(
         outsiderOrganization.id,
       );
+
+      await assert.rejects(ingestion.getSourceFile({
+        organizationId: outsiderOrganization.id, actorUserId: outsider.id, uploadId: first.ingestionRun.id,
+      }), { code: "NOT_FOUND" });
+      await assert.rejects(ingestion.getSourceFile({
+        organizationId: organization.id, actorUserId: outsider.id, uploadId: first.ingestionRun.id,
+      }), { code: "ORG_ACCESS_DENIED" });
 
       await assert.rejects(
         ingestion.listUploads({
