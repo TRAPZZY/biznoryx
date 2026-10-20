@@ -4,6 +4,7 @@ import test from "node:test";
 import { AuthError } from "../src/auth/core.mjs";
 import { PostgresDataIngestionRepository } from "../src/database/data-ingestion-repository.mjs";
 import { ProductionIngestionService } from "../src/ingestion/production-ingestion-service.mjs";
+import { createRawObjectIdentity } from "../src/ingestion/raw-object-identity.mjs";
 import { ObjectStorageError } from "../src/storage/s3-object-storage.mjs";
 import { createProductionApp } from "../src/webapp/production-app.mjs";
 
@@ -11,8 +12,9 @@ const id = "11111111-1111-4111-8111-111111111111";
 const foreignId = "22222222-2222-4222-8222-222222222222";
 const token = "a".repeat(43);
 const csv = Buffer.from('product,revenue\r\n"Caf\u00e9, large",120.00\r\n"Quoted ""item""",-3.50\r\n');
+const sourceKey = createRawObjectIdentity({ organizationId: "org-a", originalFilename: "sales.csv", content: csv }).storageKey;
 
-async function fixture(work, { role = "viewer", storedBody = csv, storageError, byteSize = csv.length, fileName = "sales.csv", quarantine = false, storageGate } = {}) {
+async function fixture(work, { role = "viewer", storedBody = csv, storageError, byteSize = csv.length, fileName = "sales.csv", quarantine = false, storageGate, storageKey = sourceKey } = {}) {
   const reads = [];
   const queries = [];
   const pool = { async connect() { return {
@@ -21,7 +23,7 @@ async function fixture(work, { role = "viewer", storedBody = csv, storageError, 
       if (sql.includes("from organization_memberships")) return { rows: role ? [{ role }] : [] };
       if (sql.includes("from ingestion_runs")) {
         assert.equal(values[1], "org-a");
-        return { rows: quarantine || values[0] !== id ? [] : [{ id: "raw-a", organization_id: "org-a", storage_key: "org/org-a/raw/source.csv",
+        return { rows: quarantine || values[0] !== id ? [] : [{ id: "raw-a", organization_id: "org-a", storage_key: storageKey,
           original_filename: fileName, content_type: "text/csv", byte_size: byteSize,
           checksum_sha256: createHash("sha256").update(csv).digest("hex"), status: "accepted" }] };
       }
@@ -57,8 +59,21 @@ test("source download returns saved bytes to a viewer without subscription acces
   assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
   assert.match(response.headers.get("cache-control"), /no-store/);
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-  assert.deepEqual(reads, [{ key: "org/org-a/raw/source.csv" }]);
+  assert.deepEqual(reads, [{ key: sourceKey }]);
 }));
+
+test("legacy tenant-scoped raw sources remain downloadable", async () => fixture(async ({ request }) => {
+  const response = await request();
+  assert.equal(response.status, 200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), csv);
+}, { storageKey: "org/org-a/raw/source.csv" }));
+
+for (const storageKey of ["organizations/org-b/uploads/source.csv", "org/org-b/raw/source.csv", "organizations/org-ab/uploads/source.csv", "unscoped/source.csv"]) {
+  test(`source download rejects non-tenant storage namespace ${storageKey}`, async () => fixture(async ({ request, reads }) => {
+    assert.equal((await request()).status, 404);
+    assert.equal(reads.length, 0);
+  }, { storageKey }));
+}
 
 test("native bearer downloads keep browser cookies and storage keys out of the response", async () => fixture(async ({ request }) => {
   const response = await request(id, { "x-biznoryx-client": "mobile-v1", authorization: `Bearer ${token}` }, "?organizationId=org-b&storageKey=secret");

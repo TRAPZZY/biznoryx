@@ -51,7 +51,8 @@ export class ProductionIngestionService {
 
   async download({ organizationId, actorUserId, uploadId }) {
     const source = await this.repository.getSourceFile({ organizationId, actorUserId, uploadId });
-    if (!source.storageKey.startsWith(`org/${organizationId}/raw/`)) {
+    const tenantPrefixes = [`organizations/${organizationId}/uploads/`, `org/${organizationId}/raw/`];
+    if (!tenantPrefixes.some((prefix) => source.storageKey.startsWith(prefix))) {
       throw new AuthError("Source file was not found.", "NOT_FOUND");
     }
     if (!Number.isSafeInteger(source.byteSize) || source.byteSize <= 0 || source.byteSize > MAX_UPLOAD_BYTES) {
