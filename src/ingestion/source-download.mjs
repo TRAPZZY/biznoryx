@@ -3,7 +3,7 @@ import { AuthError } from "../auth/core.mjs";
 let activeDownloads = 0;
 
 export async function serveSourceDownload(response, loadSource) {
-  if (activeDownloads >= 2) throw new AuthError("Downloads are busy. Please try again shortly.", "SERVICE_UNAVAILABLE");
+  if (activeDownloads >= 1) throw new AuthError("Downloads are busy. Please try again shortly.", "SERVICE_UNAVAILABLE");
   activeDownloads += 1;
   let released = false;
   let loading = true;

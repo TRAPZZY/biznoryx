@@ -2574,6 +2574,7 @@ async function downloadSourceFile(button, upload) {
 function dataPage() {
   disposeManualEntry?.();
   disposeManualEntry = null;
+  const pageVersion = navigationVersion;
   const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
   shell(
@@ -2758,7 +2759,9 @@ function dataPage() {
         container: manualPanel,
         api,
         onSubmitted: async () => {
-          dashboard = await api("dashboard");
+          const updated = await api("dashboard");
+          if (pageVersion !== navigationVersion || !manualPanel.isConnected) return;
+          dashboard = updated;
           const history = document.querySelector("#upload-history");
           if (history) {
             history.innerHTML = sourceFilesHtml(dashboard.uploads || []);

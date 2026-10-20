@@ -274,8 +274,9 @@ test("organization switching isolates uploads, validation, metrics and activity"
   await expect(page.locator("#validation-result")).toBeEmpty();
   await expect(page.getByRole("main")).not.toContainText("acme-navigation.csv");
   await expect(
-    page.getByText("No uploads yet.", { exact: false }),
+    page.getByText("No source files yet.", { exact: true }),
   ).toBeVisible();
+  await expect(page.locator("[data-source-download]")).toHaveCount(0);
   await navigate(page, "Activity", "activity", "Workspace activity");
   await expect(page.getByRole("main")).not.toContainText("Data file validated");
   await navigate(page, "Overview", "dashboard", "Acme Retail Group");

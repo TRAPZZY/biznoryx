@@ -128,18 +128,16 @@ test("simultaneous source reads are bounded and retry works after completion", a
   const storageGate = new Promise(resolve => { release = resolve; });
   await fixture(async ({ request, reads }) => {
     const first = request();
-    const second = request();
     try {
-      for (let attempt = 0; reads.length < 2 && attempt < 200; attempt++) {
+      for (let attempt = 0; reads.length < 1 && attempt < 200; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 5));
       }
-      assert.equal(reads.length, 2);
+      assert.equal(reads.length, 1);
       assert.equal((await request()).status, 503);
-    } finally { release(); await Promise.allSettled([first, second]); }
-    for (const response of await Promise.all([first, second])) {
-      assert.equal(response.status, 200);
-      assert.deepEqual(Buffer.from(await response.arrayBuffer()), csv);
-    }
+    } finally { release(); await Promise.allSettled([first]); }
+    const response = await first;
+    assert.equal(response.status, 200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), csv);
     assert.equal((await request()).status, 200);
   }, { storageGate });
 });
@@ -152,10 +150,9 @@ test("disconnecting clients cannot bypass the in-flight storage read limit", asy
     const abandoned = fetch(`${base}/api/ingestion/uploads/${id}/download`, {
       headers: { cookie: `bnx_session=${token}` }, signal: controller.signal,
     }).catch(error => error);
-    const second = request();
     try {
-      for (let attempt = 0; reads.length < 2 && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
-      assert.equal(reads.length, 2);
+      for (let attempt = 0; reads.length < 1 && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(reads.length, 1);
       controller.abort();
       await abandoned;
       // The next HTTP round trip observes the closed socket before admission.
@@ -163,8 +160,7 @@ test("disconnecting clients cannot bypass the in-flight storage read limit", asy
         headers: { cookie: `bnx_session=${token}` }, signal: AbortSignal.timeout(500),
       }).catch(() => null);
       assert.equal(third?.status, 503);
-    } finally { release(); await Promise.allSettled([abandoned, second]); }
-    assert.equal((await second).status, 200);
+    } finally { release(); await Promise.allSettled([abandoned]); }
     assert.equal((await request()).status, 200);
   }, { storageGate });
 });
