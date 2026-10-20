@@ -1399,6 +1399,35 @@ dd {
   max-width: 100%;
 }
 
+.source-download-message {
+  min-height: 20px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.source-download-message.error-text { color: #9a3026; }
+
+.source-file-cell { min-width: 180px; }
+.source-file-cell span { white-space: normal; overflow-wrap: anywhere; }
+#upload-history td small { display: block; margin-top: 4px; color: var(--muted); }
+.source-actions-cell { position: sticky; right: 0; background: #fff; }
+th.source-actions-cell { background: #edf1ed; }
+.source-file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.source-download-button {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--green);
+}
+.source-download-button svg { width: 18px; height: 18px; }
+.source-download-button:hover:not(:disabled) { background: #edf5ef; border-color: #a1b8aa; }
+.source-download-button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
 table {
   border-collapse: collapse;
   width: 100%;

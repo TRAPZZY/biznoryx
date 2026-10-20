@@ -2513,9 +2513,68 @@ function business() {
   });
 }
 
+function sourceFilesHtml(uploads) {
+  return `
+    <div class="section-heading"><h2>Source files</h2><span>${uploads.length} ${uploads.length === 1 ? "file" : "files"}</span></div>
+    <p id="source-download-message" class="source-download-message" role="status" aria-live="polite"></p>
+    ${uploads.length ? `<div class="table-scroll"><table>
+      <thead><tr><th>File</th><th>Type</th><th>Series</th><th>Period</th><th>Metric</th><th>Status</th><th class="source-actions-cell"><span class="sr-only">File actions</span></th></tr></thead>
+      <tbody>${uploads.map(u => `<tr>
+        <td class="source-file-cell">${icon("file-spreadsheet")}<span>${esc(u.fileName)}</span></td>
+        <td>${esc(u.sourceFormat || u.dataKind || "Business file")}</td>
+        <td>${esc(u.dataSeries || "Primary performance")}</td>
+        <td>${esc(u.period || u.periodLabel || "Reporting period")}</td>
+        <td>${esc(u.metricLabel || "Metric")}${["confirmed", "awaiting_confirmation"].includes(u.status) ? `<small>${esc(metricAmount(u))}</small>` : ""}</td>
+        <td><span class="status ${["confirmed", "validated", "processed", "ready"].includes(u.status) ? "success" : ""}">${esc(String(u.status || "unknown").replaceAll("_", " "))}</span></td>
+        <td class="source-actions-cell"><div class="source-file-actions">
+          <button class="text-button review-upload" data-id="${esc(u.id)}" type="button">Review ${icon("arrow-up-right")}</button>
+          <button class="source-download-button" data-source-download="${esc(u.id)}" type="button"
+            aria-label="Download ${esc(u.fileName)}" title="${u.downloadAvailable === false ? "Source file is not available" : "Download source file"}"
+            ${u.downloadAvailable === false ? "disabled" : ""}>${icon("download")}</button>
+        </div></td>
+      </tr>`).join("")}</tbody></table></div>` : `<div class="small-empty">No source files yet.</div>`}`;
+}
+
+async function downloadSourceFile(button, upload) {
+  const message = document.querySelector("#source-download-message");
+  const report = (text, error = false) => {
+    if (!message?.isConnected) return;
+    message.textContent = text;
+    message.classList.toggle("error-text", error);
+  };
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  report(`Downloading ${upload.fileName}...`);
+  try {
+    const response = await fetch(`/api/ingestion/uploads/${encodeURIComponent(upload.id)}/download`, { credentials: "same-origin" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || "Download failed. Please try again.");
+    }
+    const blob = await response.blob();
+    const encodedName = response.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const fileName = encodedName ? decodeURIComponent(encodedName) : upload.fileName;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    report(`Downloaded ${fileName}.`);
+  } catch (error) {
+    report(error.message || "Download failed. Please try again.", true);
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
 function dataPage() {
   disposeManualEntry?.();
   disposeManualEntry = null;
+  const pageVersion = navigationVersion;
   const uploads = Array.isArray(dashboard?.uploads) ? dashboard.uploads : [];
 
   shell(
@@ -2680,121 +2739,8 @@ function dataPage() {
         ${validation ? validationHtml(validation) : ""}
       </div>
 
-      <section class="table-section">
-        <div class="section-heading">
-          <h2>
-            Upload history
-          </h2>
-
-          <span>
-            ${uploads.length} files
-          </span>
-        </div>
-
-        ${
-          uploads.length
-            ? `
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Type</th>
-                      <th>Series</th>
-                      <th>Period</th>
-                      <th>Metric</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    ${uploads
-                      .map(
-                        (u) => `
-                          <tr>
-                            <td>
-                              ${icon("file-spreadsheet")}
-
-                              ${esc(u.fileName)}
-                            </td>
-
-                            <td>
-                              ${esc(
-                                u.sourceFormat || u.dataKind || "Business file",
-                              )}
-                            </td>
-
-                            <td>
-                              ${esc(u.dataSeries || "Primary performance")}
-                            </td>
-
-                            <td>
-                              ${esc(u.period || u.periodLabel || "—")}
-                            </td>
-
-                            <td>
-                              ${esc(u.metricLabel || "Metric")}
-
-                              ${
-                                u.status === "confirmed" ||
-                                u.status === "awaiting_confirmation"
-                                  ? `
-                                    <small>
-                                      ${esc(metricAmount(u))}
-                                    </small>
-                                  `
-                                  : ""
-                              }
-                            </td>
-
-                            <td>
-                              <span
-                                class="status ${
-                                  [
-                                    "confirmed",
-                                    "validated",
-                                    "processed",
-                                    "ready",
-                                  ].includes(u.status)
-                                    ? "success"
-                                    : ""
-                                }"
-                              >
-                                ${esc(
-                                  String(u.status || "unknown").replaceAll(
-                                    "_",
-                                    " ",
-                                  ),
-                                )}
-                              </span>
-                            </td>
-
-                            <td>
-                              <button
-                                class="text-button review-upload"
-                                data-id="${u.id}"
-                                type="button"
-                              >
-                                Review
-                                ${icon("arrow-up-right")}
-                              </button>
-                            </td>
-                          </tr>
-                        `,
-                      )
-                      .join("")}
-                  </tbody>
-                </table>
-              </div>
-            `
-            : `
-              <div class="small-empty">
-                No uploads yet. Your first confirmed file
-                establishes the baseline for a data series.
-              </div>
-            `
-        }
+      <section id="upload-history" class="table-section">
+        ${sourceFilesHtml(uploads)}
       </section>
     `,
     "/data",
@@ -2812,7 +2758,16 @@ function dataPage() {
       disposeManualEntry = mountManualEntry({
         container: manualPanel,
         api,
-        onSubmitted: async () => { dashboard = await api("dashboard"); },
+        onSubmitted: async () => {
+          const updated = await api("dashboard");
+          if (pageVersion !== navigationVersion || !manualPanel.isConnected) return;
+          dashboard = updated;
+          const history = document.querySelector("#upload-history");
+          if (history) {
+            history.innerHTML = sourceFilesHtml(dashboard.uploads || []);
+            window.lucide?.createIcons({ root: history });
+          }
+        },
       });
     }
   };
@@ -2914,18 +2869,19 @@ function dataPage() {
     });
   });
 
-  document.querySelectorAll(".review-upload").forEach((button) => {
-    button.onclick = () => {
-      validation =
-        uploads.find((upload) => upload.id === button.dataset.id) || null;
-
+  document.querySelector("#upload-history").onclick = async (event) => {
+    const button = event.target.closest("button[data-source-download], button.review-upload");
+    if (!button || button.disabled) return;
+    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDownload || button.dataset.id));
+    if (!upload) return;
+    if (button.hasAttribute("data-source-download")) {
+      await downloadSourceFile(button, upload);
+    } else {
+      validation = upload;
       dataPage();
-
-      document.querySelector("#validation-result")?.scrollIntoView({
-        behavior: "smooth",
-      });
-    };
-  });
+      document.querySelector("#validation-result")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   bindForm("#confirm-form", async () => {
     if (!validation?.id) {

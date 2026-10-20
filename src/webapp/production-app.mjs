@@ -61,6 +61,7 @@ import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../bil
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 
 import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
+import { serveSourceDownload } from "../ingestion/source-download.mjs";
 import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
 import { ManualEntryService } from "../ingestion/manual-entry.mjs";
 import { SevenDayTrialService } from "../billing/trial-service.mjs";
@@ -1731,6 +1732,17 @@ async function routeRequest({ request, response, runtime }) {
    * INGESTION
    * ==================================================
    */
+
+  const sourceDownload = url.pathname.match(/^\/api\/ingestion\/uploads\/([^/]+)\/download$/);
+  if (sourceDownload && request.method === "GET") {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
+    const organizationId = requireActiveOrganization(context, "Select a business before downloading data.");
+    if (!runtime.ingestion?.download) throw new AuthError("Source downloads are unavailable.", "SERVICE_UNAVAILABLE");
+    await serveSourceDownload(response, () => runtime.ingestion.download({
+      organizationId, actorUserId: context.user.id, uploadId: sourceDownload[1],
+    }));
+    return;
+  }
 
   if (url.pathname === "/api/ingestion/upload" && request.method === "POST") {
     const { context } = await authenticateRequest({
@@ -3760,6 +3772,8 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 function mapDashboardUpload(upload) {
   return {
     id: upload.id,
+
+    downloadAvailable: upload.rawObject.status !== "quarantined",
 
     fileName: upload.rawObject.originalFilename,
 
