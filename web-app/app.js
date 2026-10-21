@@ -8,10 +8,12 @@ import {
 import { mountManualEntry } from "./manual-entry.js";
 import { mountTrialBilling } from "./trial-billing.js";
 import { mountUpdates, updatesPageHtml, feedbackScope, operationFeedback } from "./updates.js";
+import { actionPlansHtml, mountActionPlans } from "./action-plans.js";
 
 let csrfToken;
 let session;
 let dashboard;
+let disposeActionPlans;
 let validation;
 let pendingVerification;
 let billingCheckoutReference;
@@ -188,9 +190,10 @@ function performanceLineChart(series) {
   `;
 }
 
-async function api(path, body) {
+async function api(path, body, options = {}) {
   const response = await fetch(`/api/${path}`, {
-    method: body ? "POST" : "GET",
+    method: options.method || (body ? "POST" : "GET"),
+    signal: options.signal,
     credentials: "same-origin",
 
     headers: {
@@ -223,6 +226,8 @@ async function api(path, body) {
 }
 
 function mount(html) {
+  disposeActionPlans?.();
+  disposeActionPlans = null;
   app.innerHTML = html;
   window.lucide?.createIcons();
 }
@@ -1950,6 +1955,8 @@ function shell(content, active) {
     ["/data", "database", "Data & uploads"],
 
     ["/reports", "file-check-2", "Evidence reports"],
+
+    ["/actions", "list-checks", "Action plans"],
 
     ["/business", "building-2", "Business profile"],
 
@@ -6050,6 +6057,9 @@ async function route() {
       shell(updatesPageHtml(), "/updates");
     } else if (path === "/reports") {
       await reports();
+    } else if (path === "/actions") {
+      shell(actionPlansHtml(), "/actions");
+      disposeActionPlans = mountActionPlans({ root: document.querySelector("#action-plans"), api, initial: dashboard });
     } else if (path === "/billing") {
       billingPage();
     } else if (path === "/activity") {
