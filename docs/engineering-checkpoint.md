@@ -168,8 +168,51 @@ here. None has an approval review recorded. Reconcile each independently.
 | Capital protection | Not implemented | Not run | Not started | Not deployed | Versioned dated balances/obligations/assumptions and financial fixtures |
 | Leakage investigations | Not implemented | Not run | Not started | Not deployed | Transaction/units/allocation layer; concurrency invariants |
 | Guided plans | Existing actions/outcomes only | Existing evidence only | Extension not started | Existing actions only | Extend acceptance/review/baseline versions without parallel task system |
-| Portable evidence | Existing report exports only | Existing export tests only | Extension not started | Existing exports only | Source register/versioned manifest/context/coverage |
+| Portable evidence | Versioned JSON snapshot extension implemented | Focused API/unit and desktop/mobile exports passed | Separate feature PR pending | Not deployed yet | Final CI/merge/deployment; original files/actions/outcomes excluded |
 | Optional email/push | Not implemented | Not run | Not started | Not enabled | Provider/platform/privacy approval; per-channel tests |
 
 Update this document with final tested SHA, PR/run/merge, actual deployment proof,
 skipped checks and any required operation approval after each completed slice.
+
+## Recovery release verified
+
+PR 18 merged as `9dd6566f9baf1a54ffaa9bee48e6d90d52c151fe`, tested head
+`9f42573dc1efbb6776fdfbe033fe21c9feccbfac`. Final PR CI
+[39569607898](https://github.com/TRAPZZY/biznoryx/actions/runs/39569607898)
+and post-merge CI
+[39570007116](https://github.com/TRAPZZY/biznoryx/actions/runs/39570007116)
+passed. Northflank API `biznoryx` build `possible-magic-6982`, pod
+`biznoryx-76bf49b4d4-kl5k6`, and worker `biznoryx-worker` build
+`gleaming-flight-5473`, pod `biznoryx-worker-6cbfbd6d98-jkfl8`, independently
+show this exact active SHA, Running, one instance, zero restarts. Automatic main
+deployment was observed; no duplicate deployment was triggered. Public healthz
+and readyz both returned HTTP 200 after observation. Prior 04c9ddb builds remain
+listed for runtime rollback. This does not repair the recorded database issues.
+
+## Portable evidence continuation
+
+Branch `codex/portable-evidence-file` starts from merged PR 18. The existing
+authenticated report export now offers an evidence JSON file: allowlisted report
+snapshot, exact decimal observations, definition/report/schema versions, source
+register, methodology, explanations, limitations and reproducible SHA-256 digest.
+The payload explicitly denies external certification and includes no original
+source files or action/outcome summaries. It is a downloaded snapshot, not a new
+server archive or trusted import. Existing PDF/HTML/CSV and source-download paths
+remain separate and unchanged.
+
+Fresh local verify passed (387 tests, 16 PostgreSQL-dependent skips). Focused tests
+passed 4/4, including production cookie/native, tenant and premium boundaries.
+The browser export/retry tests passed at 1440px and 390px and screenshots were
+visually inspected. The first narrow-screen attempt used desktop navigation
+setup incorrectly; the test now explicitly sets the intended width before
+downloads, while retaining existing desktop/setup and responsive report checks.
+No application fix was needed for that test-only timeout. CI now runs the real
+PostgreSQL evidence-report contract under its restricted runtime role as well.
+
+Final full-browser, CI, review, merge and live deployment results belong in this
+slice's release-evidence PR comment. See
+[the runbook](runbooks/portable-evidence-file.md). No new schema, provider, secret,
+data mutation or activation is required. Physical Android/WebView behavior remains
+unverified. The wider roadmap is not complete: capital protection, leakage,
+guided-plan extensions, extraction review/import and external delivery are not
+shipped by either of these releases.

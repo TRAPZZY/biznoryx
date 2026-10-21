@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { createReviewApp } from "../src/webapp/review-app.mjs";
 
 test("review evidence report explains dated trends, accepts governed definitions and exports safely", async () => {
@@ -32,6 +33,9 @@ test("review evidence report explains dated trends, accepts governed definitions
       assert.fail(await response.text());
     }
     assert.match(response.headers.get("content-type"), expectedType);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+    assert.match(response.headers.get("content-disposition"), /attachment/);
     return format === "pdf" ? Buffer.from(await response.arrayBuffer()) : await response.text();
   }
 
@@ -135,6 +139,13 @@ test("review evidence report explains dated trends, accepts governed definitions
     const pdf = await download("pdf", /application\/pdf/);
     assert.equal(pdf.subarray(0, 4).toString("utf8"), "%PDF");
     assert.ok(pdf.length > 5000);
+
+    const file = JSON.parse(await download("json", /application\/json/));
+    assert.equal(file.payload.report.current.value, "190");
+    assert.equal(file.payload.report.metric.policy.version, 1);
+    assert.equal(file.payload.report.evidence.sources[0].fileName, "evidence-trend.csv");
+    assert.equal(file.integrity.value, createHash("sha256").update(JSON.stringify(file.payload)).digest("hex"));
+    assert.equal((await fetch(`${base}/api/evidence-report?format=json`)).status, 401);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

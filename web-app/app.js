@@ -4549,6 +4549,16 @@ function reportPageHeader(ready = false) {
               </button>
 
               <button
+                class="er-icon-button"
+                type="button"
+                data-report-export="json"
+                title="Download evidence file"
+                aria-label="Download evidence file"
+              >
+                ${icon("file-json")}
+              </button>
+
+              <button
                 class="primary"
                 type="button"
                 data-report-export="pdf"
