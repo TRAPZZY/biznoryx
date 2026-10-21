@@ -85,8 +85,17 @@ Read-only transactions through the worker's existing database connection confirm
 - `schema_migrations` contains 24 rows ending at
   `0024_evidence_report_definitions.sql`. Later trial functions nevertheless exist:
   the ledger alone is therefore not an authoritative full-schema inventory.
-- The API database identity/role still needs independent comparison. Do not assume
-  its connection is identical to the worker's or blindly replay migrations 0025+.
+- An independent API-shell read-only query confirms the same database and role as
+  the worker. Do not blindly replay migrations 0025+: cancellation columns and
+  the revenue-breakdown column exist despite their absent ledger entries.
+- On this runtime connection, `ingestion_runs`, `organization_billing_subscriptions`,
+  `organization_memberships` and `organizations` are owned by the connected role,
+  with RLS enabled but not forced. Table owners can bypass those policies. This
+  is a database-defense gap, not evidence that a cross-tenant request succeeded;
+  API authorization must remain intact. `manual_entry_drafts` and
+  `manual_entry_submissions` have forced RLS and are not owned by this role;
+  `billing_trials` has RLS and a different owner. Changing ownership, roles or
+  FORCE RLS without testing security-definer dependencies could break production.
 - No notification flag rows or delivery status can be queried when their relations
   are absent. Migration 0033/permissions/activation are **not ready** on the checked
   worker connection; no feature was activated.
@@ -124,7 +133,7 @@ source files, migrations, production settings and subscriptions are unchanged.
 | Workstream | Code | Tests | GitHub | Deployment | Remaining blockers |
 | --- | --- | --- | --- | --- | --- |
 | Source downloads | Implemented | PR 15 evidence | Merged | Prior verified, current runtime includes it | Physical installed Android UI not claimed |
-| In-app Updates | Implemented, default off | PR 16 evidence; fresh browser 46/46 | Merged | Code included; worker DB lacks schema | Reconcile API DB/0033/grants, separately approve migration/activation |
+| In-app Updates | Implemented, default off | PR 16 evidence; fresh browser 46/46 | Merged | Both services share DB without schema | Reconcile partial ledger/0033/grants, separately approve migration/activation |
 | Extraction evaluation | Legacy plus recovered owner suite/scorer | Focused 9/9; verify/browser passed | PR 17 merged; recovery PR pending | No runtime feature | Provider approval and real-world evaluation absent |
 | Capture/proposal/review/import | Not implemented | Not run | Not started | Disabled/unavailable | Provider/privacy/security/accuracy gates; immutable reviewed normalized layer |
 | Capital protection | Not implemented | Not run | Not started | Not deployed | Versioned dated balances/obligations/assumptions and financial fixtures |
