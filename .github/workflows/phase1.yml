@@ -44,6 +44,9 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Render isolated synthetic owner-record fixtures
+        run: node scripts/generate-extraction-fixtures.mjs --suite owner-records --png
+
       - name: Verify desktop and mobile browser journeys
         run: npm run test:browser 2>&1 | tee browser-test.log; exit ${PIPESTATUS[0]}
 

@@ -2,6 +2,50 @@
 
 Status: **evaluation preparation only**. The feature is not integrated, enabled or advertised in production. This document is a newly reconstructed continuation of an interrupted Codex workspace; it is not a recovered copy of the original uncommitted draft.
 
+## Recovered owner-records suite
+
+The October 21 reconciliation recovered the original, more detailed owner-supplied
+examples without replacing the smaller PR 17 baseline. There is still one public
+generator; its default output and tests remain unchanged:
+
+```sh
+node scripts/generate-extraction-fixtures.mjs --suite owner-records
+node scripts/generate-extraction-fixtures.mjs --suite owner-records --png
+node scripts/evaluate-extraction-fixtures.mjs path/to/predictions.json
+node --test tests/extraction-evaluation-records.test.mjs
+```
+
+Owner outputs live under `test-results/extraction-evaluation/owner-records/`:
+`inputs/clean/` contains text/HTML, optional `inputs/visual/` contains PNGs,
+`gallery.html` provides a local contact sheet, and `answers/expected.json` is
+evaluator-only. Only PNGs should reach a future image extractor. Keep the index,
+answer key and source definitions outside its context. The input renderer does
+not import the answer key. Never send these files to an unapproved provider.
+
+The nine captures cover the exact original examples: supplier part payment,
+daily sales with receivable, business expenses versus owner withdrawal,
+uncompleted service with deposit, corrected flour quantity, unresolved oil
+amount, two photographs of the same supplier receipt, and repayment of an old
+receivable. Monetary/quantity values are decimal strings, not the legacy
+suite's minor-unit schema. Explicit, derived, confirmed-context and unknown
+values remain distinct; carton capacity, tax and job completion are not guessed.
+
+Predictions use `{ "cases": [...] }`. Each case supplies `fixtureId`, `recordType`,
+`fields` (flat field-name keys mapped to `{ value, provenance, candidates? }`),
+`requiredReviewDecisions`, optional `relationships` and `claims`. Unknown values
+must stay null with provenance `unknown`; ambiguous candidates must be preserved.
+Relationship proposals require review; setting `importApproved: true` always
+fails. The scorer reports field/provenance errors, unsafe guesses, missing review,
+duplicate/missing case results and prohibited classifications. It does not read
+images or invoke OCR. Exit codes are 0 (contract match), 1 (mismatch), 2 (invalid
+input); prediction input is capped at 2 MiB and 100 cases.
+
+The scorer's exact-answer self-test validates only the scorer contract, not
+recognition accuracy. Local cursive fonts, deliberate visual ambiguity and
+photographic transforms are synthetic, not proof of Nigerian handwriting
+performance. No runtime routes, schema changes, flags or analytics imports are
+introduced by this recovery.
+
 ## Purpose and non-goals
 
 Establish a reproducible, privacy-safe local fixture set to evaluate a future *proposal-only* extraction workflow for receipts, handwritten daily sales notes and cashbooks. The existing CSV, PDF and manual-entry workflows remain the only supported input paths. Never treat a proposed extraction as verified ledger data: a business-authorized reviewer must confirm the source, interpretation and posting intent before an immutable import version is created.
