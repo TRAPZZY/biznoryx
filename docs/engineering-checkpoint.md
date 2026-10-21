@@ -101,10 +101,18 @@ Read-only transactions through the worker's existing database connection confirm
   worker connection; no feature was activated.
 
 Northflank addon `biznoryx-db` is PostgreSQL 18, TLS/private networking, Running.
-Latest snapshot `biznoryx-auth-hotfix-20261013` is Completed (6 GB, October 13
+At initial inspection snapshot `biznoryx-auth-hotfix-20261013` was Completed (6 GB, October 13
 12:08:29-12:09:24); its page says **No restores found**. An October 6 snapshot
 also exists. Backup schedules has no configured schedule. Snapshot availability
 does not establish tested restore readiness or current recovery coverage.
+
+The user subsequently authorized **a fresh snapshot only**. Snapshot
+`biznoryx-preflight-20261021` is now confirmed Completed, Disk, 6 GB, duration
+October 21 04:26:27-04:27:34 in the Northflank UI's displayed time zone. Addon
+returned to Running. The snapshot page still says No restores found. No schedules,
+restores, role changes, grants, schemas, customer records or flags were modified.
+Local screenshot proof is preserved in the recovery backup's
+`evidence/northflank-snapshot-completed.png` (not committed).
 
 Before any separately approved production repair: compare API and worker database
 identities, inspect the exact additive schema/grant gap using the real runtime
@@ -113,6 +121,8 @@ disposable PostgreSQL, and present exact SQL for approval. Never create a guesse
 billing table, bypass subscription checks, or use destructive down migrations.
 No production writes, migrations, secrets/settings changes or feature activation
 are authorized by this checkpoint.
+See [production schema reconciliation](runbooks/production-schema-reconciliation.md)
+for dependency-ordered review and stop conditions; it authorizes no production SQL.
 
 ## Recovery verification
 
@@ -125,8 +135,27 @@ canvas-pixel checks; the rotated duplicate was visually inspected. These are
 fixture/render/scorer tests, not OCR accuracy. CI now renders owner PNGs after
 installing Chromium. Production PostgreSQL is never a test target.
 
-Recovery PR, final head/merge/run and post-merge deployment are pending. Runtime
-source files, migrations, production settings and subscriptions are unchanged.
+Recovery [PR 18](https://github.com/TRAPZZY/biznoryx/pull/18) is open. Its tested
+code head `11744692900156dcbb5cf896ea7f1482998c20ae` passed
+[CI 39569058469](https://github.com/TRAPZZY/biznoryx/actions/runs/39569058469):
+384 unit tests passed, 16 database-dependent unit skips, 46 browser journeys,
+10 durable/native/runtime PostgreSQL tests, 17 manual-entry/trial/Updates database
+tests, PostgreSQL RLS acceptance and production dependency audit passed. CI rendered
+all nine owner PNGs. CodeRabbit skipped review; manual diff/security-scope review
+found no remaining actionable recovery-code findings. Snapshot/recovery documentation
+was appended afterward; final-head CI must pass before merge.
+
+The PR's final release-evidence comment records its tested head, merge SHA,
+post-merge CI, observed API/worker deployments and health. Do not infer these from
+this pre-merge checkpoint. Runtime source, migrations, settings and subscriptions
+remain unchanged by the recovery code.
+
+Independent PRs remain excluded: 7 (head 36bfeda) and 12 (head f169cee) report
+merge conflicts and include overlapping mobile changes plus a competing migration
+0033. Their successful historical Android/verify checks are not current-main
+compatibility evidence. PR 14 (head 9fde393) is mergeable with historical checks
+passing, limited to Resend handling/tests/runbook, but is not revalidated or merged
+here. None has an approval review recorded. Reconcile each independently.
 
 ## Workstream state
 
