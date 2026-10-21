@@ -10,6 +10,7 @@ import pg from "pg";
 import { PostgresBillingRepository } from "../src/database/billing-repository.mjs";
 import { SevenDayTrialService, trialConfiguration } from "../src/billing/trial-service.mjs";
 import { startTrialMaintenance } from "../src/worker/trial-maintenance.mjs";
+import { startUpdatesMaintenance } from "../src/worker/updates-maintenance.mjs";
 
 import {
   PostgresMetricComparisonRepository,
@@ -155,6 +156,7 @@ const controller =
 let stopping =
   false;
 let stopTrialMaintenance;
+let stopUpdatesMaintenance;
 
 process.on(
   "SIGINT",
@@ -181,6 +183,8 @@ try {
       onError: reportWorkerError,
     });
   }
+
+  stopUpdatesMaintenance = startUpdatesMaintenance({ pool, onError: reportWorkerError });
 
   process.stdout.write(
     `BIZNORYX production worker started: ${workerId}\n`,
@@ -209,6 +213,7 @@ try {
   process.exitCode =
     1;
 } finally {
+  await stopUpdatesMaintenance?.();
   await stopTrialMaintenance?.();
   await pool.end();
 }

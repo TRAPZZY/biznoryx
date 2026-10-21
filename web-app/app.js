@@ -7,6 +7,7 @@ import {
 } from "./evidence-report.js";
 import { mountManualEntry } from "./manual-entry.js";
 import { mountTrialBilling } from "./trial-billing.js";
+import { mountUpdates, updatesPageHtml, feedbackScope, operationFeedback } from "./updates.js";
 
 let csrfToken;
 let session;
@@ -18,6 +19,7 @@ let navigationVersion = 0;
 let activeSeriesKey;
 let dataEntryMode = "upload";
 let disposeManualEntry;
+let disposeUpdates;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
@@ -216,6 +218,7 @@ async function api(path, body) {
     throw error;
   }
 
+  if (body) operationFeedback(path, payload);
   return payload;
 }
 
@@ -1928,6 +1931,7 @@ function policyOnboarding() {
 }
 
 function shell(content, active) {
+  disposeUpdates?.();
   const org =
     dashboard?.shell?.activeOrganization || session?.shell?.activeOrganization;
 
@@ -2053,6 +2057,7 @@ function shell(content, active) {
         </p>
 
         <nav aria-label="Workspace">
+          <a href="#/updates" data-updates-nav hidden class="${active === "/updates" ? "active" : ""}" aria-label="Updates" title="Updates">${icon("bell")}<span>Updates</span></a>
           ${navigationItems
             .map(
               ([path, symbol, title]) => `
@@ -2122,6 +2127,10 @@ function shell(content, active) {
           </span>
 
           <div class="workspace-top-actions">
+            <div id="updates-control" class="updates-control" hidden>
+              <button class="updates-bell" type="button" aria-label="Updates" title="Updates" aria-expanded="false" aria-controls="updates-panel">${icon("bell")}<span class="updates-count"></span></button>
+              <section id="updates-panel" class="updates-panel" aria-label="Recent updates" hidden><div class="section-heading"><strong>Updates</strong><a href="#/updates">View all</a></div><div class="recent-updates"></div></section>
+            </div>
             ${
               subscription
                 ? `
@@ -2164,6 +2173,9 @@ function shell(content, active) {
       </div>
     </div>
   `);
+
+  feedbackScope(org?.id ?? null);
+  disposeUpdates = mountUpdates({ root: app, api });
 
   const sidebarToggle = document.querySelector("#sidebar-toggle");
 
@@ -5946,6 +5958,9 @@ function showError(error) {
 
 async function route() {
   const version = ++navigationVersion;
+  disposeUpdates?.();
+  disposeUpdates = null;
+  feedbackScope(session?.authenticated ? session.shell?.activeOrganization?.id : null);
   disposeManualEntry?.();
   disposeManualEntry = null;
 
@@ -6016,7 +6031,13 @@ async function route() {
     if (path === "/business") {
       business();
     } else if (path === "/data") {
+      if (params.has("upload")) {
+        validation = dashboard.uploads?.find(upload => upload.id === params.get("upload")) ?? null;
+        if (!validation) throw new Error("This source is unavailable in the selected business.");
+      }
       dataPage();
+    } else if (path === "/updates") {
+      shell(updatesPageHtml(), "/updates");
     } else if (path === "/reports") {
       await reports();
     } else if (path === "/billing") {

@@ -1,0 +1,12 @@
+begin;
+drop trigger if exists ingestion_update_event on ingestion_runs;
+drop trigger if exists processing_update_event on processing_jobs;
+drop function if exists enqueue_source_update();
+drop function if exists deliver_source_updates(integer);
+drop table if exists notification_preferences;
+drop table if exists notification_recipients;
+drop table if exists notification_events;
+drop table if exists organization_features;
+drop index if exists ingestion_runs_id_org_updates_idx;
+drop function if exists updates_member(uuid);
+commit;

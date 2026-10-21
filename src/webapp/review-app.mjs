@@ -35,6 +35,7 @@ import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource
 import { sendEvidenceExport } from "../reports/export.mjs";
 import { ReviewManualEntry } from "../preview/manual-entry.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
+import { updatesRequest } from "../notifications/updates.mjs";
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -487,6 +488,17 @@ async function routeRequest({ request, response, runtime }) {
         expiresAt: invitation.invitation.expiresAt,
       },
     });
+    return;
+  }
+
+  if (["/api/updates", "/api/updates/state", "/api/updates/read-all", "/api/updates/preferences"].includes(url.pathname)) {
+    const context = authenticateFromRequest(request, runtime, { requireCsrf: request.method === "POST" });
+    requireCapability(runtime, context, CAPABILITIES.READ_BUSINESS_DATA);
+    const result = await updatesRequest({ repository: runtime.updates,
+      scope: { organizationId: context.session.activeOrganizationId, actorUserId: context.user.id },
+      path: url.pathname, method: request.method, query: url.searchParams,
+      body: request.method === "POST" ? await readJson(request) : undefined });
+    sendJson(response, 200, result);
     return;
   }
 

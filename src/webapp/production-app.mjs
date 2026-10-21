@@ -62,6 +62,8 @@ import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 
 import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
+import { PostgresUpdatesRepository } from "../database/updates-repository.mjs";
+import { updatesRequest } from "../notifications/updates.mjs";
 import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
 import { ManualEntryService } from "../ingestion/manual-entry.mjs";
 import { SevenDayTrialService } from "../billing/trial-service.mjs";
@@ -136,6 +138,7 @@ export function createProductionApp({
   evidenceReportRepository,
   billingRepository,
   activityRepository,
+  updatesRepository,
   objectStorage,
   ingestionService,
   manualEntryService,
@@ -257,6 +260,7 @@ export function createProductionApp({
 
   const runtime = {
     pool,
+    updates: updatesRepository ?? (pool ? new PostgresUpdatesRepository(pool) : null),
 
     identity,
 
@@ -2074,6 +2078,16 @@ async function routeRequest({ request, response, runtime }) {
    * DASHBOARD
    * ==================================================
    */
+
+  if (["/api/updates", "/api/updates/state", "/api/updates/read-all", "/api/updates/preferences"].includes(url.pathname)) {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: request.method === "POST" });
+    const organizationId = requireActiveOrganization(context, "Select a business before opening Updates.");
+    const result = await updatesRequest({ repository: runtime.updates,
+      scope: { organizationId, actorUserId: context.user.id }, path: url.pathname, method: request.method,
+      query: url.searchParams, body: request.method === "POST" ? await readJson(request) : undefined });
+    sendJson(response, 200, result);
+    return;
+  }
 
   if (url.pathname === "/api/dashboard" && request.method === "GET") {
     const { context } = await authenticateRequest({
