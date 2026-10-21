@@ -1,4 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
+import { createReviewApp, createReviewRuntime } from "../../src/webapp/review-app.mjs";
+
+// Each test owns its review runtime, including authentication rate-limit state.
+// Do not consume the shared browser suite's login budget or weaken the limiter.
+const test = base.extend({
+  baseURL: async ({}, use) => {
+    const { server } = createReviewApp(createReviewRuntime());
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    try { await use(`http://127.0.0.1:${server.address().port}`); }
+    finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  },
+});
 
 // Synthetic HTTP contracts exercise the UI only. PostgreSQL authorization and
 // persistence are independently exercised by postgres-business-actions.test.mjs.

@@ -247,3 +247,16 @@ snapshot exists, but no restore test has been performed. The known trial-functio
 permission error and missing billing_payments remain separate reviewed repairs.
 No SQL, grants, production settings, provider calls or notification activation
 were performed during this slice. Each still requires its explicit approval.
+
+The owner subsequently approved an isolated private restore only, with no paid
+upgrade. Northflank shows the free addon quota full at 1/1. The disk snapshot's
+restore dialog targets the existing production addon, explicitly warning of a
+restart/unavailability; it was cancelled without confirmation. No isolated
+restore was possible within the available capacity, and production was untouched.
+
+Local full-browser checks passed 52/52. The first PR CI run 39619423354 failed two
+existing sign-in journeys after the new tests added five logins to the shared
+review runtime. The new browser tests now own per-test review runtimes, including
+rate-limit state, matching the existing Updates-test isolation pattern. No auth
+limit, production code, assertion or browser timeout was weakened. Final CI must
+still pass before merge; the failed run remains part of the release evidence.
