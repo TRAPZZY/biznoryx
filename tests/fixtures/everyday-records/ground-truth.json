@@ -1,0 +1,175 @@
+{
+  "version": "synthetic-ng-records-v1",
+  "synthetic": true,
+  "productionImportAllowed": false,
+  "providerApproved": false,
+  "realWorldAccuracyEstablished": false,
+  "fieldContract": "Each proposed field has value and provenance (explicit, derived, confirmed_context, unknown). Amounts and quantities are decimal strings, never binary floating point. Unknown fields must be null.",
+  "commonReview": ["confirm_extracted_records"],
+  "cases": [
+    {
+      "fixtureId": "01-supplier", "recordType": "supplier_purchase", "duplicateGroup": "DEMO-001",
+      "fields": {
+        "date": {"value":"2026-10-18","provenance":"explicit","type":"date"},
+        "currency": {"value":"NGN","provenance":"explicit"},
+        "receiptId": {"value":"DEMO-001","provenance":"explicit"},
+        "lineCount": {"value":"2","provenance":"derived","type":"decimal"},
+        "lines.0.description": {"value":"Bottled water","provenance":"explicit"},
+        "lines.0.quantity": {"value":"5","provenance":"explicit","type":"decimal"},
+        "lines.0.unit": {"value":"cartons","provenance":"explicit"},
+        "lines.0.unitPrice": {"value":"4000.00","provenance":"explicit","type":"decimal"},
+        "lines.0.amount": {"value":"20000.00","provenance":"explicit","type":"decimal"},
+        "lines.1.description": {"value":"Instant noodles","provenance":"explicit"},
+        "lines.1.quantity": {"value":"3","provenance":"explicit","type":"decimal"},
+        "lines.1.unit": {"value":"cartons","provenance":"explicit"},
+        "lines.1.unitPrice": {"value":"9500.00","provenance":"explicit","type":"decimal"},
+        "lines.1.amount": {"value":"28500.00","provenance":"explicit","type":"decimal"},
+        "goodsSubtotal": {"value":"48500.00","provenance":"explicit","type":"decimal"},
+        "transport": {"value":"2000.00","provenance":"explicit","type":"decimal"},
+        "total": {"value":"50500.00","provenance":"explicit","type":"decimal"},
+        "paid": {"value":"40000.00","provenance":"explicit","type":"decimal"},
+        "payable": {"value":"10500.00","provenance":"explicit","type":"decimal"},
+        "unitsPerCarton": {"value":null,"provenance":"unknown"},
+        "taxTreatment": {"value":null,"provenance":"unknown"}
+      },
+      "requiredReviewDecisions": ["confirm_extracted_records"],
+      "prohibitedClaims": ["subtotal_total_and_payment_are_separate_expenses", "known_units_per_carton", "tax_inclusive"],
+      "relationships": [{"kind":"possible_duplicate","fixtureIds":["07-duplicate-a","07-duplicate-b"],"requiresReview":true}]
+    },
+    {
+      "fixtureId":"02-sales", "recordType":"daily_sales",
+      "fields": {
+        "date":{"value":"2026-10-19","provenance":"explicit","type":"date"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "lineCount":{"value":"3","provenance":"derived","type":"decimal"},
+        "lines.0.description":{"value":"Rice 5kg","provenance":"explicit"},
+        "lines.0.quantity":{"value":"2","provenance":"explicit","type":"decimal"},
+        "lines.0.unit":{"value":"packs","provenance":"explicit"},
+        "lines.0.unitPrice":{"value":"7500.00","provenance":"derived","type":"decimal"},
+        "lines.0.amount":{"value":"15000.00","provenance":"explicit","type":"decimal"},
+        "lines.1.description":{"value":"Oil 1L","provenance":"explicit"},
+        "lines.1.quantity":{"value":"3","provenance":"explicit","type":"decimal"},
+        "lines.1.unit":{"value":"bottles","provenance":"explicit"},
+        "lines.1.unitPrice":{"value":"2500.00","provenance":"explicit","type":"decimal"},
+        "lines.1.amount":{"value":"7500.00","provenance":"derived","type":"decimal"},
+        "lines.2.description":{"value":"Soap","provenance":"explicit"},
+        "lines.2.quantity":{"value":"4","provenance":"explicit","type":"decimal"},
+        "lines.2.unit":{"value":"bars","provenance":"explicit"},
+        "lines.2.amount":{"value":"2000.00","provenance":"explicit","type":"decimal"},
+        "lines.2.paid":{"value":"1000.00","provenance":"explicit","type":"decimal"},
+        "lines.2.receivable":{"value":"1000.00","provenance":"explicit","type":"decimal"},
+        "salesTotal":{"value":"24500.00","provenance":"explicit","type":"decimal"},
+        "cashReceived":{"value":"16000.00","provenance":"derived","type":"decimal"},
+        "transferReceived":{"value":"7500.00","provenance":"derived","type":"decimal"},
+        "receivedTotal":{"value":"23500.00","provenance":"explicit","type":"decimal"},
+        "receivable":{"value":"1000.00","provenance":"explicit","type":"decimal"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records"],
+      "prohibitedClaims":["all_sales_paid", "rice_unit_price_explicitly_written"],
+      "relationships":[{"kind":"possible_repayment","fixtureIds":["08-repayment"],"requiresReview":true}]
+    },
+    {
+      "fixtureId":"03-withdrawal", "recordType":"business_outflows_and_owner_withdrawal",
+      "fields": {
+        "date":{"value":"2026-10-19","provenance":"confirmed_context","type":"date"},
+        "dateConvention":{"value":"DD/MM/YY","provenance":"explicit"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "fuel":{"value":"8500.00","provenance":"explicit","type":"decimal"},
+        "delivery":{"value":"2000.00","provenance":"explicit","type":"decimal"},
+        "threadAndButtons":{"value":"3200.00","provenance":"explicit","type":"decimal"},
+        "repair":{"value":"6000.00","provenance":"explicit","type":"decimal"},
+        "businessOutflows":{"value":"19700.00","provenance":"derived","type":"decimal"},
+        "businessOutflowCount":{"value":"4","provenance":"derived","type":"decimal"},
+        "ownerWithdrawal":{"value":"5000.00","provenance":"explicit","type":"decimal"},
+        "totalMoneyOut":{"value":"24700.00","provenance":"explicit","type":"decimal"},
+        "paymentMethod":{"value":null,"provenance":"unknown"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records"],
+      "prohibitedClaims":["owner_food_is_business_expense", "repair_is_equipment_purchase"], "relationships":[]
+    },
+    {
+      "fixtureId":"04-service", "recordType":"service_job_part_payment",
+      "fields": {
+        "date":{"value":"2026-10-20","provenance":"explicit","type":"date"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "jobId":{"value":"DEMO-J04","provenance":"explicit"},
+        "contractValue":{"value":"35000.00","provenance":"explicit","type":"decimal"},
+        "received":{"value":"20000.00","provenance":"explicit","type":"decimal"},
+        "remainingContractBalance":{"value":"15000.00","provenance":"explicit","type":"decimal"},
+        "balanceDueWhen":{"value":"collection","provenance":"explicit"},
+        "partsPaid":{"value":"12500.00","provenance":"explicit","type":"decimal"},
+        "transportPaid":{"value":"2500.00","provenance":"explicit","type":"decimal"},
+        "directCostsPaid":{"value":"15000.00","provenance":"derived","type":"decimal"},
+        "netRecordedCashMovement":{"value":"5000.00","provenance":"derived","type":"decimal"},
+        "jobCompleted":{"value":null,"provenance":"unknown"},
+        "recognizedRevenue":{"value":null,"provenance":"unknown"},
+        "netProfit":{"value":null,"provenance":"unknown"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records", "confirm_job_completion_and_revenue_policy"],
+      "prohibitedClaims":["contract_value_is_earned_revenue", "cash_movement_is_net_profit"], "relationships":[]
+    },
+    {
+      "fixtureId":"05-correction", "recordType":"supplier_purchase",
+      "fields": {
+        "date":{"value":"2026-10-20","provenance":"explicit","type":"date"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "description":{"value":"flour","provenance":"explicit"},
+        "quantity":{"value":"3","provenance":"explicit","type":"decimal"},
+        "crossedOutQuantity":{"value":"4","provenance":"explicit","type":"decimal"},
+        "unit":{"value":"bags","provenance":"explicit"},
+        "unitPrice":{"value":"18000.00","provenance":"explicit","type":"decimal"},
+        "total":{"value":"54000.00","provenance":"explicit","type":"decimal"},
+        "paid":{"value":"54000.00","provenance":"explicit","type":"decimal"},
+        "paymentMethod":{"value":"cash","provenance":"explicit"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records", "confirm_corrected_quantity"],
+      "prohibitedClaims":["crossed_out_quantity_is_another_purchase", "infer_unreadable_quantity_without_review"], "relationships":[]
+    },
+    {
+      "fixtureId":"06-ambiguous", "recordType":"supplier_purchase_proposal",
+      "fields": {
+        "date":{"value":"2026-10-20","provenance":"explicit","type":"date"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "description":{"value":"Cooking oil","provenance":"explicit"},
+        "quantity":{"value":"2","provenance":"explicit","type":"decimal"},
+        "unit":{"value":"containers","provenance":"explicit"},
+        "containerCapacity":{"value":null,"provenance":"unknown"},
+        "total":{"value":null,"provenance":"unknown","candidates":["15000.00","75000.00"]},
+        "paid":{"value":null,"provenance":"unknown"},
+        "paymentStatus":{"value":null,"provenance":"unknown"},
+        "payable":{"value":null,"provenance":"unknown"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records", "resolve_total", "confirm_payment_status"],
+      "prohibitedClaims":["unshown_payment_is_paid", "unshown_payment_is_unpaid", "authoritative_purchase_cost_before_confirmation"], "relationships":[]
+    },
+    {
+      "fixtureId":"07-duplicate-a", "recordType":"supplier_purchase", "inheritsFieldsFrom":"01-supplier", "duplicateGroup":"DEMO-001",
+      "requiredReviewDecisions":["confirm_extracted_records", "review_possible_duplicate"],
+      "prohibitedClaims":["auto_import_duplicate", "permanently_discard_without_decision"],
+      "relationships":[{"kind":"possible_duplicate","fixtureIds":["01-supplier","07-duplicate-b"],"requiresReview":true}]
+    },
+    {
+      "fixtureId":"07-duplicate-b", "recordType":"supplier_purchase", "inheritsFieldsFrom":"01-supplier", "duplicateGroup":"DEMO-001",
+      "requiredReviewDecisions":["confirm_extracted_records", "review_possible_duplicate"],
+      "prohibitedClaims":["auto_import_duplicate", "permanently_discard_without_decision"],
+      "relationships":[{"kind":"possible_duplicate","fixtureIds":["01-supplier","07-duplicate-a"],"requiresReview":true}]
+    },
+    {
+      "fixtureId":"08-repayment", "recordType":"receivable_repayment",
+      "fields": {
+        "date":{"value":"2026-10-20","provenance":"explicit","type":"date"},
+        "currency":{"value":"NGN","provenance":"explicit"},
+        "customerReference":{"value":"Customer A","provenance":"explicit"},
+        "received":{"value":"1000.00","provenance":"explicit","type":"decimal"},
+        "paymentMethod":{"value":"transfer","provenance":"explicit"},
+        "previousBalance":{"value":"1000.00","provenance":"explicit","type":"decimal"},
+        "newBalance":{"value":"0.00","provenance":"explicit","type":"decimal"},
+        "newSalesRevenue":{"value":"0.00","provenance":"derived","type":"decimal"},
+        "confirmedOriginalSaleId":{"value":null,"provenance":"unknown"}
+      },
+      "requiredReviewDecisions":["confirm_extracted_records", "confirm_receivable_link_or_leave_unallocated"],
+      "prohibitedClaims":["repayment_is_new_sale", "original_sale_link_confirmed_without_review"],
+      "relationships":[{"kind":"possible_repayment","fixtureIds":["02-sales"],"requiresReview":true}]
+    }
+  ]
+}

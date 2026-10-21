@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,8 +67,17 @@ export function renderCaptureSvg(capture) {
 }
 
 /** Files in inputs/ are the ONLY files an extraction evaluator may read. */
-export async function generateEvaluationFixtures(outputDir, { png = false } = {}) {
+export async function generateEvaluationFixtures(outputDir, { png = false, suite = 'legacy' } = {}) {
   const root = resolve(outputDir);
+  if (suite === 'owner-records') {
+    const { renderOwnerRecordInputs } = await import('./lib/record-fixture-renderer.mjs');
+    const result = await renderOwnerRecordInputs(root, { png });
+    const answers = join(root, 'answers');
+    await mkdir(answers, { recursive: true });
+    await writeFile(join(answers, 'expected.json'), await readFile(new URL('../tests/fixtures/everyday-records/ground-truth.json', import.meta.url)));
+    return { ...result, expectedDirectory: answers };
+  }
+  if (suite !== 'legacy') throw new Error('Unknown extraction fixture suite.');
   const inputs = join(root, 'inputs');
   const answers = join(root, 'answers');
   await mkdir(inputs, { recursive: true });
@@ -100,12 +109,15 @@ export async function generateEvaluationFixtures(outputDir, { png = false } = {}
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (args.some((arg) => !['--png'].includes(arg))) {
-    process.stderr.write('Usage: node scripts/generate-extraction-fixtures.mjs [--png]\n');
+  const suiteIndex = args.indexOf('--suite');
+  const suite = suiteIndex < 0 ? 'legacy' : args[suiteIndex + 1];
+  const options = args.filter((_, index) => index !== suiteIndex && (suiteIndex < 0 || index !== suiteIndex + 1));
+  if (!['legacy', 'owner-records'].includes(suite) || options.some(arg => arg !== '--png') || args.filter(arg => arg === '--suite').length > 1) {
+    process.stderr.write('Usage: node scripts/generate-extraction-fixtures.mjs [--png] [--suite legacy|owner-records]\n');
     process.exitCode = 2;
   } else {
-    const dir = resolve('test-results/extraction-evaluation');
-    const result = await generateEvaluationFixtures(dir, { png: args.includes('--png') });
+    const dir = resolve('test-results/extraction-evaluation', suite === 'legacy' ? '' : suite);
+    const result = await generateEvaluationFixtures(dir, { png: args.includes('--png'), suite });
     process.stdout.write(`Generated ${result.captures} synthetic captures in ${result.inputDirectory}; answer key isolated in ${result.expectedDirectory}.\n`);
   }
 }
