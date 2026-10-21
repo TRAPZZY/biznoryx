@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import pg from "pg";
+import { createProductionApp } from "../src/webapp/production-app.mjs";
+import { withTenantTransaction } from "../src/database/postgres.mjs";
 
 import {
   AuthError,
@@ -544,6 +546,8 @@ test(
                 "2026-03-31",
             },
           });
+
+      await verifyActionHttpContract({ pool, identity, actions, owner, outsider, organization, opportunity, createdAction, nonce });
 
       assert.equal(
         createdAction.status,
@@ -1236,6 +1240,54 @@ test(
     }
   },
 );
+
+async function verifyActionHttpContract({ pool, identity, actions, owner, outsider, organization, opportunity, createdAction, nonce }) {
+  const viewer = await identity.createUser({ email: `action-viewer-${nonce}@example.com`, displayName: "Action Viewer", password: "StrongViewerPass2026!" });
+  const scope = { organizationId: organization.id, actorUserId: owner.id };
+  await withTenantTransaction(pool, scope, client => client.query("insert into organization_memberships (organization_id,user_id,role,status) values ($1,$2,'viewer','active')", [organization.id, viewer.id]));
+  let actor = owner;
+  const app = createProductionApp({
+    identityRepository: { async authenticate({ requireCsrf, csrfToken }) {
+      if (requireCsrf && csrfToken !== "action-test-csrf") throw new AuthError("Invalid CSRF token.", "CSRF_INVALID");
+      return { user: actor, session: { activeOrganizationId: organization.id } };
+    } },
+    emailVerificationRepository: {}, businessActionsRepository: actions, production: false,
+  });
+  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${app.server.address().port}/api/actions`;
+  const headers = { cookie: "bnx_session=contract-test", "Content-Type": "application/json", "X-CSRF-Token": "action-test-csrf" };
+  const body = { findingId: opportunity.id, title: createdAction.title, description: createdAction.description, dueDate: createdAction.dueDate };
+  const post = (extra = {}) => fetch(base, { method: "POST", headers, body: JSON.stringify({ ...body, ...extra }) });
+  try {
+    assert.equal((await fetch(base, { method: "POST", headers: { cookie: headers.cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) })).status, 403);
+    const saved = await post({ organizationId: "untrusted-organization", actorUserId: outsider.id });
+    assert.equal(saved.status, 201, await saved.clone().text());
+    assert.equal((await saved.json()).action.id, createdAction.id);
+    const listed = await (await fetch(base, { headers })).json();
+    assert.equal(listed.actions.length, 1);
+    assert.equal(listed.actions[0].sourceFindingId, opportunity.id);
+    assert.equal(listed.actions[0].ownerUserId, owner.id);
+    assert.equal(listed.actions[0].dueDate, createdAction.dueDate);
+    const patch = (status, csrf = true) => fetch(`${base}/${createdAction.id}/status`, { method: "PATCH", headers: csrf ? headers : { ...headers, "X-CSRF-Token": "incorrect" }, body: JSON.stringify({ status }) });
+    assert.equal((await patch("in_progress", false)).status, 403);
+    assert.equal((await patch("planned")).status, 200);
+    assert.equal((await patch("completed")).status, 409);
+    actor = viewer;
+    assert.equal((await fetch(base, { headers })).status, 200);
+    assert.equal((await post()).status, 403);
+    assert.equal((await patch("in_progress")).status, 403);
+    actor = outsider;
+    const denied = await fetch(base, { headers });
+    assert.equal(denied.status, 404);
+    assert.doesNotMatch(await denied.text(), new RegExp(createdAction.id));
+    assert.equal((await post()).status, 404);
+    assert.equal((await patch("in_progress")).status, 404);
+    assert.equal((await actions.listActions(scope))[0].status, "planned");
+  } finally {
+    app.server.closeAllConnections();
+    await new Promise(resolve => app.server.close(resolve));
+  }
+}
 
 test(
   "business action status transitions are deterministic",

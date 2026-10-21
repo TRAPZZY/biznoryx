@@ -216,3 +216,34 @@ data mutation or activation is required. Physical Android/WebView behavior remai
 unverified. The wider roadmap is not complete: capital protection, leakage,
 guided-plan extensions, extraction review/import and external delivery are not
 shipped by either of these releases.
+
+## Action plans continuation
+
+Portable evidence PR 19 merged as
+`e5e48caa5fc41df2fdebb958d4dcb92a4644dc12`. Its post-merge
+[CI 39615785304](https://github.com/TRAPZZY/biznoryx/actions/runs/39615785304)
+passed. API build `elastic-lace-8322` and worker build `sure-flowers-8271`
+were independently observed running that SHA; healthz and readyz returned 200.
+
+The next branch, `codex/action-plans-workspace`, adds the customer Action plans
+page over existing verified actions, not another task store. It supports
+finding-backed creation, the authenticated owner, due dates, steps/resources,
+source evidence, search/filter and the existing status graph. Read-only roles
+have no mutation controls. It adds no migration or activation flag and does not
+expose uncertain financial outcomes. See [its runbook](runbooks/action-plans.md).
+
+Focused UI/unit checks passed: 3 unit tests and 5 browser journeys at desktop and
+390px mobile, including failed writes, read-only access and unavailable backend.
+Local verify passed: 390 tests, 16 database-dependent skips, build/security/syntax
+gates. The first browser attempt had an ambiguous test-only source-summary
+selector; narrowing it to the evidence details resolved the failure. Both form
+and list screenshots are captured. Full browser/CI/PostgreSQL/release evidence
+will be attached to the feature PR rather than assumed from local rendering.
+
+Alerts are still blocked on production reconciliation: notification tables and
+the expected runtime role are absent; the migration ledger stops at 0024 despite
+later objects being present. A fresh completed `biznoryx-preflight-20261021` disk
+snapshot exists, but no restore test has been performed. The known trial-function
+permission error and missing billing_payments remain separate reviewed repairs.
+No SQL, grants, production settings, provider calls or notification activation
+were performed during this slice. Each still requires its explicit approval.
