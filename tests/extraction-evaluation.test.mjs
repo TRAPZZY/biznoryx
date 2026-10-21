@@ -34,4 +34,4 @@ test('extraction evaluation fixtures remain local, synthetic and separate from a
     await rm(root, { recursive: true, force: true });
   }
 });
-===END TEST===
+
