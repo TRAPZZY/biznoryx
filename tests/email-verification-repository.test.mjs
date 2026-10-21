@@ -334,3 +334,29 @@ test("first verification with an invalid OTP cannot replace credentials", async 
   assert.equal(pool.state.passwordHash, null);
   assert.equal(pool.state.revoked, false);
 });
+
+for (const elapsed of [600_000, 600_001]) {
+  test(`email verification rejects a code at ${elapsed}ms without changing credentials`, async () => {
+    const pool = createResetPool({ verified: false });
+    const repository = new PostgresEmailVerificationRepository(pool, {
+      now: () => new Date(resetAt.getTime() + elapsed),
+    });
+    await assert.rejects(repository.verify({
+      email: "owner@example.com", code: resetCode, newPassword: "Synthetic-Owner-Password!",
+    }), { code: "EMAIL_CODE_INVALID" });
+    assert.equal(pool.state.passwordHash, null);
+    assert.equal(pool.state.verifiedAt, null);
+    assert.ok(pool.calls.some(({ query }) => query.includes("set consumed_at = $2")));
+  });
+}
+
+test("email verification rejects exhausted attempts even when the supplied code is correct", async () => {
+  const pool = createResetPool({ verified: false });
+  pool.state.attempts = 5;
+  const repository = new PostgresEmailVerificationRepository(pool, { now: () => resetAt });
+  await assert.rejects(repository.verify({
+    email: "owner@example.com", code: resetCode, newPassword: "Synthetic-Owner-Password!",
+  }), { code: "EMAIL_CODE_INVALID" });
+  assert.equal(pool.state.passwordHash, null);
+  assert.equal(pool.state.verifiedAt, null);
+});
