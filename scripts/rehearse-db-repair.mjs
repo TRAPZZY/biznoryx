@@ -84,10 +84,22 @@ async function signatures(connection, scope, insideTransaction = false) {
     .map((row) => row.jsonb_build_object);
 }
 
-function checkSignatures(expected, actual) {
+export function checkSignatures(
+  expected,
+  actual,
+  { allowAdditional = false } = {},
+) {
   const actualMap = new Map(
     actual.map((row) => [objectKey(row), comparable(row)]),
   );
+  assert.equal(
+    actualMap.size,
+    actual.length,
+    "Duplicate schema object signatures",
+  );
+  if (!allowAdditional) {
+    assert.equal(actual.length, expected.length, "Unexpected schema objects");
+  }
   for (const row of expected) {
     assert.deepEqual(
       actualMap.get(objectKey(row)),
@@ -158,7 +170,9 @@ async function main() {
     readFileSync(".rehearsal-baseline.json", "utf8"),
   ).filter((r) => r.scope === "restored");
   assert.ok(baseline.length > 20);
-  checkSignatures(baseline, await signatures(client, "restored"));
+  checkSignatures(baseline, await signatures(client, "restored"), {
+    allowAdditional: true,
+  });
   const reference = new pg.Client({
     connectionString: urlFor(referenceDatabase),
     ssl: { rejectUnauthorized: true },
@@ -254,9 +268,7 @@ async function main() {
   );
   await client.query("commit");
   transaction = false;
-  log(
-    `REPAIR_COMMITTED_ON_FORK: original tables preserved=${preserved}`,
-  );
+  log(`REPAIR_COMMITTED_ON_FORK: original tables preserved=${preserved}`);
   stage = "schema-equivalence";
   checkSignatures(expected, await signatures(client, "restored"));
   log(

@@ -187,3 +187,9 @@ restart merely to publish a rehearsal script or represent a merge as a schema fi
 The restored-fork rehearsal remains blocked by its declined additional budget and
 unresolved inherited-credential environment. No production repair, global feature
 enablement, resource deletion or paid-fork resume has been performed.
+
+Final local review also tightened schema equality: unexpected or duplicate object
+signatures now fail before the repair transaction commits. Only the explicitly
+partial historical baseline comparison accepts additional catalog objects. The
+regression check passed; tooling now has eight passing checks. Final full local
+verification passed 398 tests, zero failed, 17 skipped in the no-database run.

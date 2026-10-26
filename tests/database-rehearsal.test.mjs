@@ -10,6 +10,7 @@ import {
 } from "../scripts/build-db-rehearsal.mjs";
 import {
   assertForkEnvironment,
+  checkSignatures,
   unwrapTransaction,
 } from "../scripts/rehearse-db-repair.mjs";
 
@@ -155,6 +156,40 @@ test("migration wrapper removal preserves nested SQL and rejects unexpected boun
   assert.equal(unwrapTransaction(`begin;${body}commit;`), body);
   assert.throws(() => unwrapTransaction("select 1;"));
   assert.throws(() => unwrapTransaction("begin; select 1;"));
+});
+
+test("final schema equality rejects unexpected objects while partial baselines stay explicit", () => {
+  const expected = [
+    {
+      probe: "table_signature",
+      name: "fixture",
+      owner: "reference-owner",
+      scope: "reference",
+      columns_md5: "abc",
+    },
+  ];
+  const actual = [
+    {
+      ...expected[0],
+      owner: "repaired-owner",
+      scope: "restored",
+      columns_md5: "abc ",
+    },
+  ];
+  const extra = { ...actual[0], name: "unexpected_fixture" };
+  assert.doesNotThrow(() => checkSignatures(expected, actual));
+  assert.throws(
+    () => checkSignatures(expected, [...actual, extra]),
+    /Unexpected schema objects/,
+  );
+  assert.throws(() => checkSignatures(expected, []));
+  assert.throws(
+    () => checkSignatures(expected, [...actual, actual[0]]),
+    /Duplicate schema object signatures/,
+  );
+  assert.doesNotThrow(() =>
+    checkSignatures(expected, [...actual, extra], { allowAdditional: true }),
+  );
 });
 
 test("repair packaging requires a baseline and pins tested application and verified Node archive", () => {
