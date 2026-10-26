@@ -260,3 +260,126 @@ review runtime. The new browser tests now own per-test review runtimes, includin
 rate-limit state, matching the existing Updates-test isolation pattern. No auth
 limit, production code, assertion or browser timeout was weakened. Final CI must
 still pass before merge; the failed run remains part of the release evidence.
+
+## Database repair: paid-plan continuation
+
+PR 20 is merged as `ef014a524847914113a81e030f8c1132f0787778`; upstream main
+still points to it. Its post-merge CI 39670047477 passed. The current investigation
+branch is `codex/database-notification-repair`, created from that main revision.
+Unfinished original-checkout Android/mobile/fixture files remain untouched.
+
+The owner upgraded Northflank to Pay as you go; the authenticated Plans page
+confirms it is Active. The prior free-addon quota is no longer the blocker.
+The production addon is Running, PostgreSQL 18, TLS/private. Snapshot
+`biznoryx-preflight-20261021` is still Completed, Disk, 6 GB, and appears explicitly
+in the new addon's source-backup selector. The supported fork workflow creates
+an independent addon, unlike the in-place restore dialog previously cancelled.
+
+The owner approved `biznoryx-db-repair` at the displayed $0.0088/hour or
+$6.31/month base estimate, with a $1 compute/storage authorization budget and
+no automatic increases. It was created from that named snapshot and is now
+Running, one PostgreSQL 18 instance, 0.2 shared vCPU, 512 MB, 6 GB NVMe,
+TLS enabled, private networking, disk auto-resize off and no connection poolers.
+The Forked link points to the exact production snapshot. No production connection,
+secret, role, schema, application setting or notification flag was changed.
+Actual billed usage has not been reconciled; the quote excludes taxes, transfer
+and additional backup charges. The authorization budget is not a provider-enforced
+automatic billing cap. Deletion still requires the owner's separate approval.
+
+Production API and worker still show `ef014a5`. Public healthz and readyz returned
+200. A later worker observation differs from the prior zero-restart checkpoint:
+pod `biznoryx-worker-9758fb7cd-vhz9m` shows five restarts and a crash warning.
+The cause is not yet established. Historical logs contain trial-function permission
+errors and a connection-failure indicator, but these must not be assigned as the
+cause of current pod restarts without scoped log/event evidence.
+
+Northflank's official CLI 0.13.0 was run from npm's cache outside the repository.
+The owner approved CLI authorization limited to the test fork. Browser login
+offered only the Owner role for a token; account-wide session access was also
+broader than approved. Neither was authorized, no API token was created, no role
+was saved, and the login process was cancelled. Inspection of the role form and
+documentation identified project restrictions, not a verified addon-only grant.
+Do not silently substitute project-wide credential access or an Owner token.
+
+The owner approved and the agent created `biznoryx-db-rehearsal`, a manual job
+at nf-compute-20 (0.2 shared vCPU, 512 MB), $0.25/1,000 run-minutes. It has a
+600-second run limit, zero retries, no schedule/image-change trigger, and at most
+60 total run-minutes within the combined $1 temporary-resource authorization.
+The UI offered no reusable build service. The official `postgres:18` image is
+used as a client with an explicit command override, never as a database server.
+Runtime-only group `biznoryx-db-rehearsal-only` links five fork connection fields
+and is restricted to that one job: zero production-addon links, no production,
+payment or email keys. No Owner CLI token was created.
+
+Two initial read-only probes failed before SQL output. The sanitized second
+failure identified certificate verification. The official client image lacked
+the CA trust store. Installing the standard Debian CA package in the temporary
+container resolved the problem without weakening `verify-full` TLS. Run
+`991d93a2-3855-4d02-9936-96e1fec410f3` exited 0 with `CATALOG_PROBE_PASSED`.
+The catalog probe refuses non-fork hostnames and sets read-only transactions,
+statement/lock/connect timeouts. It emits schema metadata, not customer rows.
+Some large extension metadata was truncated in the provider log view; a focused
+probe omitting unrelated extension functions is being collected. SQL repairs,
+catalog equivalence, restored-data integrity and notification functional tests
+on the fork are not yet claimed complete.
+
+Evidence screenshots are local only under
+`C:/Users/traph/.codex/backups/biznoryx-db-repair-20261021/evidence/`.
+See [the rehearsal record](runbooks/database-repair-rehearsal.md). No production
+SQL or activation is authorized by this checkpoint.
+
+## Database repair: 2026-10-26 local-only continuation
+
+This dated checkpoint supersedes the running/cost/isolation assumptions above.
+The fork was paused after Northflank displayed $1.02 accrued usage. Storage still
+accrues while paused. The owner declined additional active testing spend and
+instructed local work only; there have been no further cloud configuration,
+GitHub push/merge or production changes in this continuation. Production secret
+group settings must remain unchanged. Temporary-resource deletion is not approved.
+
+The dedicated fork group is restricted, but the existing production group is
+unrestricted and was also inherited by the rehearsal job. The actual repair run
+failed its configuration guard before SQL. Read-only access and all 62 fresh
+reference setup/SQL acceptance phases succeeded earlier; restored-source repair
+and customer-data preservation are not claimed. See the runbook for run IDs.
+
+Local changes strengthen credential rejection before dependency downloads and
+database connections, and check runtime privileges/disabled flags before commit.
+A disposable loopback-only PostgreSQL 18 cluster enabled fresh verification:
+61 canonical SQL phases, 13 runtime checks, 17 manual/trial/Updates checks,
+4 synthetic repair checks, and the same 30 database-backed checks against the
+repaired synthetic schema all passed. This exercises rollback, tenant isolation,
+native/browser CSRF boundaries, notification delivery/retries/preferences and
+billing backfill without touching real records or activating production features.
+Fresh `npm run verify` also passed all quality/build gates: 397 passed, zero
+failed, 17 database-dependent/opt-in tests skipped in that environment; the
+applicable database tests were separately executed as listed above. The earlier
+52-pass browser result is dated 2026-10-22, not a new production validation.
+
+The draft ownership repair is local rehearsal tooling, not an approved production
+runbook. Exact restored-schema preservation, provider-role behavior, production
+lock/recovery assessment and separately approved notification activation remain
+outstanding. No application source or existing migrations were rewritten.
+
+## Database repair: GitHub delivery and live recheck
+
+The owner subsequently requested autonomous completion and production delivery.
+GitHub delivery is now in scope again. The declined fork spending and unchanged
+production-secret scope remain binding; exact SQL and scoped activation still
+require the established release gates. No additional paid run was started.
+
+GitHub main, Northflank API and worker were rechecked at `ef014a524847914113a81e030f8c1132f0787778`.
+Both services show Running, five historical restarts and a crash-warning indicator;
+the cause is unverified. `/healthz` and `/readyz` each returned HTTP 200. These are
+fresh endpoint checks, not proof that missing notification schema is repaired.
+Fresh worker logs on 2026-10-26 still show the trial-maintenance function failure
+and SQLSTATE 42501 repeating at one-minute intervals. This remains a live release
+blocker, distinct from the unproven cause of historical container restarts.
+
+The ownership draft now also fails closed when granting the app group would
+introduce privileged SET ROLE access. The focused synthetic repair/tooling run
+passed 12 checks without skips. CI now independently provisions a synthetic
+PostgreSQL 18 database to run that repair and all 30 existing database-backed
+runtime/manual/trial/Updates checks afterward. It cannot access Northflank or
+production data. Publication of this tooling is not production SQL execution;
+the restored-fork preservation and rollout evidence remain outstanding.
