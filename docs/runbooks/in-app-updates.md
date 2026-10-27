@@ -10,6 +10,14 @@ says data/calculations are ready, not that a PDF has been pre-generated.
 No unconfirmed image extraction, financial prediction, email or push is sent.
 No external provider or new credentials are needed.
 
+Migration `0034_automatic_business_notifications.sql` makes this feature available
+to every active business and initializes it for newly created active businesses.
+Members do not need to enable a profile setting. Existing category opt-outs remain
+unchanged; disabled businesses/users and revoked members remain excluded. This
+does not backfill old uploads or send email/push messages. The staged activation
+sequence below documents the earlier migration-0033 rollout; it is not required
+for each business after migration 0034.
+
 ## Prerequisites and safe rollout
 
 Do not run these steps on production without separate authorization. Merging the
