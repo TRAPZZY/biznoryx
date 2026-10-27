@@ -75,6 +75,11 @@ jobs:
         env:
           NOTIFICATION_ROLLOUT_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
 
+      - name: Verify custom runtime ingestion permission repair
+        run: node --test tests/ingestion-runtime-grant.test.mjs
+        env:
+          RUNTIME_GRANT_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
+
       - name: Verify PostgreSQL RLS acceptance
         run: npm run db:acceptance
         env:
