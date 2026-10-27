@@ -45,11 +45,14 @@ test("PostgreSQL Updates outbox, delivery, recipient state and tenant boundaries
     await admin.query("update processing_jobs set status='succeeded' where organization_id=$1 and ingestion_run_id=$2", [org.id, result.ingestionRun.id]);
   }
   try {
-    await t.test("restricted runtime and default disabled behavior", async () => {
+    await t.test("restricted runtime, automatic availability and operator disable", async () => {
       const role = await runtime.query("select current_user, rolsuper, rolbypassrls from pg_roles where rolname=current_user");
       assert.equal(role.rows[0].current_user, "biznoryx_app");
       assert.equal(role.rows[0].rolsuper, false);
       assert.equal(role.rows[0].rolbypassrls, false);
+      assert.equal((await updates.list(scope)).enabled, true);
+      assert.equal((await updates.list({ organizationId: foreign.id, actorUserId: outsider.id })).enabled, true);
+      await flag(false);
       assert.equal((await updates.list(scope)).enabled, false);
       await assert.rejects(updates.setPreference({ ...scope, preference: { category: "data", enabled: false } }), e => e.code === "SERVICE_UNAVAILABLE");
       await flag(true);

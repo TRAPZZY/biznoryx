@@ -1,5 +1,10 @@
 # Notifications-only rollout
 
+This is the original fresh-install package for migration 0033. The subsequent
+`0034_automatic_business_notifications.sql` rollout enables all active businesses
+and initializes new ones automatically. Do not replay this fresh-install package
+on an installed notification schema.
+
 The deployed application already includes the in-app inbox and worker. A read-only
 production check on 2026-10-26 found all four notification tables, both triggers
 and the membership/delivery helpers absent. A code-only redeployment cannot fix

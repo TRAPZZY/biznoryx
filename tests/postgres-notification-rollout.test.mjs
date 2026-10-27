@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import pg from "pg";
 import { buildNotificationRollout } from "../scripts/build-notification-rollout.mjs";
@@ -51,6 +52,33 @@ test("notification rollout contains provider default grants without changing exi
     assert.equal((await admin.query("select deliver_source_updates(1) as delivered")).rows[0].delivered, 0);
     await admin.query("reset role");
     assert.equal((await admin.query("select count(*)::integer as n from organization_features where enabled")).rows[0].n, 0);
+    await admin.query(`insert into organizations(id,disabled_at) values
+        ('00000000-0000-0000-0000-000000000002',now()),
+        ('00000000-0000-0000-0000-000000000006',null);
+      insert into app_users(id) values ('00000000-0000-0000-0000-000000000003');
+      insert into organization_features(organization_id,feature_key,enabled) values
+        ('00000000-0000-0000-0000-000000000001','in_app_updates',false),
+        ('00000000-0000-0000-0000-000000000002','in_app_updates',false);
+      insert into notification_preferences(organization_id,user_id,category,enabled) values
+        ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','reports',false);`);
+    const defaults = readFileSync("db/migrations/0034_automatic_business_notifications.sql", "utf8").trim();
+    await admin.query(defaults.slice(6, -7));
+    const enabled = (await admin.query("select enabled from organization_features order by organization_id")).rows.map(row => row.enabled);
+    assert.deepEqual(enabled, [true, false, true]);
+    assert.equal((await admin.query("select enabled from notification_preferences")).rows[0].enabled, false);
+    assert.equal((await admin.query("select count(*)::integer as n from notification_events")).rows[0].n, 0);
+    assert.equal((await admin.query("select relacl::text as acl from pg_class where oid='public.organizations'::regclass")).rows[0].acl, previous);
+    await admin.query(`set local role ${runtime}`);
+    await admin.query("insert into organizations(id) values ('00000000-0000-0000-0000-000000000004')");
+    assert.equal((await admin.query("select has_table_privilege(current_user,'organization_features','INSERT,UPDATE,DELETE') as writable")).rows[0].writable, false);
+    await admin.query("reset role");
+    assert.equal((await admin.query("select enabled from organization_features where organization_id='00000000-0000-0000-0000-000000000004'")).rows[0].enabled, true);
+    await admin.query("savepoint new_business");
+    await admin.query(`set local role ${runtime}`);
+    await admin.query("insert into organizations(id) values ('00000000-0000-0000-0000-000000000005')");
+    await admin.query("reset role");
+    await admin.query("rollback to savepoint new_business");
+    assert.equal((await admin.query("select count(*)::integer as n from organization_features where organization_id='00000000-0000-0000-0000-000000000005'")).rows[0].n, 0);
   } finally {
     await admin.query("rollback");
     await admin.end();
