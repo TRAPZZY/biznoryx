@@ -39,3 +39,12 @@ test("notification rollout refuses partial installs and binds only the operator-
   assert.match(sql, /grant update \(read_at, snoozed_until\)/);
   assert.match(sql, /to %I/);
 });
+
+test("notification rollout contains inherited provider grants before assigning runtime access", () => {
+  const sql = buildNotificationRollout();
+  assert.match(sql, /aclexplode\(coalesce\(c\.relacl, acldefault\('r', c\.relowner\)\)\)/);
+  assert.match(sql, /a\.grantee <> c\.relowner/);
+  assert.match(sql, /case when a\.grantee = 0 then true else pg_has_role/);
+  assert.ok(sql.indexOf("revoke all on table public.%I") < sql.indexOf("grant select on public.organization_features"));
+  assert.doesNotMatch(sql, /alter default privileges|revoke.+on all tables|revoke.+role/i);
+});

@@ -49,8 +49,24 @@ begin
 end $$;
 ${body}
 do $$
-declare runtime_name text := current_setting('biznoryx.notification_runtime_role'); object_name text;
+declare runtime_name text := current_setting('biznoryx.notification_runtime_role'); object_name text; inherited_grant record;
 begin
+  -- Contain provider default grants on these new tables, not on existing objects or role defaults.
+  for inherited_grant in
+    select distinct c.relname, a.grantee
+    from pg_class c
+    cross join lateral aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+    where c.oid in (to_regclass('public.organization_features'), to_regclass('public.notification_events'),
+      to_regclass('public.notification_recipients'), to_regclass('public.notification_preferences'))
+      and a.grantee <> c.relowner
+      and case when a.grantee = 0 then true else pg_has_role(runtime_name, a.grantee, 'USAGE') end
+  loop
+    if inherited_grant.grantee = 0 then
+      execute format('revoke all on table public.%I from public', inherited_grant.relname);
+    else
+      execute format('revoke all on table public.%I from %I', inherited_grant.relname, pg_get_userbyid(inherited_grant.grantee));
+    end if;
+  end loop;
   execute format('grant execute on function public.updates_member(uuid), public.deliver_source_updates(integer) to %I', runtime_name);
   execute format('grant select on public.organization_features, public.notification_events, public.notification_recipients, public.notification_preferences to %I', runtime_name);
   execute format('grant update (read_at, snoozed_until) on public.notification_recipients to %I', runtime_name);

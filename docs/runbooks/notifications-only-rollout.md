@@ -23,6 +23,14 @@ ingestion and processing tables receive their notification index/triggers only.
 No billing/trial repair, role creation, owner changes, migration-history replay,
 production secret-group changes or paid-fork resume is included.
 
+The provider grants broad default table privileges to the runtime. The package
+therefore removes PUBLIC and runtime-inherited grants from only the four newly
+created notification tables before assigning the minimum access above. It leaves
+table ownership, other tables, role memberships and database-wide default
+privileges unchanged. The guard against runtime feature activation remains in
+place. A disposable PostgreSQL 18 regression reproduces the old failure and
+verifies the scoped restriction, RLS and delivery helper execution.
+
 ## Operator sequence
 
 1. Confirm the deployed API/worker revision and their actual existing runtime
