@@ -70,6 +70,11 @@ jobs:
             test-results/
           if-no-files-found: ignore
 
+      - name: Verify notification rollout with provider default grants
+        run: node --test tests/postgres-notification-rollout.test.mjs
+        env:
+          NOTIFICATION_ROLLOUT_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
+
       - name: Verify PostgreSQL RLS acceptance
         run: npm run db:acceptance
         env:
