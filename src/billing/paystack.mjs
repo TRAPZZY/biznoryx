@@ -22,6 +22,7 @@ async function paystackFetchWithTimeout({
   url,
   options,
   operation,
+  readJson = false,
 }) {
   const controller = new AbortController();
 
@@ -46,7 +47,12 @@ async function paystackFetchWithTimeout({
 
       signal: controller.signal,
     }),
-  );
+  ).then(async (response) => {
+    if (!readJson) return response;
+    let payload;
+    try { payload = await response.json(); } catch { payload = null; }
+    return { response, payload };
+  });
 
   try {
     return await Promise.race([request, timeout]);
@@ -374,6 +380,7 @@ export async function resolvePaystackSubscriptionIdentity({
   planCode,
   expectedSubscriptionCode = null,
   includeInactive = false,
+  forCancellation = false,
   env = process.env,
   fetchImpl = fetch,
 }) {
@@ -582,7 +589,7 @@ export async function resolvePaystackSubscriptionIdentity({
     (customerId &&
       detail.customer?.id != null &&
       Number(detail.customer.id) !== customerId) ||
-    (!includeInactive && paystackSubscriptionIsInactive(detail))
+    (!includeInactive && !forCancellation && paystackSubscriptionIsInactive(detail))
   ) {
     throw new AuthError(
       "Paystack subscription details do not match the workspace's subscription.",
@@ -594,7 +601,11 @@ export async function resolvePaystackSubscriptionIdentity({
     detail.email_token ?? selected?.email_token ?? "",
   ).trim();
 
-  if (!emailToken) {
+  const cancellationConfirmed = forCancellation && [
+    "non-renewing", "non_renewing", "cancelled", "canceled", "disabled", "complete", "completed",
+  ].includes(String(detail.status ?? "").trim().toLowerCase());
+
+  if (!emailToken && !cancellationConfirmed) {
     throw new AuthError(
       "Paystack returned an incomplete cancellation token.",
       "BILLING_PROVIDER_FAILED",
@@ -604,6 +615,7 @@ export async function resolvePaystackSubscriptionIdentity({
   return {
     subscriptionCode,
     emailToken,
+    ...(forCancellation ? { cancellationConfirmed } : {}),
   };
 }
 
@@ -674,28 +686,25 @@ export async function disablePaystackSubscription({
     );
   }
 
-  const response = await fetchImpl(PAYSTACK_DISABLE_SUBSCRIPTION_URL, {
-    method: "POST",
+  const { response, payload } = await paystackFetchWithTimeout({
+    fetchImpl,
+    url: PAYSTACK_DISABLE_SUBSCRIPTION_URL,
+    readJson: true,
+    operation: "canceling your subscription",
+    options: {
+      method: "POST",
 
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        code,
+        token,
+      }),
     },
-
-    body: JSON.stringify({
-      code,
-      token,
-    }),
   });
-
-  let payload;
-
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
 
   if (!response.ok || payload?.status !== true) {
     throw new AuthError(
