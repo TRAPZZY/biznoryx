@@ -14,6 +14,11 @@ for (const width of [1280, 375]) {
       await route.fulfill({ json: { ...data, subscription } });
     });
     await page.route("**/api/billing/history", route => route.fulfill({ status: 503, json: { message: "Unavailable" } }));
+    let trialRequests = 0;
+    await page.route("**/api/billing/trial", route => {
+      trialRequests += 1;
+      return route.fulfill({ status: 500, json: { message: "The request could not be completed." } });
+    });
     let cancellations = 0;
     await page.route("**/api/billing/cancel*", route => {
       cancellations += 1;
@@ -41,33 +46,12 @@ for (const width of [1280, 375]) {
     await expect(page.locator("#billing-page-message")).toContainText("Confirmation email submitted for delivery");
     expect(cancellations).toBe(2);
     await expect(cancel).toHaveCount(0);
+    subscription.status = "non_renewing";
+    subscription.canCancel = false;
+    const requestsBeforeReload = trialRequests;
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Resume automatic renewal", exact: true })).toBeVisible();
+    await expect(page.locator(".trial-billing")).toHaveCount(0);
+    expect(trialRequests).toBe(requestsBeforeReload);
   });
 }
-
-test("a non-renewing paid subscription does not request trial status on reload", async ({ page }) => {
-  let trialRequests = 0;
-  await page.route("**/api/billing/trial", route => {
-    trialRequests += 1;
-    return route.fulfill({ status: 500, json: { message: "The request could not be completed." } });
-  });
-  await page.route("**/api/dashboard", async route => {
-    const response = await route.fetch();
-    const data = await response.json();
-    await route.fulfill({ json: { ...data, subscription: {
-      id: "synthetic-paid", status: "non_renewing", provider: "paystack", providerConfigured: true,
-      planName: "BIZNORYX Monthly", currency: "NGN", amountMinor: 4000000,
-      currentPeriodEnd: "2026-12-01T00:00:00.000Z", priceLabel: "₦40,000/mo",
-    } } });
-  });
-  await page.goto("/#/sign-in");
-  await page.getByLabel("Work email").fill("owner@biznoryx.local");
-  await page.getByLabel("Password", { exact: true }).fill("ReviewPassphrase2026!");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL("**/#/dashboard");
-  await page.goto("/#/billing");
-  await expect(page.getByText("Subscription will not renew", { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Resume automatic renewal", exact: true })).toBeVisible();
-  await expect(page.locator(".trial-billing")).toHaveCount(0);
-  expect(trialRequests).toBe(0);
-});
