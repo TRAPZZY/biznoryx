@@ -14,6 +14,11 @@ for (const width of [1280, 375]) {
       await route.fulfill({ json: { ...data, subscription } });
     });
     await page.route("**/api/billing/history", route => route.fulfill({ status: 503, json: { message: "Unavailable" } }));
+    let trialRequests = 0;
+    await page.route("**/api/billing/trial", route => {
+      trialRequests += 1;
+      return route.fulfill({ status: 500, json: { message: "The request could not be completed." } });
+    });
     let cancellations = 0;
     await page.route("**/api/billing/cancel*", route => {
       cancellations += 1;
@@ -34,11 +39,19 @@ for (const width of [1280, 375]) {
     page.once("dialog", dialog => dialog.accept());
     await cancel.click();
     await expect(page.getByText("Subscription will not renew", { exact: true })).toBeVisible();
+    await expect(page.locator(".trial-billing")).toHaveCount(0);
     await expect(page.locator("#billing-page-message")).toContainText("Subscription canceled. We couldn't send");
     await expect(page.getByText("Payment history is unavailable")).toBeVisible();
     await page.getByRole("button", { name: "Email cancellation confirmation", exact: true }).click();
     await expect(page.locator("#billing-page-message")).toContainText("Confirmation email submitted for delivery");
     expect(cancellations).toBe(2);
     await expect(cancel).toHaveCount(0);
+    subscription.status = "non_renewing";
+    subscription.canCancel = false;
+    const requestsBeforeReload = trialRequests;
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Resume automatic renewal", exact: true })).toBeVisible();
+    await expect(page.locator(".trial-billing")).toHaveCount(0);
+    expect(trialRequests).toBe(requestsBeforeReload);
   });
 }

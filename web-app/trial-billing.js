@@ -7,7 +7,7 @@ const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, {
 }) : "After card verification";
 
 export function mountTrialBilling({ container, api, subscription, onChanged }) {
-  if (!container || subscription?.status === "active") return;
+  if (!container || ["active", "non_renewing"].includes(subscription?.status)) return;
   const host = document.createElement("section");
   host.className = "trial-billing";
   host.setAttribute("aria-label", "Seven-day trial");
