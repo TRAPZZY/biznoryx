@@ -5205,6 +5205,7 @@ function billingPage() {
                     `
               }
 
+              <p id="billing-page-message" class="form-message billing-page-message" role="status" aria-live="polite"></p>
               <p class="billing-security-note">
                 ${icon("shield-check")}
 
@@ -5412,13 +5413,6 @@ function billingPage() {
             `
             : ""
         }
-
-        <p
-          id="billing-page-message"
-          class="form-message billing-page-message"
-          role="status"
-          aria-live="polite"
-        ></p>
 
         <dialog
           id="billing-checkout-dialog"
@@ -5732,7 +5726,9 @@ function billingPage() {
         return;
       }
 
+      const originalLabel = control.innerHTML;
       control.disabled = true;
+      control.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
 
       if (pageMessage) {
         pageMessage.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
@@ -5762,6 +5758,7 @@ function billingPage() {
         }
       } finally {
         control.disabled = false;
+        if (control.isConnected) control.innerHTML = originalLabel;
       }
     };
   }
