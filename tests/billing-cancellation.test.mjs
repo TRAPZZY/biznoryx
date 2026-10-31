@@ -62,8 +62,8 @@ async function fixture(t, overrides = {}) {
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   return { calls, emails, get subscription() { return subscription; },
-    async request(method = "POST") {
-      const response = await fetch(`${base}/api/billing/${method === "GET" ? "subscription" : "cancel"}`, {
+    async request(method = "POST", confirmationOnly = false) {
+      const response = await fetch(`${base}/api/billing/${method === "GET" ? "subscription" : confirmationOnly ? "cancellation-confirmation" : "cancel"}`, {
         method, headers: { cookie: "bnx_session=synthetic", "x-csrf-token": "csrf" },
       });
       return { status: response.status, body: await response.json() };
@@ -102,11 +102,20 @@ test("email failure does not undo cancellation or report cancellation failure", 
 
 test("an already non-renewing subscription can retry confirmation without a second provider cancellation", async t => {
   const f = await fixture(t, { subscription: { status: "non_renewing", cancellationRequestedAt: "2026-10-31T12:00:00.000Z" } });
-  const result = await f.request();
+  const result = await f.request("POST", true);
   assert.equal(result.status, 200);
   assert.equal(result.body.confirmationEmail.status, "accepted");
   assert.deepEqual(f.calls, []);
   assert.equal(f.emails.length, 1);
+});
+
+test("a stale email-only action never cancels a subscription reactivated in another tab", async t => {
+  const f = await fixture(t);
+  const result = await f.request("POST", true);
+  assert.equal(result.status, 400);
+  assert.equal(f.subscription.status, "active");
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.emails.length, 0);
 });
 
 test("provider failure does not cancel locally or send a false confirmation", async t => {

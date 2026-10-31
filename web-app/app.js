@@ -5741,7 +5741,7 @@ function billingPage() {
       }
 
       try {
-        const result = await api("billing/cancel", {});
+        const result = await api(confirmationOnly ? "billing/cancellation-confirmation" : "billing/cancel", {});
         // The confirmed cancellation response is authoritative. A separate
         // dashboard refresh failing must not make cancellation appear failed.
         dashboard = { ...dashboard, subscription: result.subscription };

@@ -566,7 +566,7 @@ async function routeRequest({ request, response, runtime }) {
   enforceAllowedOrigin(request, runtime.production);
 
   if (isMobileTransport(request) && request.method === "POST" && [
-    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/renew",
+    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/cancellation-confirmation", "/api/billing/renew",
     "/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update",
   ].includes(url.pathname)) {
     await authenticateRequest({ request, runtime, requireCsrf: true });
@@ -1217,7 +1217,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  if (url.pathname === "/api/billing/cancel" && request.method === "POST") {
+  if (["/api/billing/cancel", "/api/billing/cancellation-confirmation"].includes(url.pathname) && request.method === "POST") {
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1252,6 +1252,10 @@ async function routeRequest({ request, response, runtime }) {
       actorUserId: context.user.id,
       provider: "paystack",
     });
+
+    if (url.pathname === "/api/billing/cancellation-confirmation" && subscription.status !== "non_renewing") {
+      throw new AuthError("This subscription is no longer canceled. Reload Billing to see its current status.", "VALIDATION_FAILED");
+    }
 
     if (subscription.status === "non_renewing") {
       const confirmationEmail = await sendCancellationConfirmation(runtime, context, subscription);

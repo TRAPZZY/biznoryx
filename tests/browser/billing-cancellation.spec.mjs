@@ -15,8 +15,9 @@ for (const width of [1280, 375]) {
     });
     await page.route("**/api/billing/history", route => route.fulfill({ status: 503, json: { message: "Unavailable" } }));
     let cancellations = 0;
-    await page.route("**/api/billing/cancel", route => {
+    await page.route("**/api/billing/cancel*", route => {
       cancellations += 1;
+      expect(route.request().url()).toMatch(cancellations === 1 ? /\/cancel$/ : /\/cancellation-confirmation$/);
       return route.fulfill({ json: {
         subscription: { ...subscription, status: "non_renewing", canCancel: false },
         confirmationEmail: { status: cancellations === 1 ? "failed" : "accepted" },
