@@ -158,7 +158,7 @@ test("native marker cannot bypass Origin or fetch metadata protections", async (
 }));
 
 test("native authentication does not enable Paystack purchase or management endpoints", async () => authRuntime(async ({ request, token }) => {
-  for (const path of ["billing/checkout", "billing/verify", "billing/cancel", "billing/renew", "billing/trial/checkout", "billing/trial/verify", "billing/trial/cancel", "billing/trial/payment-update"]) {
+  for (const path of ["billing/checkout", "billing/verify", "billing/cancel", "billing/cancellation-confirmation", "billing/renew", "billing/trial/checkout", "billing/trial/verify", "billing/trial/cancel", "billing/trial/payment-update"]) {
     const response = await request(path, { headers: { "x-biznoryx-client": "mobile-v1", authorization: `Bearer ${token}` }, body: {} });
     assert.equal(response.status, 400);
     assert.equal((await response.json()).message, "Manage this subscription through Apple or Google.");

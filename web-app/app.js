@@ -5111,18 +5111,18 @@ function billingPage() {
 
             <div class="billing-plan-actions">
               ${
-                isActive
+                isActive || status === "past_due"
                   ? `
                     <div class="billing-active-confirmation">
                       ${icon("circle-check")}
 
                       <div>
                         <strong>
-                          Subscription active
+                          ${isActive ? "Subscription active" : "Payment requires attention"}
                         </strong>
 
                         <span>
-                          Your paid workspace is currently enabled.
+                          ${isActive ? "Your paid workspace is currently enabled." : "You can stop future automatic renewal below."}
                         </span>
                       </div>
                     </div>
@@ -5168,6 +5168,9 @@ function billingPage() {
                         role="status"
                         aria-live="polite"
                       ></p>
+                      <button id="email-cancellation-confirmation" class="secondary billing-secondary-action" type="button">
+                        Email cancellation confirmation
+                      </button>
                     `
                     : subscription && canStartCheckout
                       ? `
@@ -5202,13 +5205,14 @@ function billingPage() {
                     `
               }
 
+              <p id="billing-page-message" class="form-message billing-page-message" role="status" aria-live="polite"></p>
               <p class="billing-security-note">
                 ${icon("shield-check")}
 
                 Secure checkout powered by Paystack.
                 BIZNORYX does not store your card details.
                 ${
-                  isActive && !canCancelSubscription
+                  (isActive || status === "past_due") && !canCancelSubscription
                     ? " Live support can help cancel this subscription while Paystack identity sync completes."
                     : ""
                 }
@@ -5409,13 +5413,6 @@ function billingPage() {
             `
             : ""
         }
-
-        <p
-          id="billing-page-message"
-          class="form-message billing-page-message"
-          role="status"
-          aria-live="polite"
-        ></p>
 
         <dialog
           id="billing-checkout-dialog"
@@ -5717,9 +5714,11 @@ function billingPage() {
     };
   }
 
-  if (cancelSubscription) {
-    cancelSubscription.onclick = async () => {
-      const confirmed = window.confirm(
+  const emailCancellation = document.querySelector("#email-cancellation-confirmation");
+  for (const control of [cancelSubscription, emailCancellation].filter(Boolean)) {
+    control.onclick = async () => {
+      const confirmationOnly = control === emailCancellation;
+      const confirmed = confirmationOnly || window.confirm(
         "Cancel this BIZNORYX subscription? Paid access remains available until the current billing period ends.",
       );
 
@@ -5727,29 +5726,39 @@ function billingPage() {
         return;
       }
 
-      cancelSubscription.disabled = true;
+      const originalLabel = control.innerHTML;
+      control.disabled = true;
+      control.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
 
       if (pageMessage) {
-        pageMessage.textContent = "Canceling subscription...";
+        pageMessage.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
 
         pageMessage.classList.remove("error-text");
       }
 
       try {
-        await api("billing/cancel", {});
-
-        dashboard = await api("dashboard");
+        const result = await api(confirmationOnly ? "billing/cancellation-confirmation" : "billing/cancel", {});
+        // The confirmed cancellation response is authoritative. A separate
+        // dashboard refresh failing must not make cancellation appear failed.
+        dashboard = { ...dashboard, subscription: result.subscription };
 
         billingPage();
+        const message = document.querySelector("#billing-page-message");
+        if (message) {
+          message.textContent = result.confirmationEmail?.status === "accepted"
+            ? "Subscription canceled. Confirmation email submitted for delivery."
+            : "Subscription canceled. We couldn't send the confirmation email. Select Email cancellation confirmation to try again.";
+        }
       } catch (error) {
         if (pageMessage) {
           pageMessage.textContent =
-            error?.message || "Subscription could not be canceled.";
+            error?.message || (confirmationOnly ? "Confirmation email could not be sent." : "Subscription could not be canceled.");
 
           pageMessage.classList.add("error-text");
         }
       } finally {
-        cancelSubscription.disabled = false;
+        control.disabled = false;
+        if (control.isConnected) control.innerHTML = originalLabel;
       }
     };
   }

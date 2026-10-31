@@ -59,6 +59,7 @@ import {
 import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../billing/entitlements.mjs";
 
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
+import { CancellationEmailSender } from "../billing/cancellation-email-sender.mjs";
 
 import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
@@ -137,6 +138,7 @@ export function createProductionApp({
   businessOutcomesRepository,
   evidenceReportRepository,
   billingRepository,
+  billingEmailSender,
   activityRepository,
   updatesRepository,
   objectStorage,
@@ -260,6 +262,7 @@ export function createProductionApp({
 
   const runtime = {
     pool,
+    billingEmailSender: billingEmailSender ?? new CancellationEmailSender(),
     updates: updatesRepository ?? (pool ? new PostgresUpdatesRepository(pool) : null),
 
     identity,
@@ -563,7 +566,7 @@ async function routeRequest({ request, response, runtime }) {
   enforceAllowedOrigin(request, runtime.production);
 
   if (isMobileTransport(request) && request.method === "POST" && [
-    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/renew",
+    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/cancellation-confirmation", "/api/billing/renew",
     "/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update",
   ].includes(url.pathname)) {
     await authenticateRequest({ request, runtime, requireCsrf: true });
@@ -1214,7 +1217,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  if (url.pathname === "/api/billing/cancel" && request.method === "POST") {
+  if (["/api/billing/cancel", "/api/billing/cancellation-confirmation"].includes(url.pathname) && request.method === "POST") {
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1250,9 +1253,15 @@ async function routeRequest({ request, response, runtime }) {
       provider: "paystack",
     });
 
+    if (url.pathname === "/api/billing/cancellation-confirmation" && subscription.status !== "non_renewing") {
+      throw new AuthError("This subscription is no longer canceled. Reload Billing to see its current status.", "VALIDATION_FAILED");
+    }
+
     if (subscription.status === "non_renewing") {
+      const confirmationEmail = await sendCancellationConfirmation(runtime, context, subscription);
       sendJson(response, 200, {
         subscription: publicSubscription(subscription),
+        confirmationEmail,
       });
 
       return;
@@ -1268,12 +1277,14 @@ async function routeRequest({ request, response, runtime }) {
     let subscriptionCode = subscription.providerSubscriptionCode;
 
     let emailToken = subscription.providerEmailToken;
+    let cancellationConfirmed = false;
 
     if (!subscriptionCode || !emailToken) {
       const recovered = await resolvePaystackSubscriptionIdentity({
         reference: subscription.checkoutReference,
 
         expectedSubscriptionCode: subscription.providerSubscriptionCode,
+        forCancellation: true,
 
         organizationId,
 
@@ -1285,14 +1296,23 @@ async function routeRequest({ request, response, runtime }) {
       subscriptionCode = recovered.subscriptionCode;
 
       emailToken = recovered.emailToken;
+      cancellationConfirmed = recovered.cancellationConfirmed;
     }
 
-    await disablePaystackSubscription({
-      subscriptionCode,
-      emailToken,
-
-      fetchImpl: runtime.paystackFetch,
-    });
+    if (!cancellationConfirmed) {
+      try {
+        await disablePaystackSubscription({ subscriptionCode, emailToken, fetchImpl: runtime.paystackFetch });
+      } catch (error) {
+        if (error?.code !== "BILLING_PROVIDER_FAILED") throw error;
+        // A response may be lost after Paystack stops renewal. Reconcile only
+        // the exact server-bound subscription; never choose another by email.
+        const recovered = await resolvePaystackSubscriptionIdentity({
+          expectedSubscriptionCode: subscriptionCode, organizationId,
+          forCancellation: true, fetchImpl: runtime.paystackFetch,
+        });
+        if (!recovered.cancellationConfirmed) throw error;
+      }
+    }
 
     const updated = await runtime.billing.cancelSubscription({
       organizationId,
@@ -1301,8 +1321,14 @@ async function routeRequest({ request, response, runtime }) {
       providerEmailToken: emailToken,
     });
 
+    if (updated.status !== "non_renewing") {
+      throw new AuthError("Paystack cancellation needs reconciliation. Reload Billing before trying again.", "BILLING_RECONCILIATION_REQUIRED");
+    }
+    const confirmationEmail = await sendCancellationConfirmation(runtime, context, updated);
+
     sendJson(response, 200, {
       subscription: publicSubscription(updated),
+      confirmationEmail,
     });
 
     return;
@@ -2764,9 +2790,9 @@ function publicSubscription(subscription) {
 
     canCancel:
       ["active", "past_due"].includes(subscription.status) &&
+      Boolean(String(process.env.PAYSTACK_SECRET_KEY ?? "").trim()) &&
       Boolean(
-        (subscription.providerSubscriptionCode &&
-          subscription.providerEmailToken) ||
+        subscription.providerSubscriptionCode ||
         (subscription.checkoutReference &&
           isProductionPaystackConfigured(configuredPlan)),
       ),
@@ -2790,6 +2816,18 @@ function publicSubscription(subscription) {
 
     nextStep: subscriptionNextStep(subscription, price),
   };
+}
+
+async function sendCancellationConfirmation(runtime, context, subscription) {
+  try {
+    await runtime.billingEmailSender.sendCancellationConfirmation({ to: context.user.email, subscription });
+    return { status: "accepted" };
+  } catch {
+    // Provider email failures must never make a confirmed cancellation appear
+    // to have failed, nor expose transport credentials or customer addresses.
+    console.error("Billing cancellation confirmation email could not be sent.");
+    return { status: "failed" };
+  }
 }
 
 function publicBillingPayment(payment) {
