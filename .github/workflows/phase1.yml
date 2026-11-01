@@ -75,6 +75,11 @@ jobs:
         env:
           NOTIFICATION_ROLLOUT_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
 
+      - name: Verify payment history repair with a restricted runtime role
+        run: node --test tests/payment-history-repair.test.mjs
+        env:
+          PAYMENT_HISTORY_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
+
       - name: Verify custom runtime ingestion permission repair
         run: node --test tests/ingestion-runtime-grant.test.mjs
         env:
