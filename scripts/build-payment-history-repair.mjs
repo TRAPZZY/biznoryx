@@ -16,7 +16,7 @@ export function buildPaymentHistoryRepair() {
   const schema = migration.slice(6, split).trim();
   return `\\set ON_ERROR_STOP on
 begin;
-set local search_path = pg_catalog, public;
+set local search_path = public;
 set local lock_timeout = '2s';
 set local statement_timeout = '30s';
 select set_config('biznoryx.payment_history_runtime_role', :'payment_history_runtime_role', true) is not null;

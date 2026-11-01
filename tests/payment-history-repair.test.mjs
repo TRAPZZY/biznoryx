@@ -75,7 +75,12 @@ test(
         )
       ).rows[0].acl;
       const sql = buildPaymentHistoryRepair();
-      const body = sql.slice(sql.indexOf("do $$"), sql.lastIndexOf("commit;"));
+      // Execute every SQL statement in the generated transaction, including its
+      // schema search path and guards. Only psql's non-secret role substitution
+      // and the outer fixture transaction are supplied by this test harness.
+      const body = sql
+        .slice(sql.indexOf("set local search_path"), sql.lastIndexOf("commit;"))
+        .replace(":'payment_history_runtime_role'", `'${runtime}'`);
       await admin.query(
         "select set_config('biznoryx.payment_history_runtime_role',$1,true)",
         [runtime],
