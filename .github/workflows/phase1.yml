@@ -85,6 +85,11 @@ jobs:
         env:
           RUNTIME_GRANT_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
 
+      - name: Verify atomic reviewed release with provider default grants
+        run: node --test tests/reviewed-release-grants.test.mjs
+        env:
+          REVIEW_RELEASE_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_admin:biznoryx_ci_password@localhost:5432/postgres
+
       - name: Verify PostgreSQL RLS acceptance
         run: npm run db:acceptance
         env:
