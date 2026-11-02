@@ -1,11 +1,23 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createHash, X509Certificate } from "node:crypto";
 import { buildReviewedRecordsRelease } from "./build-reviewed-records-release.mjs";
 
 // Generates a public, reviewable command only. Never reads credentials,
 // connects to Northflank/PostgreSQL, creates a job, or activates the release.
 export function buildReviewMaintenanceJob({ apply = false } = {}) {
+  const certificate = readFileSync(
+    new URL("./certs/isrg-root-x1.pem", import.meta.url),
+    "utf8",
+  );
+  const ca = new X509Certificate(certificate);
+  if (
+    !ca.ca ||
+    ca.fingerprint256.replaceAll(":", "").toLowerCase() !==
+      "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6"
+  )
+    throw new Error("Unexpected public CA certificate");
   const bundle = buildReviewedRecordsRelease();
   const digest = createHash("sha256").update(bundle).digest("hex");
   const check =
@@ -32,10 +44,16 @@ case "$PGHOST" in
   *biznoryx-db*) ;;
   *) echo 'REFUSED: unexpected database target'; exit 64 ;;
 esac
-export PGSSLMODE=verify-full PGSSLROOTCERT=system PGCONNECT_TIMEOUT=10
+export PGSSLMODE=verify-full PGCONNECT_TIMEOUT=10
 export PGOPTIONS='-c statement_timeout=30000 -c lock_timeout=2000'
 failure="$(mktemp)"
-trap 'rm -f "$failure"' EXIT HUP INT TERM
+root_ca="$(mktemp)"
+trap 'rm -f "$failure" "$root_ca"' EXIT HUP INT TERM
+# Public provider-documented CA; no download, private key or credential is embedded.
+cat > "$root_ca" <<'BIZNORYX_PUBLIC_CA'
+${certificate}
+BIZNORYX_PUBLIC_CA
+export PGSSLROOTCERT="$root_ca"
 ` +
     (apply
       ? `
