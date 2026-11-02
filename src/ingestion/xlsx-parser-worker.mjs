@@ -16,8 +16,10 @@ const STRICT_REL = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
 
 // Defense in depth in a disposable process, not a substitute for an OS/container
 // RSS limit. The parent imposes a 24 MiB old-generation / 1 MiB semi-space cap.
+// Node 24 on Linux uses about 61 MiB after parser imports alone; a 64 MiB
+// process limit rejected valid workbooks. Keep the heap/byte budgets unchanged.
 // Native buffers are bounded by original (2 MiB), inflated archive (4 MiB), entry
-// (2 MiB) and output (4 MiB) limits. Checkpoints stop above 64 MiB RSS but cannot
+// (2 MiB) and output (4 MiB) limits. Checkpoints stop above 96 MiB RSS but cannot
 // interrupt synchronous native allocation; deployment still needs an OS cap.
 const memoryWatch = setInterval(() => {
   checkMemory();
@@ -580,5 +582,5 @@ function fail(message) {
 }
 
 function checkMemory() {
-  if (process.memoryUsage().rss > 64 * MiB) process.exit(72);
+  if (process.memoryUsage().rss > 96 * MiB) process.exit(72);
 }
