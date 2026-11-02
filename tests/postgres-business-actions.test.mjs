@@ -3,6 +3,7 @@ import test from "node:test";
 
 import pg from "pg";
 import { createProductionApp } from "../src/webapp/production-app.mjs";
+import { PostgresEvidenceReportRepository } from "../src/database/evidence-report-repository.mjs";
 import { withTenantTransaction } from "../src/database/postgres.mjs";
 
 import {
@@ -188,6 +189,13 @@ test(
        * January revenue = 100.
        */
 
+      // Directional actions require the owner's approved business meaning;
+      // a column named revenue alone is not approval.
+      await new PostgresEvidenceReportRepository(pool).approvePolicy({
+        organizationId: organization.id, actorUserId: owner.id,
+        seriesKey: stream.id, column: 'revenue', expectedVersion: 0,
+        definition: {label:'Revenue',unit:'currency',polarity:'higher',materialityPercent:5},
+      });
       const januaryContent =
         [
           "product,revenue",
