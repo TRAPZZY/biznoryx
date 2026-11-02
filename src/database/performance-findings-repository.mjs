@@ -8,37 +8,6 @@ import {
   withTenantTransaction,
 } from "./postgres.mjs";
 
-const HIGHER_IS_BETTER =
-  new Set([
-    "revenue",
-    "sales",
-    "profit",
-    "gross_profit",
-    "net_profit",
-    "net_income",
-    "orders",
-    "customers",
-    "conversions",
-  ]);
-
-const LOWER_IS_BETTER =
-  new Set([
-    "cost",
-    "costs",
-    "expense",
-    "expenses",
-    "refund",
-    "refunds",
-    "churn",
-    "defect",
-    "defects",
-    "downtime",
-    "return",
-    "returns",
-    "chargeback",
-    "chargebacks",
-  ]);
-
 export class PostgresPerformanceFindingsRepository {
   constructor(
     pool,
@@ -168,6 +137,12 @@ export class PostgresPerformanceFindingsRepository {
           ],
         );
 
+      const policyContext = await loadApprovedMetricPolicies({
+        client,
+        organizationId,
+        comparisons: comparisonResult.rows,
+      });
+
       const persisted =
         [];
 
@@ -202,6 +177,7 @@ export class PostgresPerformanceFindingsRepository {
         const findings =
           buildPerformanceFindings(
             comparison,
+            policyContext,
           );
 
         const desiredTypes =
@@ -676,47 +652,10 @@ export class PerformanceFindingError
   }
 }
 
-export function classifyMetricPolarity({
-  metricKey,
-  sourceColumn,
-} = {}) {
-  const source =
-    normalizeMetricSemanticKey(
-      sourceColumn,
-    );
-
-  const metric =
-    normalizeMetricSemanticKey(
-      String(
-        metricKey ??
-          "",
-      ).replace(
-        /^[^:]+:/,
-        "",
-      ),
-    );
-
-  const candidate =
-    source ||
-    metric;
-
-  if (
-    HIGHER_IS_BETTER.has(
-      candidate,
-    )
-  ) {
-    return "higher_is_better";
-  }
-
-  if (
-    LOWER_IS_BETTER.has(
-      candidate,
-    )
-  ) {
-    return "lower_is_better";
-  }
-
-  return "neutral";
+// The caller resolves the owner-approved policy; headers never establish meaning.
+export function classifyMetricPolarity({ approvedPolicy } = {}) {
+  return approvedPolicy?.polarity === "higher" ? "higher_is_better"
+    : approvedPolicy?.polarity === "lower" ? "lower_is_better" : "neutral";
 }
 
 export function findingSeverity({
@@ -783,19 +722,57 @@ export function findingSeverity({
   return "info";
 }
 
-function buildPerformanceFindings(
-  comparison,
-) {
-  const polarity =
-    classifyMetricPolarity({
-      metricKey:
-        comparison
-          .metric_key,
+async function loadApprovedMetricPolicies({ client, organizationId, comparisons }) {
+  // Report sources use the stream UUID as seriesKey, not its name or an upload ID.
+  const seriesKeys = [...new Set(comparisons
+    .filter((comparison) => comparison.comparison_status === "ready" && comparison.aggregation === "sum")
+    .map((comparison) => comparison.data_stream_id))];
+  const policies = new Map();
+  if (!seriesKeys.length) return { policies, available: false };
 
-      sourceColumn:
-        comparison
-          .source_column,
+  // The report schema is optional on older installations. Probe absence explicitly;
+  // permission errors and SQL failures on an installed schema must abort the refresh.
+  const capability = await client.query(
+    "select to_regclass('evidence_report_definitions') is not null as available",
+  );
+  if (!capability.rows[0].available) return { policies, available: false };
+
+  const result = await client.query(
+    `select distinct on (series_key, source_column)
+       id, series_key, source_column, version, label, unit, polarity,
+       materiality_percent, approved_at, approved_by_user_id
+     from evidence_report_definitions
+     where organization_id = $1 and series_key = any($2::text[])
+     order by series_key, source_column, version desc`,
+    [organizationId, seriesKeys],
+  );
+  for (const row of result.rows) {
+    policies.set(JSON.stringify([row.series_key, row.source_column]), {
+      id: row.id,
+      seriesKey: row.series_key,
+      column: row.source_column,
+      version: row.version,
+      label: row.label,
+      unit: row.unit,
+      polarity: row.polarity,
+      materialityPercent: Number(row.materiality_percent),
+      approvedAt: row.approved_at,
+      approvedByUserId: row.approved_by_user_id,
     });
+  }
+  return { policies, available: true };
+}
+
+function buildPerformanceFindings(comparison, policyContext) {
+  // Evidence report definitions describe additive sums; they cannot authorize a
+  // favorable/adverse interpretation of a count, average or other aggregation.
+  const policy = comparison.aggregation === "sum"
+    ? policyContext.policies.get(JSON.stringify([comparison.data_stream_id, comparison.source_column])) ?? null
+    : null;
+  const polarity = classifyMetricPolarity({ approvedPolicy: policy });
+  const policyStatus = policy ? "approved" : comparison.aggregation !== "sum"
+    ? "aggregation_unsupported" : policyContext.available ? "unconfirmed" : "schema_unavailable";
+  comparison = { ...comparison, metric_label: policy?.label ?? comparison.metric_label };
 
   const severity =
     findingSeverity({
@@ -812,6 +789,8 @@ function buildPerformanceFindings(
     buildEvidence({
       comparison,
       polarity,
+      policy,
+      policyStatus,
     });
 
   const findings = [
@@ -827,6 +806,7 @@ function buildPerformanceFindings(
       summary:
         movementSummary(
           comparison,
+          policy,
         ),
 
       evidence: {
@@ -850,6 +830,7 @@ function buildPerformanceFindings(
         [
           movementSummary(
             comparison,
+            policy,
           ),
           "Review the underlying business drivers before taking action.",
         ].join(
@@ -872,9 +853,11 @@ function buildPerformanceFindings(
         comparison.direction,
     });
 
-  if (
-    directionalType
-  ) {
+  const material = policy && (comparison.percent_change_numeric === null
+    ? comparison.absolute_change_numeric !== null && Number(comparison.absolute_change_numeric) !== 0
+    : Math.abs(Number(comparison.percent_change_numeric)) >= policy.materialityPercent);
+
+  if (directionalType && material) {
     findings.push({
       findingType:
         directionalType,
@@ -884,12 +867,13 @@ function buildPerformanceFindings(
       title:
         directionalType ===
         "opportunity"
-          ? `${comparison.metric_label}: favorable verified movement`
-          : `${comparison.metric_label}: adverse verified movement`,
+          ? `${comparison.metric_label}: favorable movement under approved definition`
+          : `${comparison.metric_label}: adverse movement under approved definition`,
 
       summary:
         movementSummary(
           comparison,
+          policy,
         ),
 
       evidence: {
@@ -899,7 +883,7 @@ function buildPerformanceFindings(
           directionalType,
 
         semanticRule:
-          "deterministic_metric_semantics_v1",
+          "approved_evidence_report_definition_v1",
       },
     });
   }
@@ -962,6 +946,8 @@ function directionalFindingType({
 function buildEvidence({
   comparison,
   polarity,
+  policy,
+  policyStatus,
 }) {
   const comparisonEvidence =
     comparison
@@ -997,6 +983,12 @@ function buildEvidence({
 
     metricPolarity:
       polarity,
+
+    metricPolicy: policy,
+
+    policyStatus,
+
+    interpretationStatus: policy ? "approved" : "unconfirmed",
 
     direction:
       comparison.direction,
@@ -1104,6 +1096,7 @@ function buildEvidence({
 
 function movementSummary(
   comparison,
+  policy,
 ) {
   const previous =
     normalizeDatabaseNumeric(
@@ -1150,12 +1143,20 @@ function movementSummary(
       ? "Percent change is unavailable because the previous value was zero."
       : `Percent change: ${signedNumber(percent)}%.`;
 
+  const interpretationText = policy
+    ? policy.polarity === "neutral"
+      ? "The approved metric definition is neutral; this movement is not assessed as favorable or adverse."
+      : `Business interpretation uses approved metric definition v${policy.version}.`
+    : "Business interpretation is unconfirmed; confirm an owner-approved metric definition before assessing this movement as favorable or adverse.";
+
   return [
     `${comparison.metric_label} changed from ${previous} to ${current}${periodText ? ` from ${periodText}` : ""}.`,
 
     `Absolute change: ${signedNumber(absolute)}.`,
 
     percentText,
+
+    interpretationText,
   ].join(
     " ",
   );
@@ -1181,25 +1182,6 @@ function signedNumber(
   }
 
   return `+${text}`;
-}
-
-function normalizeMetricSemanticKey(
-  value,
-) {
-  return String(
-    value ??
-      "",
-  )
-    .trim()
-    .toLowerCase()
-    .replace(
-      /[^a-z0-9]+/g,
-      "_",
-    )
-    .replace(
-      /^_+|_+$/g,
-      "",
-    );
 }
 
 function mapFinding(
@@ -1261,7 +1243,7 @@ function mapDetailedFinding(
         row.metric_key,
 
       label:
-        row.metric_label,
+        row.evidence?.metricLabel ?? row.metric_label,
 
       sourceColumn:
         row.source_column,
@@ -1270,7 +1252,7 @@ function mapDetailedFinding(
         row.aggregation,
 
       unit:
-        row.unit,
+        row.evidence?.metricPolicy?.unit ?? row.unit,
     },
 
     dataStream: {
