@@ -92,9 +92,14 @@ jobs:
           BIZNORYX_APP_DB_PASSWORD: biznoryx_runtime_ci_password
 
       - name: Verify durable runtime behavior
-        run: node --test tests/postgres-runtime.test.mjs tests/postgres-native-auth.test.mjs tests/postgres-data-ingestion.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs tests/postgres-evidence-report.test.mjs tests/postgres-business-actions.test.mjs tests/postgres-performance-findings.test.mjs tests/postgres-evidence-cube.test.mjs
+        run: node --test tests/postgres-runtime.test.mjs tests/postgres-native-auth.test.mjs tests/postgres-data-ingestion.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs tests/postgres-evidence-report.test.mjs tests/postgres-business-actions.test.mjs tests/postgres-performance-findings.test.mjs tests/postgres-evidence-cube.test.mjs tests/postgres-business-review.test.mjs
         env:
           TEST_DATABASE_URL: postgresql://biznoryx_app:biznoryx_runtime_ci_password@localhost:5432/biznoryx
+
+      - name: Verify reviewed-record runtime schema readiness
+        run: node scripts/check-business-review-schema.mjs
+        env:
+          DATABASE_URL: postgresql://biznoryx_app:biznoryx_runtime_ci_password@localhost:5432/biznoryx
 
       - name: Verify manual entry and trial database boundaries
         run: node --test tests/postgres-manual-entry.test.mjs tests/billing-trial-postgres.test.mjs tests/postgres-updates.test.mjs

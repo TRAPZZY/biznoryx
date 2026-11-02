@@ -4995,3 +4995,30 @@ td > svg {
     width: 100%;
   }
 }
+/* Reviewed records use the workspace's existing type and colour tokens. */
+.br-navigation{display:flex;flex-wrap:wrap;gap:1.25rem;margin:0 0 1.5rem;padding:.75rem 0;border-bottom:1px solid #dce3e9}
+.br-navigation a{color:inherit;text-decoration:underline;text-underline-offset:5px}
+.br-panel{padding:1.5rem 0;max-width:1100px}
+.br-panel h2,.br-panel h3{margin-top:2rem}
+.br-panel form{margin:1rem 0;max-width:900px}
+.br-panel button{max-width:100%;white-space:normal}
+.br-panel p,.br-panel h1,.br-panel h2,.br-panel h3{overflow-wrap:anywhere}
+.br-form-grid>label{min-width:0}
+.br-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1rem 0}
+.br-panel label{display:flex;flex-direction:column;gap:.4rem;margin:.7rem 0}
+.br-panel input,.br-panel select{max-width:100%;min-width:0;padding:.65rem;border:1px solid #ccd6df;border-radius:5px;background:#fff;color:#172a3a}
+.br-panel .br-check{flex-direction:row;align-items:flex-start;gap:.6rem}
+.br-check input{flex:none;width:auto;margin-top:.2rem}
+.br-table-scroll{overflow:auto;max-height:520px;border:1px solid #dce3e9;border-radius:5px;margin:1rem 0}
+.br-table-scroll table{width:100%;border-collapse:collapse;font-size:.88rem}
+.br-table-scroll th,.br-table-scroll td{padding:.8rem;text-align:left;vertical-align:top;border-bottom:1px solid #e3e9ee;overflow-wrap:anywhere}
+.br-table-scroll th{background:#f3f6f8;position:sticky;top:0;z-index:1}
+.br-table-scroll td small,.br-table-scroll td a{display:block;margin-top:.25rem}
+.br-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:1rem;margin:1.5rem 0}
+.br-totals div{display:block;border-top:2px solid #1b536d;padding:.8rem 0;min-width:0}
+.br-totals dt{font-size:.82rem;color:#526576}
+.br-totals dd{width:auto;max-width:100%;margin:.5rem 0;text-align:left;font-size:1.1rem;font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+.br-note{color:#526576;line-height:1.65;font-size:.9rem}
+.br-hash{font:12px/1.6 monospace;overflow-wrap:anywhere}
+.br-panel [role="alert"]{color:#8b2924}
+@media(max-width:640px){.br-form-grid{grid-template-columns:1fr}.br-panel{padding:1rem 0}.br-navigation{gap:.8rem;font-size:.9rem}.br-totals{grid-template-columns:1fr}}

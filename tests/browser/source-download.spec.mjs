@@ -29,7 +29,7 @@ for (const width of [1440, 390]) {
     page.on("pageerror", error => errors.push(error.message));
     await signIn(page);
     await expect(page.getByText("No source files yet.")).toBeVisible();
-    const bytes = Buffer.from('date,product,quantity,revenue\r\n2026-10-01,"Caf\u00e9, large",2,120.00\r\n');
+    const bytes = Buffer.from('\ufeffdate,product,quantity,revenue\r\n2026-10-01,"Caf\u00e9, large",2,120.00\r\n');
     await page.locator('input[name="file"]').setInputFiles({ name: "caf\u00e9 sales.csv", mimeType: "text/csv", buffer: bytes });
     await page.locator('input[name="period"]').fill("2026-10");
     await page.getByRole("button", { name: "Validate files", exact: true }).click();
