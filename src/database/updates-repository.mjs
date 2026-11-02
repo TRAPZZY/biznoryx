@@ -28,12 +28,12 @@ export class PostgresUpdatesRepository {
       const snapshot = await client.query("select now() as snapshot_at");
       const result = await client.query(`select e.*, r.read_at, r.snoozed_until, rp.label as period_label
         from notification_events e join notification_recipients r on r.event_id = e.id and r.organization_id = e.organization_id
-        join ingestion_runs ir on ir.id = e.ingestion_run_id and ir.organization_id = e.organization_id
-        join reporting_periods rp on rp.id = ir.reporting_period_id and rp.organization_id = ir.organization_id
+        left join ingestion_runs ir on ir.id = e.ingestion_run_id and ir.organization_id = e.organization_id
+        left join reporting_periods rp on rp.id = ir.reporting_period_id and rp.organization_id = ir.organization_id
         where e.organization_id = $1 and r.user_id = $2
           and ($3 = 'all' or ($3 = 'unread' and r.read_at is null and (r.snoozed_until is null or r.snoozed_until <= now()))
             or ($3 = 'snoozed' and r.snoozed_until > now()))
-          and ($4 = 'all' or ($4 = 'reports' and e.kind = 'report_ready') or ($4 = 'data' and e.kind = 'upload_attention'))
+          and ($4 = 'all' or ($4 = 'reports' and e.kind in ('report_ready','monthly_review')) or ($4 = 'data' and e.kind in ('upload_attention','money_review','mapping_review')))
         order by e.created_at desc, e.id desc limit $5 offset $6`,
       [input.organizationId, input.actorUserId, filter, category, limit + 1, offset]);
       const count = await client.query(`select count(*)::integer as unread from notification_recipients

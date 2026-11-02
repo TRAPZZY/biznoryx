@@ -32,11 +32,15 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
     "csv-parse": "^7.0.3",
+    "fflate": "0.8.3",
     "lucide": "^1.47.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "0.17.2",
     "pg": "^8.23.0",
-    "simple-statistics": "7.8.8"
+    "read-excel-file": "9.3.14",
+    "saxes": "6.0.0",
+    "simple-statistics": "7.8.8",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

@@ -6,6 +6,8 @@ import {
   renderReportAnswer,
 } from "./evidence-report.js";
 import { mountManualEntry } from "./manual-entry.js";
+import { mountImportReview, mountMoneyTrail, mountMonthlyReview, reviewNavigation } from "./business-review.js";
+let businessReviewCapabilities = null;
 import { mountTrialBilling } from "./trial-billing.js";
 import { mountUpdates, updatesPageHtml, feedbackScope, operationFeedback } from "./updates.js";
 import { actionPlansHtml, mountActionPlans } from "./action-plans.js";
@@ -2547,6 +2549,7 @@ function sourceFilesHtml(uploads) {
         <td><span class="status ${["confirmed", "validated", "processed", "ready"].includes(u.status) ? "success" : ""}">${esc(String(u.status || "unknown").replaceAll("_", " "))}</span></td>
         <td class="source-actions-cell"><div class="source-file-actions">
           <button class="text-button review-upload" data-id="${esc(u.id)}" type="button">Review ${icon("arrow-up-right")}</button>
+          ${businessReviewCapabilities?.reviewedImports&&!u.hasImportMapping&&u.status==='validated'?`<button class="text-button" type="button" data-map-source="${esc(u.id)}">Map records</button>`:''}
           <button class="source-download-button" data-source-download="${esc(u.id)}" type="button"
             aria-label="Download ${esc(u.fileName)}" title="${u.downloadAvailable === false ? "Source file is not available" : "Download source file"}"
             ${u.downloadAvailable === false ? "disabled" : ""}>${icon("download")}</button>
@@ -2634,15 +2637,14 @@ function dataPage() {
             </span>
 
             <small>
-              CSV, TSV, JSON, TXT, PDF, XLSX
-              &middot; up to 25 MB each
+              ${businessReviewCapabilities?.reviewedImports ? "Reviewed CSV · up to 4 MB; XLSX · up to 2 MB" : businessReviewCapabilities?.legacyReview ? "CSV, TSV, JSON, TXT, PDF, XLSX · up to 25 MB each" : "CSV · up to 25 MB"}
             </small>
 
             <input
               type="file"
               name="file"
-              accept=".csv,.tsv,.json,.txt,.pdf,.xlsx,.xls,text/csv,application/json,application/pdf,text/plain"
-              multiple
+              accept="${businessReviewCapabilities?.reviewedImports ? '.csv,.xlsx' : businessReviewCapabilities?.legacyReview ? '.csv,.tsv,.json,.txt,.pdf,.xlsx' : '.csv,text/csv'}"
+              ${businessReviewCapabilities?.reviewedImports ? '' : 'multiple'}
               required
             >
           </label>
@@ -2707,23 +2709,21 @@ function dataPage() {
           </div>
 
           <p class="input-help">
-            Use the same data series and column layout for
-            recurring periods. CSV, TSV, JSON, TXT and
-            text-based PDF statements can be analyzed now.
-            Excel files are accepted for intake review and
-            should be exported as CSV until the audited
-            spreadsheet parser is connected.
+            ${businessReviewCapabilities?.reviewedImports ? 'Use the same series for recurring periods. Review CSV up to 4 MB, or a values-only XLSX up to 2 MB. For spreadsheets, use dates as explicit text and choose a worksheet when needed. Original files remain available for download.' : businessReviewCapabilities?.legacyReview ? 'Use the same data series and column layout for recurring periods. This review environment supports additional file formats; production format availability is checked separately.' : 'Use the same data series and column layout for recurring periods. Production currently accepts CSV files. Export other formats as UTF-8 CSV first.'}
           </p>
 
+          ${businessReviewCapabilities?.reviewedImports ? '<label>Worksheet name (if the workbook has several sheets)<input name="sheet" maxlength="160" placeholder="Leave blank for a single-sheet workbook"></label>' : ''}
+          ${businessReviewCapabilities?.reviewedImports ? '<label class="br-check"><input type="checkbox" name="legacyCsv"> Use existing CSV validation for a larger CSV (up to 25 MB). This skips mapping review.</label>' : ''}
           <button
             type="submit"
             class="primary"
           >
-            Validate files
+            ${businessReviewCapabilities?.reviewedImports ? 'Review file' : 'Validate files'}
             ${icon("arrow-right")}
           </button>
 
           ${message()}
+          <div id="reviewed-import-panel"></div>
         </form>
 
         <aside class="context-note">
@@ -2862,6 +2862,21 @@ function dataPage() {
       throw new Error("Choose files smaller than 25 MB each.");
     }
 
+    if (businessReviewCapabilities?.reviewedImports && data.legacyCsv!=='on') {
+      if(files.length!==1) throw new Error('Review one file at a time.');
+      const payload={...await readFilePayload(files[0]),period:data.period,dataSeries:data.dataSeries,
+        ...(data.sheet?.trim()?{sheet:data.sheet.trim()}: {})};
+      const result=await api('ingestion/preview',payload);
+      // The review form is separate from the upload form; nested forms are invalid.
+      let panel=document.querySelector('#reviewed-import-panel');
+      document.querySelector('#file-upload-panel').after(panel);
+      mountImportReview({root:panel,result,payload,uploads,api,onComplete:async response=>{
+        validation=response.upload;dashboard=await api('dashboard');dataPage();
+      }});
+      return;
+    }
+    if(businessReviewCapabilities?.reviewedImports && files.some(file=>!file.name.toLowerCase().endsWith('.csv'))) throw new Error('Existing validation accepts CSV. Uncheck the larger-CSV option to review an XLSX workbook.');
+
     const result = await api("ingestion/upload", {
       files: await Promise.all(files.map(readFilePayload)),
 
@@ -2889,11 +2904,20 @@ function dataPage() {
   });
 
   document.querySelector("#upload-history").onclick = async (event) => {
-    const button = event.target.closest("button[data-source-download], button.review-upload");
+    const button = event.target.closest("button[data-source-download], button[data-map-source], button.review-upload");
     if (!button || button.disabled) return;
-    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDownload || button.dataset.id));
+    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDownload || button.dataset.mapSource || button.dataset.id));
     if (!upload) return;
-    if (button.hasAttribute("data-source-download")) {
+    if(button.hasAttribute('data-map-source')) {
+      button.disabled=true;
+      try {
+        const payload={uploadId:upload.id,period:upload.period,dataSeries:upload.dataSeries};
+        const result=await api('ingestion/preview',payload);
+        const panel=document.querySelector('#reviewed-import-panel');document.querySelector('#file-upload-panel').after(panel);
+        mountImportReview({root:panel,result,payload,uploads:[],api,onComplete:async()=>{dashboard=await api('dashboard');dataPage();}});
+      }catch(error){validation={...upload,issues:[{severity:'error',message:error.message}]};dataPage();}
+      finally{if(button.isConnected)button.disabled=false;}
+    } else if (button.hasAttribute("data-source-download")) {
       await downloadSourceFile(button, upload);
     } else {
       validation = upload;
@@ -2931,7 +2955,12 @@ async function readFilePayload(file) {
   };
 
   if (textLike) {
-    payload.content = await file.text();
+    try {
+      // Preserve valid UTF-8 bytes, including a BOM that File.text() removes.
+      payload.content = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer());
+    } catch {
+      throw new Error('Save this text file as UTF-8 and upload it again.');
+    }
 
     return payload;
   }
@@ -6054,6 +6083,12 @@ async function route() {
 
     dashboard = nextDashboard;
 
+    if(['/data','/reports','/money-trail','/monthly-review'].includes(path)) {
+      try { businessReviewCapabilities=await api('business-review'); }
+      catch(error) { if(error.status===404)businessReviewCapabilities={legacyReview:true};else throw error; }
+      if(version!==navigationVersion)return;
+    }
+
     if (path === "/business") {
       business();
     } else if (path === "/data") {
@@ -6066,6 +6101,12 @@ async function route() {
       shell(updatesPageHtml(), "/updates");
     } else if (path === "/reports") {
       await reports();
+      if(businessReviewCapabilities?.moneyTrail&&businessReviewCapabilities?.monthlyClose) document.querySelector('.main-content, main')?.insertAdjacentHTML('afterbegin',reviewNavigation());
+    } else if (path === "/money-trail" || path === "/monthly-review") {
+      shell('<div id="business-review-root"></div>','/reports');
+      const root=document.querySelector('#business-review-root');
+      if(path==='/money-trail')await mountMoneyTrail({root,api,uploads:dashboard.uploads??[],period:params.get('period')||undefined});
+      else await mountMonthlyReview({root,api});
     } else if (path === "/actions") {
       shell(actionPlansHtml(), "/actions");
       disposeActionPlans = mountActionPlans({ root: document.querySelector("#action-plans"), api, initial: dashboard });

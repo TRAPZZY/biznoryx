@@ -87,6 +87,11 @@ import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource
 import { reportSourcesFromSeries } from "../reports/production-sources.mjs";
 
 import { sendEvidenceExport } from "../reports/export.mjs";
+import { PostgresImportManifestRepository } from "../database/import-manifest-repository.mjs";
+import { PostgresMoneyTrailRepository } from "../database/money-trail-repository.mjs";
+import { PostgresMonthlyCloseRepository } from "../database/monthly-close-repository.mjs";
+import { businessReviewPath, businessReviewRequest } from "./business-review-routes.mjs";
+import { PostgresBusinessReviewRelease } from '../database/business-review-release.mjs';
 
 const CONTENT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -141,6 +146,10 @@ export function createProductionApp({
   billingEmailSender,
   activityRepository,
   updatesRepository,
+  importManifestRepository,
+  moneyTrailRepository,
+  monthlyCloseRepository,
+  reviewReleaseRepository,
   objectStorage,
   ingestionService,
   manualEntryService,
@@ -179,6 +188,7 @@ export function createProductionApp({
   const dataIngestion =
     dataIngestionRepository ??
     (pool ? new PostgresDataIngestionRepository(pool) : null);
+  const importManifests=importManifestRepository ?? (pool ? new PostgresImportManifestRepository(pool) : null);
 
   const processingJobs =
     processingJobRepository ??
@@ -220,6 +230,7 @@ export function createProductionApp({
     (dataIngestion && storage
       ? new ProductionIngestionService({
           repository: dataIngestion,
+          profileRepository: importManifests,
 
           objectStorage: storage,
         })
@@ -262,6 +273,10 @@ export function createProductionApp({
 
   const runtime = {
     pool,
+    importManifests,
+    reviewRelease:reviewReleaseRepository??(pool?new PostgresBusinessReviewRelease(pool):null),
+    moneyTrail: moneyTrailRepository ?? (pool ? new PostgresMoneyTrailRepository(pool) : null),
+    monthlyClose: monthlyCloseRepository ?? (pool ? new PostgresMonthlyCloseRepository(pool) : null),
     billingEmailSender: billingEmailSender ?? new CancellationEmailSender(),
     updates: updatesRepository ?? (pool ? new PostgresUpdatesRepository(pool) : null),
 
@@ -1771,6 +1786,14 @@ async function routeRequest({ request, response, runtime }) {
     await serveSourceDownload(response, () => runtime.ingestion.download({
       organizationId, actorUserId: context.user.id, uploadId: sourceDownload[1],
     }));
+    return;
+  }
+
+  if (businessReviewPath(url.pathname)) {
+    const {context}=await authenticateRequest({request,runtime,requireCsrf:request.method!=='GET'});
+    const organizationId=requireActiveOrganization(context,'Select a business before reviewing its records.');
+    if(url.pathname!=='/api/business-review') await requirePremiumSubscription({billingRepository:runtime.billing,organizationId,actorUserId:context.user.id});
+    await businessReviewRequest({request,response,url,runtime,tenant:{organizationId,actorUserId:context.user.id},readJson,sendJson,sendEvidenceExport,mapIngestionResult});
     return;
   }
 
@@ -3446,7 +3469,7 @@ function validateVerifiedPaystackPayment({
 
 async function readJson(request) {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  const limit = ["/api/ingestion/upload", "/api/ingestion/manual/draft"].includes(pathname)
+  const limit = ["/api/ingestion/upload", "/api/ingestion/manual/draft", "/api/ingestion/preview", "/api/ingestion/reviewed"].includes(pathname)
     ? MAX_JSON_BODY_BYTES
     : isAuthEndpoint(pathname) ? MAX_AUTH_BODY_BYTES : MAX_CONTROL_BODY_BYTES;
   const bytes = await readRawBody(request, limit);
@@ -3541,6 +3564,9 @@ function sendError(response, error) {
         ["NOT_FOUND", 404],
 
         ["VALIDATION_FAILED", 400],
+        ["CONFLICT", 409],
+        ["UPLOAD_BUSY", 429],
+        ["UPLOAD_RESOURCE_LIMIT", 413],
 
         ["INVALID_JSON", 400],
 
@@ -3779,7 +3805,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 
     rawObjectId: result.rawObject.id,
 
-    fileName: result.rawObject.originalFilename,
+    fileName: result.originalFile?.originalFilename ?? result.rawObject.originalFilename,
 
     period: reportingMonth(result.reportingPeriod.periodStart),
 
@@ -3789,7 +3815,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 
     dataKind: dataKind || result.dataStream.displayName,
 
-    sourceFormat: "CSV file",
+    sourceFormat: result.originalFile?.contentType ?? "CSV file",
 
     status: result.ingestionRun.status,
 
@@ -3824,6 +3850,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 function mapDashboardUpload(upload) {
   return {
     id: upload.id,
+    hasImportMapping: upload.hasImportMapping ?? false,
 
     downloadAvailable: upload.rawObject.status !== "quarantined",
 

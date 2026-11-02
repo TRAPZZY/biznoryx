@@ -32,6 +32,13 @@ export function preferenceInput(body) {
 }
 
 export function updateItem(row) {
+  const review = {
+    monthly_review: {category:'reports',title:'A monthly draft is ready',message:'Review its source coverage, metric definition and limitations before approval.',actionLabel:'Review monthly packet',href:'#/monthly-review'},
+    money_review: {category:'data',title:'Financial records are ready for review',message:'Review record meaning and any unallocated receipts. No match has been approved automatically.',actionLabel:'Review sales and receipts',href:'#/money-trail'},
+    mapping_review: {category:'data',title:'A source mapping changed',message:'A new mapping version has been approved. Existing evidence keeps its original mapping.',actionLabel:'Review data sources',href:'#/data'},
+  }[row.kind];
+  if(review) return {id:row.id,...review,kind:row.kind,period:row.review_period??null,evidenceStatus:row.evidence_status,
+    sourceRevision:row.source_revision,sourceId:row.review_target_id,createdAt:row.created_at,readAt:row.read_at,snoozedUntil:row.snoozed_until};
   const ready = row.kind === "report_ready";
   return {
     id: row.id, category: ready ? "reports" : "data", kind: row.kind,

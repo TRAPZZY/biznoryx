@@ -16,6 +16,7 @@ import {
 import {
   withTenantTransaction,
 } from "./postgres.mjs";
+import { persistImportManifest } from "./import-manifest-repository.mjs";
 
 const ALLOWED_EXTENSIONS = new Set([
   "csv",
@@ -412,7 +413,28 @@ export class PostgresDataIngestionRepository {
             ],
           );
 
-        if (existingObject.rows[0] && (!manualSubmissionId || existingObject.rows[0].status !== "accepted")) {
+        let reviewedReuse=false;
+        if (existingObject.rows[0] && upload.importManifest && !manualSubmissionId) {
+          const prior = await client.query(`select ir.*, rp.period_start, rp.period_end, rp.label as period_label,
+            m.profile_id, m.original_raw_object_id, r.checksum_sha256 as original_checksum
+            from ingestion_runs ir join reporting_periods rp on rp.id=ir.reporting_period_id and rp.organization_id=ir.organization_id
+            join ingestion_import_manifests m on m.ingestion_run_id=ir.id and m.organization_id=ir.organization_id
+            join raw_data_objects r on r.id=m.original_raw_object_id and r.organization_id=m.organization_id
+            where ir.organization_id=$1 and ir.raw_data_object_id=$2 and ir.data_stream_id=$3
+              and rp.period_start=$4::date and ir.status<>'rejected'
+            order by ir.created_at desc limit 1`, [organizationId,existingObject.rows[0].id,dataStreamId,reportingPeriod.periodStart]);
+          const row=prior.rows[0];
+          if (row && (row.profile_id ?? null) === (upload.importManifest.profileId ?? null) &&
+              row.original_checksum === upload.importManifest.original.checksumSha256) {
+            return { dataStream:mapDataStream(stream), reportingPeriod:{id:row.reporting_period_id,periodStart:reportingPeriod.periodStart,
+              periodEnd:reportingPeriod.periodEnd,label:row.period_label}, rawObject:mapRawObject(existingObject.rows[0]),
+              ingestionRun:mapIngestionRun(row), schemaVersion:null,validationResults:[],idempotent:true };
+          }
+          // A workbook with the same normalized values is a duplicate candidate,
+          // not permission to silently discard a different original artifact.
+          reviewedReuse=Boolean(existingObject.rows[0].status==='accepted'&&row&&row.original_checksum===upload.importManifest.original.checksumSha256&&upload.importManifest.supersedesRunId===row.id);
+        }
+        if (existingObject.rows[0] && !reviewedReuse && (!manualSubmissionId || existingObject.rows[0].status !== "accepted")) {
           throw new AuthError(
             "This file has already been uploaded.",
             "VALIDATION_FAILED",
@@ -640,7 +662,7 @@ export class PostgresDataIngestionRepository {
           runStatus ===
             "rejected" &&
           rawObjectStatus !==
-            "rejected"
+            "rejected" && !existingObject.rows[0]
         ) {
           await client.query(
             `update raw_data_objects
@@ -652,6 +674,14 @@ export class PostgresDataIngestionRepository {
 
         const ingestionRunId =
           randomUUID();
+
+        if (upload.importManifest) {
+          const prior = await client.query(`select id from ingestion_runs where organization_id=$1 and data_stream_id=$2
+            and reporting_period_id=$3 and status<>'rejected' order by created_at desc,id desc limit 1`,[organizationId,dataStreamId,period.id]);
+          if (prior.rows[0] && prior.rows[0].id !== upload.importManifest.supersedesRunId) {
+            throw new AuthError('This series already has data for that month. Select the existing upload explicitly to submit a corrected version.', 'VALIDATION_FAILED');
+          }
+        }
 
         const ingestionRun =
           await client.query(
@@ -718,6 +748,11 @@ export class PostgresDataIngestionRepository {
               manualSubmissionId,
             ],
           );
+
+        if (upload.importManifest) {
+          await persistImportManifest(client, {organizationId,actorUserId,dataStreamId,reportingPeriodId:period.id},
+            ingestionRunId,rawObjectId,upload.importManifest);
+        }
 
         const validationResults =
           [];
@@ -848,12 +883,25 @@ export class PostgresDataIngestionRepository {
     );
   }
 
-  async getSourceFile({ organizationId, actorUserId, uploadId }) {
+  async getNormalizedFile(input) { return this.getSourceFile({...input, normalized:true}); }
+
+  async getSourceFile({ organizationId, actorUserId, uploadId, normalized = false }) {
     if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(uploadId))) {
       throw new AuthError("Source file was not found.", "NOT_FOUND");
     }
     return withTenantTransaction(this.pool, { organizationId, actorUserId }, async (client) => {
       await requireReadAccess({ client, organizationId, actorUserId });
+      const schema = await client.query("select to_regclass('public.ingestion_import_manifests') is not null as available");
+      if (!normalized && schema.rows[0]?.available) {
+        const original = await client.query(`select r.* from ingestion_import_manifests m
+          join ingestion_runs ir on ir.id=m.ingestion_run_id and ir.organization_id=m.organization_id
+          join raw_data_objects r on r.id=m.original_raw_object_id and r.organization_id=m.organization_id
+          where m.organization_id=$1 and m.ingestion_run_id=$2 limit 1`,[organizationId,uploadId]);
+        if (original.rows.length) {
+          if(original.rows[0].status==='quarantined')throw new AuthError('Source file was not found.','NOT_FOUND');
+          return mapRawObject(original.rows[0]);
+        }
+      }
       const result = await client.query(
         `select rdo.*
          from ingestion_runs ir
@@ -935,8 +983,21 @@ export class PostgresDataIngestionRepository {
             [organizationId],
           );
 
+        const manifestSchema=await client.query("select to_regclass('public.ingestion_import_manifests') is not null as available");
+        if(manifestSchema.rows[0]?.available&&result.rows.length) {
+          const originals=await client.query(`select m.ingestion_run_id,m.profile_id,r.* from ingestion_import_manifests m
+            join raw_data_objects r on r.id=m.original_raw_object_id and r.organization_id=m.organization_id
+            where m.organization_id=$1 and m.ingestion_run_id=any($2::uuid[])`,[organizationId,result.rows.map(r=>r.id)]);
+          const byRun=new Map(originals.rows.map(r=>[r.ingestion_run_id,r]));
+          for(const row of result.rows) {
+            const original=byRun.get(row.id);
+            if(original) Object.assign(row,{profile_id:original.profile_id,raw_object_id:original.id,storage_key:original.storage_key,original_filename:original.original_filename,
+              content_type:original.content_type,byte_size:original.byte_size,checksum_sha256:original.checksum_sha256,raw_object_status:original.status});
+          }
+        }
         return result.rows.map(
           (row) => ({
+            hasImportMapping: Boolean(row.profile_id),
             id:
               row.id,
 
