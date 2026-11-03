@@ -5633,8 +5633,9 @@ function billingPage() {
     });
   }
 
+  let checkoutPlanSelect;
   if (openCheckout && dialog) {
-    openCheckout.onclick = () => {
+    openCheckout.onclick = async () => {
       const output = checkoutMessage();
 
       if (output) {
@@ -5643,9 +5644,36 @@ function billingPage() {
         output.classList.remove("error-text");
       }
 
-      if (!dialog.open) {
+      openCheckout.disabled = true;
+      try {
+        const { plans } = await api("billing/plans");
+        if (!dialog.isConnected) return;
+        const offered = plans.filter((plan) => plan.purchasable);
+        if (offered.length && !checkoutPlanSelect) {
+          const format = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" });
+          const label = document.createElement("label");
+          label.textContent = "Monthly subscription ";
+          checkoutPlanSelect = document.createElement("select");
+          checkoutPlanSelect.add(new Option("Choose a plan", ""));
+          for (const plan of offered) {
+            checkoutPlanSelect.add(new Option(
+              `${plan.name} · ${format.format(plan.amountMinor / 100)}/month`, plan.priceId,
+            ));
+          }
+          if (isPending) checkoutPlanSelect.value = subscription.planId;
+          label.append(checkoutPlanSelect);
+          dialog.querySelector(".billing-dialog-plan").replaceChildren(label);
+        }
+      } catch {
+        if (output) output.textContent = "Monthly plans could not be loaded. Close this window and try again.";
+        confirmCheckout.disabled = true;
         dialog.showModal();
+        return;
+      } finally {
+        openCheckout.disabled = false;
       }
+      confirmCheckout.disabled = false;
+      if (!dialog.open) dialog.showModal();
     };
   }
 
@@ -5662,7 +5690,10 @@ function billingPage() {
       }
 
       try {
-        const result = await api("billing/checkout", {});
+        if (checkoutPlanSelect && !checkoutPlanSelect.value) {
+          throw new Error("Choose a monthly plan to continue.");
+        }
+        const result = await api("billing/checkout", { priceId: checkoutPlanSelect?.value });
 
         if (!result?.checkout?.reference) {
           throw new Error("Billing checkout did not return a valid reference.");

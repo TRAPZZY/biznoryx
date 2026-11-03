@@ -198,8 +198,9 @@ export class PostgresBillingRepository {
     authorizationUrl = null,
     accessCode = null,
     metadata = {},
+    plan = monthlyPlanFromEnv(),
+    protectPending = false,
   }) {
-    const plan = monthlyPlanFromEnv();
 
     const result = await withBillingTenant(
       this.pool,
@@ -302,6 +303,7 @@ export class PostgresBillingRepository {
               where organization_id = $1
                 and (status not in ('active', 'non_renewing')
                      or current_period_end is null or current_period_end <= $10)
+                and (not $11::boolean or status <> 'pending_checkout')
                 and not exists (
                   select 1 from billing_trials trial
                    where trial.organization_id = $1
@@ -323,6 +325,7 @@ export class PostgresBillingRepository {
             plan.amountMinor,
             plan.interval,
             this.now(),
+            protectPending,
           ],
         );
 
