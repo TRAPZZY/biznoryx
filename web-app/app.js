@@ -709,7 +709,7 @@ function landing() {
   bindHeroImageFallback();
 }
 
-function mountMonthlyPlans() {
+function mountMonthlyPlans({ onSelect } = {}) {
   const host = document.querySelector("[data-monthly-plans]");
   if (!host) return;
 
@@ -718,12 +718,17 @@ function mountMonthlyPlans() {
       style: "currency", currency: "NGN", maximumFractionDigits: 0,
     });
     host.innerHTML = plans.map((plan) => `
-      <article>
+      <article class="${plan.recommended ? "recommended-plan" : ""}">
         <h3>${esc(plan.name)}</h3>
         <p><strong>${esc(format.format(plan.amountMinor / 100))}</strong> / month</p>
-        <p>${plan.recommended ? "Recommended - " : ""}${plan.purchasable ? "Available for trial signup" : "Coming soon"}</p>
+        <p>${plan.recommended ? "Recommended" : "Monthly subscription"}</p>
+        ${onSelect && plan.purchasable ? `<button type="button" class="button primary" data-price-id="${esc(plan.priceId)}">Choose ${esc(plan.name)}</button>` : ""}
+        ${plan.purchasable ? "" : '<p>Coming soon</p>'}
       </article>
     `).join("");
+    for (const button of host.querySelectorAll("[data-price-id]")) {
+      button.onclick = () => onSelect(button.dataset.priceId);
+    }
   }).catch(() => {
     host.textContent = "Monthly plans could not be loaded. Refresh to try again.";
   });
@@ -2172,8 +2177,6 @@ function shell(content, active) {
                     }"
                   >
                     ${esc(subscription.status.replaceAll("_", " "))}
-                    ·
-                    ${esc(subscription.priceLabel)}
                   </span>
                 `
                 : ""
@@ -2335,8 +2338,7 @@ function subscriptionBanner(subscription) {
 
       <div>
         <strong>
-          ${esc(subscription.priceLabel)}
-          BIZNORYX workspace
+          Workspace billing
         </strong>
 
         <p>
@@ -4958,6 +4960,10 @@ function billingPage() {
   const isPending = status === "pending_checkout";
 
   const isNonRenewing = status === "non_renewing";
+  const ended = isNonRenewing && Date.parse(subscription.currentPeriodEnd) <= Date.now();
+  const legacyPlan = subscription?.planId === "biznoryx_monthly_ngn_40000";
+  const canChoosePlan = !isActive && (!isNonRenewing || ended) &&
+    (!subscription?.trial?.providerProvisioned || Boolean(subscription.trial.canceledAt) || Boolean(subscription.trial.convertedAt));
 
   const providerConfigured = Boolean(subscription?.providerConfigured);
 
@@ -5110,8 +5116,11 @@ function billingPage() {
         </header>
 
         <section aria-labelledby="billing-monthly-plans">
-          <h2 id="billing-monthly-plans">Monthly plans</h2>
-          <div class="public-detail-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+          <h2 id="billing-monthly-plans">Choose your monthly plan</h2>
+          <p>${ended ? "Your previous subscription ended. Choose a plan to restart access." :
+            canChoosePlan ? "Select a plan to continue to secure Paystack checkout." :
+            "Manage your current subscription below."}</p>
+          <div class="billing-tier-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
         </section>
 
         <div class="billing-v2-grid">
@@ -5123,7 +5132,7 @@ function billingPage() {
                 </p>
 
                 <h2>
-                  ${esc(planName)}
+                  ${esc(legacyPlan ? "Previous subscription" : planName)}
                 </h2>
               </div>
 
@@ -5132,7 +5141,7 @@ function billingPage() {
               </span>
             </div>
 
-            <div class="billing-price-row">
+            ${legacyPlan ? "" : `<div class="billing-price-row">
               <strong>
                 ${esc(priceLabel.replace(/\/mo$/i, ""))}
               </strong>
@@ -5140,7 +5149,7 @@ function billingPage() {
               <span>
                 / month
               </span>
-            </div>
+            </div>`}
 
             <p class="billing-plan-description">
               One workspace for turning recurring business
@@ -5195,7 +5204,7 @@ function billingPage() {
                       Cancel subscription
                     </button>
                   `
-                  : isNonRenewing
+                  : isNonRenewing && !ended
                     ? `
                       <div class="billing-active-confirmation billing-nonrenewing-confirmation">
                         ${icon("calendar-x")}
@@ -5211,13 +5220,13 @@ function billingPage() {
                         </div>
                       </div>
 
-                      <button
+                      ${legacyPlan ? "" : `<button
                         id="renew-billing-subscription"
                         class="primary billing-primary-action"
                         type="button"
                       >
                         Resume automatic renewal
-                      </button>
+                      </button>`}
 
                       <p
                         id="billing-renewal-message"
@@ -5507,7 +5516,7 @@ function billingPage() {
                 </span>
 
                 <strong>
-                  ${esc(priceLabel)}
+                  ${esc(legacyPlan ? "Select a monthly plan" : priceLabel)}
                 </strong>
               </div>
 
@@ -5571,7 +5580,6 @@ function billingPage() {
   );
 
   const historyContent = document.querySelector("#billing-history-content");
-  mountMonthlyPlans();
   mountTrialBilling({
     container: document.querySelector(".billing-plan-actions"),
     api,
@@ -5635,7 +5643,15 @@ function billingPage() {
 
   let checkoutPlanSelect;
   if (openCheckout && dialog) {
-    openCheckout.onclick = async () => {
+    openCheckout.onclick = () => showCheckout();
+  }
+
+  async function showCheckout(priceId) {
+      if (!openCheckout || openCheckout.disabled) return;
+      if (openCheckout.hidden) {
+        document.querySelector(".trial-billing")?.scrollIntoView({ block: "center" });
+        return;
+      }
       const output = checkoutMessage();
 
       if (output) {
@@ -5673,9 +5689,11 @@ function billingPage() {
         openCheckout.disabled = false;
       }
       confirmCheckout.disabled = false;
+      if (priceId && checkoutPlanSelect) checkoutPlanSelect.value = priceId;
       if (!dialog.open) dialog.showModal();
-    };
   }
+
+  mountMonthlyPlans({ onSelect: canChoosePlan && openCheckout ? showCheckout : undefined });
 
   if (confirmCheckout) {
     confirmCheckout.onclick = async () => {

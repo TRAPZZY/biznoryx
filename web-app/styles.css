@@ -5022,3 +5022,36 @@ td > svg {
 .br-hash{font:12px/1.6 monospace;overflow-wrap:anywhere}
 .br-panel [role="alert"]{color:#8b2924}
 @media(max-width:640px){.br-form-grid{grid-template-columns:1fr}.br-panel{padding:1rem 0}.br-navigation{gap:.8rem;font-size:.9rem}.br-totals{grid-template-columns:1fr}}
+
+.billing-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 1rem;
+  margin-block: 1rem 1.5rem;
+}
+
+.billing-tier-grid article {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+
+.billing-tier-grid article.recommended-plan {
+  border-width: 2px;
+}
+
+.billing-tier-grid h3,
+.billing-tier-grid p {
+  margin: 0;
+}
+
+.billing-tier-grid strong {
+  font-size: 1.5rem;
+}
+
+.billing-tier-grid button {
+  margin-top: 0.5rem;
+}
