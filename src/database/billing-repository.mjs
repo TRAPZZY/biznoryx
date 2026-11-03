@@ -198,8 +198,9 @@ export class PostgresBillingRepository {
     authorizationUrl = null,
     accessCode = null,
     metadata = {},
+    plan = monthlyPlanFromEnv(),
+    protectPending = false,
   }) {
-    const plan = monthlyPlanFromEnv();
 
     const result = await withBillingTenant(
       this.pool,
@@ -302,6 +303,7 @@ export class PostgresBillingRepository {
               where organization_id = $1
                 and (status not in ('active', 'non_renewing')
                      or current_period_end is null or current_period_end <= $10)
+                and (not $11::boolean or status <> 'pending_checkout')
                 and not exists (
                   select 1 from billing_trials trial
                    where trial.organization_id = $1
@@ -323,6 +325,7 @@ export class PostgresBillingRepository {
             plan.amountMinor,
             plan.interval,
             this.now(),
+            protectPending,
           ],
         );
 
@@ -1043,12 +1046,17 @@ export class PostgresTrialRepository {
       const result = await client.query(
         `update organization_billing_subscriptions set status = 'trialing',
           provider_customer_code = $2, provider_subscription_code = $3,
-          trial_ends_at = $4, updated_at = $5
+          trial_ends_at = $4, updated_at = $5,
+          plan_id = coalesce($6, plan_id), plan_name = coalesce($7, plan_name),
+          currency = coalesce($8, currency), amount_minor = coalesce($9, amount_minor),
+          billing_interval = coalesce($10, billing_interval)
          where organization_id = $1 and active_at is null
           and status in ('trialing','pending_checkout','canceled')
           and (provider_subscription_code is null or provider_subscription_code = $3)
          returning id`,
-        [organizationId, trial.customerCode, trial.subscriptionCode, trial.endsAt, this.now()],
+        [organizationId, trial.customerCode, trial.subscriptionCode, trial.endsAt, this.now(),
+          trial.plan?.id ?? null, trial.plan?.name ?? null, trial.plan?.currency ?? null,
+          trial.plan?.amountMinor ?? null, trial.plan?.interval ?? null],
       );
       if (!result.rowCount) throw new AuthError("Subscription changed during trial setup.", "BILLING_TRIAL_INELIGIBLE");
     });

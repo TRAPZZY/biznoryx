@@ -172,8 +172,8 @@ export async function initializePaystackTransaction({
   reference = createBillingReference(),
   env = process.env,
   fetchImpl = fetch,
+  plan = monthlyPlanFromEnv(env),
 }) {
-  const plan = monthlyPlanFromEnv(env);
 
   const secretKey = String(env.PAYSTACK_SECRET_KEY ?? "").trim();
 

@@ -1,0 +1,28 @@
+{
+  "info": {
+    "name": "BIZNORYX pricing catalog",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{ "key": "baseUrl", "value": "http://127.0.0.1:4188" }],
+  "item": [{
+    "name": "Get monthly pricing catalog",
+    "request": { "method": "GET", "url": "{{baseUrl}}/api/billing/plans" },
+    "event": [{
+      "listen": "test",
+      "script": {
+        "exec": [
+          "pm.test('Catalog is reachable', () => pm.response.to.have.status(200));",
+          "pm.test('Prices are NGN kobo and checkout is disabled', () => {",
+          "  const plans = pm.response.json().plans;",
+          "  pm.expect(plans.map(p => [p.id, p.amountMinor])).to.eql([['starter',590000],['growth',1290000],['business',2490000],['business_plus',3990000]]);",
+          "  for (const p of plans) {",
+          "    pm.expect(p.currency).to.equal('NGN');",
+          "    pm.expect(p.interval).to.equal('monthly');",
+          "    pm.expect(p.purchasable).to.equal(false);",
+          "  }",
+          "});"
+        ]
+      }
+    }]
+  }]
+}

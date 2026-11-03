@@ -1,3 +1,5 @@
+import { TrialPaystackProvider } from "../billing/trial-provider.mjs";
+import { publicPricingCatalog, resolveTierPrice, tierPricingEnabled } from "../billing/pricing-catalog.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 import { createServer } from "node:http";
@@ -401,6 +403,11 @@ async function routeRequest({ request, response, runtime }) {
 
     response.end();
 
+    return;
+  }
+
+  if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+    sendJson(response, 200, { plans: publicPricingCatalog() });
     return;
   }
 
@@ -1170,7 +1177,7 @@ async function routeRequest({ request, response, runtime }) {
     let result;
     if (url.pathname.endsWith("/checkout")) {
       result = await runtime.trials.startCheckout({ ...input, email: context.user.email,
-        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent });
+        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent, priceId: body.priceId });
     } else if (url.pathname.endsWith("/verify")) {
       result = await runtime.trials.verifyCheckout({ ...input, reference: assertText(body.reference, "Card verification reference is required.", 160) });
     } else if (url.pathname.endsWith("/payment-update")) {
@@ -1303,7 +1310,7 @@ async function routeRequest({ request, response, runtime }) {
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         fetchImpl: runtime.paystackFetch,
       });
@@ -1422,7 +1429,7 @@ async function routeRequest({ request, response, runtime }) {
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         includeInactive: true,
 
@@ -1467,7 +1474,7 @@ async function routeRequest({ request, response, runtime }) {
           ? currentPeriodEnd
           : minimumStart;
 
-      const plan = monthlyPlanFromEnv();
+      const plan = renewalPlanForSubscription(subscription);
 
       const replacement = await createPaystackSubscription({
         customer: subscription.providerCustomerCode || context.user.email,
@@ -1545,7 +1552,9 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
-    const plan = monthlyPlanFromEnv();
+    const tiered = tierPricingEnabled();
+    const body = tiered ? await readJson(request) : {};
+    const plan = tiered ? resolveTierPrice(body.priceId) : monthlyPlanFromEnv();
 
     if (!isProductionPaystackConfigured(plan)) {
       throw new AuthError(
@@ -1576,6 +1585,26 @@ async function routeRequest({ request, response, runtime }) {
       }
     }
 
+    if (tiered && currentSubscription.status === "pending_checkout") {
+      const pending = await loadBillingCheckout({ runtime, organizationId, actorUserId: context.user.id,
+        reference: currentSubscription.checkoutReference });
+      if (pending?.status !== "pending" || pending.plan_id !== plan.id || !pending.authorization_url) {
+        throw new AuthError("Finish your existing checkout before selecting a different plan.", "VALIDATION_FAILED");
+      }
+      sendJson(response, 200, { checkout: { provider: "paystack", reference: pending.reference,
+        authorizationUrl: pending.authorization_url }, subscription: publicSubscription(currentSubscription) });
+      return;
+    }
+    if (tiered) {
+      const provider = new TrialPaystackProvider({ fetchImpl: runtime.paystackFetch });
+      const actual = await provider.plan(plan.planCode);
+      if (actual.plan_code !== plan.planCode || Number(actual.amount) !== plan.amountMinor ||
+          actual.currency !== plan.currency || actual.interval !== plan.interval ||
+          actual.domain !== process.env.PAYSTACK_SECRET_KEY?.split("_")[1]) {
+        throw new AuthError("Paystack plan does not match the selected monthly price.", "BILLING_PROVIDER_NOT_CONFIGURED");
+      }
+    }
+
     const publicUrl = billingPublicUrl(request);
 
     const reference = createProductionBillingReference();
@@ -1588,9 +1617,18 @@ async function routeRequest({ request, response, runtime }) {
       callbackUrl: `${publicUrl}/billing/paystack/callback`,
 
       reference,
+      plan,
 
       fetchImpl: runtime.paystackFetch,
     });
+
+    if (tiered) {
+      const hosted = new URL(checkout.authorizationUrl, "https://biznoryx.com");
+      if (checkout.reference !== reference || hosted.origin !== "https://checkout.paystack.com" ||
+          hosted.username || hosted.password) {
+        throw new AuthError("Paystack returned an invalid checkout session.", "BILLING_PROVIDER_FAILED");
+      }
+    }
 
     await runtime.billing.createCheckoutSession({
       organizationId,
@@ -1605,6 +1643,8 @@ async function routeRequest({ request, response, runtime }) {
 
       accessCode: checkout.accessCode,
 
+      plan,
+      protectPending: tiered,
       metadata: {
         source: "production_web",
 
@@ -2771,6 +2811,20 @@ function createProductionBillingReference() {
   return `bnx-${Date.now()}-${randomBytes(8).toString("hex")}`;
 }
 
+function configuredPlanForSubscription(subscription) {
+  return subscription.planId?.endsWith("_ngn_monthly_v1")
+    ? resolveTierPrice(subscription.planId)
+    : monthlyPlanFromEnv();
+}
+
+function renewalPlanForSubscription(subscription) {
+  const plan = configuredPlanForSubscription(subscription);
+  if (plan.amountMinor !== subscription.amountMinor || plan.currency !== subscription.currency) {
+    throw new AuthError("The original subscription price needs billing support.", "BILLING_RECONCILIATION_REQUIRED");
+  }
+  return plan;
+}
+
 function isProductionPaystackConfigured(plan = monthlyPlanFromEnv()) {
   return Boolean(
     plan.providerConfigured && plan.planCode && process.env.PAYSTACK_SECRET_KEY,
@@ -3070,6 +3124,12 @@ async function verifyAndActivateBillingCheckout({
 
     provider: "paystack",
   });
+
+  if (checkout.plan_id !== currentSubscription.planId ||
+      Number(checkout.amount_minor) !== currentSubscription.amountMinor ||
+      checkout.currency !== currentSubscription.currency) {
+    throw new AuthError("Checkout terms do not match this subscription.", "BILLING_BINDING_MISMATCH");
+  }
 
   validateVerifiedPaystackPayment({
     verified,
