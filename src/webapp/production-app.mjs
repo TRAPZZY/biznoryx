@@ -1,3 +1,4 @@
+import { publicPricingCatalog } from "../billing/pricing-catalog.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 import { createServer } from "node:http";
@@ -401,6 +402,11 @@ async function routeRequest({ request, response, runtime }) {
 
     response.end();
 
+    return;
+  }
+
+  if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+    sendJson(response, 200, { plans: publicPricingCatalog() });
     return;
   }
 

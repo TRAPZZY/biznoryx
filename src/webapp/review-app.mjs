@@ -1,3 +1,4 @@
+import { publicPricingCatalog } from "../billing/pricing-catalog.mjs";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -165,6 +166,11 @@ async function routeRequest({ request, response, runtime }) {
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   );
+  if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+    sendJson(response, 200, { plans: publicPricingCatalog() });
+    return;
+  }
+
   if (
     request.method === "POST" &&
     [
