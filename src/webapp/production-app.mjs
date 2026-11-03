@@ -1310,7 +1310,7 @@ async function routeRequest({ request, response, runtime }) {
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         fetchImpl: runtime.paystackFetch,
       });
@@ -1429,7 +1429,7 @@ async function routeRequest({ request, response, runtime }) {
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         includeInactive: true,
 
@@ -1474,9 +1474,7 @@ async function routeRequest({ request, response, runtime }) {
           ? currentPeriodEnd
           : minimumStart;
 
-      const plan = subscription.planId?.endsWith("_ngn_monthly_v1")
-        ? resolveTierPrice(subscription.planId)
-        : monthlyPlanFromEnv();
+      const plan = renewalPlanForSubscription(subscription);
 
       const replacement = await createPaystackSubscription({
         customer: subscription.providerCustomerCode || context.user.email,
@@ -2811,6 +2809,20 @@ async function requireOrganizationManager({
 
 function createProductionBillingReference() {
   return `bnx-${Date.now()}-${randomBytes(8).toString("hex")}`;
+}
+
+function configuredPlanForSubscription(subscription) {
+  return subscription.planId?.endsWith("_ngn_monthly_v1")
+    ? resolveTierPrice(subscription.planId)
+    : monthlyPlanFromEnv();
+}
+
+function renewalPlanForSubscription(subscription) {
+  const plan = configuredPlanForSubscription(subscription);
+  if (plan.amountMinor !== subscription.amountMinor || plan.currency !== subscription.currency) {
+    throw new AuthError("The original subscription price needs billing support.", "BILLING_RECONCILIATION_REQUIRED");
+  }
+  return plan;
 }
 
 function isProductionPaystackConfigured(plan = monthlyPlanFromEnv()) {
