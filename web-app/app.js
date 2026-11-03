@@ -661,7 +661,7 @@ function landing() {
           </p>
 
           <h2>
-            Start with a 7-day trial, then ₦40,000/month.
+            Start with a seven-day trial.
           </h2>
 
           <p>
@@ -707,6 +707,26 @@ function landing() {
   );
 
   bindHeroImageFallback();
+}
+
+function mountMonthlyPlans() {
+  const host = document.querySelector("[data-monthly-plans]");
+  if (!host) return;
+
+  api("billing/plans").then(({ plans }) => {
+    const format = new Intl.NumberFormat("en-NG", {
+      style: "currency", currency: "NGN", maximumFractionDigits: 0,
+    });
+    host.innerHTML = plans.map((plan) => `
+      <article>
+        <h3>${esc(plan.name)}</h3>
+        <p><strong>${esc(format.format(plan.amountMinor / 100))}</strong> / month</p>
+        <p>${plan.recommended ? "Recommended - " : ""}${plan.purchasable ? "Available for trial signup" : "Coming soon"}</p>
+      </article>
+    `).join("");
+  }).catch(() => {
+    host.textContent = "Monthly plans could not be loaded. Refresh to try again.";
+  });
 }
 
 function publicPage(path) {
@@ -770,7 +790,7 @@ function publicPage(path) {
     "/pricing": {
       kicker: "Pricing",
 
-      title: "₦40,000 per month for the BIZNORYX business workspace.",
+      title: "Monthly plans for your BIZNORYX workspace.",
 
       body: "Start with a seven-day trial after secure card verification. Upload files, enter business data directly and review evidence-backed reports before the first subscription payment.",
 
@@ -885,6 +905,8 @@ function publicPage(path) {
         </div>
       </section>
 
+      ${path === "/pricing" ? '<section class="public-detail-grid" aria-label="Monthly plans" aria-live="polite" data-monthly-plans>Loading monthly plans...</section>' : ""}
+
       <section class="public-detail-grid">
         ${page.sections
           .map(
@@ -937,6 +959,7 @@ function publicPage(path) {
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
+  mountMonthlyPlans();
 }
 
 function auth(register) {
@@ -4946,7 +4969,7 @@ function billingPage() {
 
   const canCancelSubscription = Boolean(subscription?.canCancel);
 
-  const priceLabel = subscription?.priceLabel || "₦40,000/mo";
+  const priceLabel = subscription?.priceLabel || "Price unavailable";
 
   const planName = subscription?.planName || "BIZNORYX Monthly";
 
@@ -5085,6 +5108,11 @@ function billingPage() {
             ${esc(statusDetails.label)}
           </span>
         </header>
+
+        <section aria-labelledby="billing-monthly-plans">
+          <h2 id="billing-monthly-plans">Monthly plans</h2>
+          <div class="public-detail-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+        </section>
 
         <div class="billing-v2-grid">
           <article class="billing-plan-card">
@@ -5543,6 +5571,7 @@ function billingPage() {
   );
 
   const historyContent = document.querySelector("#billing-history-content");
+  mountMonthlyPlans();
   mountTrialBilling({
     container: document.querySelector(".billing-plan-actions"),
     api,
