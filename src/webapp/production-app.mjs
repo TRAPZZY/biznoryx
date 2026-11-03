@@ -1176,7 +1176,7 @@ async function routeRequest({ request, response, runtime }) {
     let result;
     if (url.pathname.endsWith("/checkout")) {
       result = await runtime.trials.startCheckout({ ...input, email: context.user.email,
-        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent });
+        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent, priceId: body.priceId });
     } else if (url.pathname.endsWith("/verify")) {
       result = await runtime.trials.verifyCheckout({ ...input, reference: assertText(body.reference, "Card verification reference is required.", 160) });
     } else if (url.pathname.endsWith("/payment-update")) {

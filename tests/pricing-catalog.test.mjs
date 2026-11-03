@@ -42,3 +42,26 @@ test("the local review server serves the catalog without authentication", async 
     });
   }
 });
+
+test("tier price resolution requires four separate new Paystack plan codes", async () => {
+  const { resolveTierPrice } = await import("../src/billing/pricing-catalog.mjs");
+  const env = {
+    BIZNORYX_TIER_PRICING_ENABLED: "true",
+    PAYSTACK_SECRET_KEY: "sk_test_synthetic",
+    PAYSTACK_PLAN_CODE: "PLN_legacy",
+    PAYSTACK_PLAN_CODE_STARTER: "PLN_starter",
+    PAYSTACK_PLAN_CODE_GROWTH: "PLN_growth",
+    PAYSTACK_PLAN_CODE_BUSINESS: "PLN_business",
+    PAYSTACK_PLAN_CODE_BUSINESS_PLUS: "PLN_businessplus",
+  };
+
+  const starter = resolveTierPrice("starter_ngn_monthly_v1", env);
+  assert.equal(starter.amountMinor, 590000);
+  assert.equal(starter.planCode, "PLN_starter");
+  assert.throws(() => resolveTierPrice("starter_ngn_monthly_v1", {
+    ...env, PAYSTACK_PLAN_CODE_STARTER: env.PAYSTACK_PLAN_CODE,
+  }), { code: "VALIDATION_FAILED" });
+  assert.throws(() => resolveTierPrice("starter_ngn_monthly_v1", {
+    ...env, PAYSTACK_PLAN_CODE_STARTER: env.PAYSTACK_PLAN_CODE_GROWTH,
+  }), { code: "VALIDATION_FAILED" });
+});

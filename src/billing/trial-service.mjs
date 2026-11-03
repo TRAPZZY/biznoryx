@@ -1,3 +1,4 @@
+import { publicPricingCatalog, resolveTierPrice, tierPricingEnabled } from "./pricing-catalog.mjs";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { AuthError } from "../auth/core.mjs";
@@ -71,6 +72,7 @@ export function publicTrial(trial, { configured, eligible, actorUserId, verifica
       (trial.subscriptionCode || trial.provisionStatus === "attempted")),
     verificationAmountMinor: trial?.verificationAmountMinor ?? verificationAmountMinor ?? null,
     currency: trial?.currency ?? currency,
+    monthlyAmountMinor: trial?.plan?.amountMinor ?? null,
     verificationCharge: { status: trial?.verificationStatus ?? "not_started", reference: trial?.reference ?? null },
     refundStatus: trial?.refundStatus ?? "not_required",
     cancellationStatus: trial?.cancelStatus ?? "not_requested",
@@ -108,10 +110,10 @@ export class SevenDayTrialService {
       if (error.code !== "BILLING_PROVIDER_NOT_CONFIGURED") throw error;
     }
     trial ??= await this.repository.get({ organizationId });
-    return publicTrial(trial, {
+    return { ...publicTrial(trial, {
       configured: Boolean(config), eligible: !trial && !(await this.repository.hasPaidHistory({ organizationId })),
       verificationAmountMinor: config?.verificationAmountMinor, now: this.now, actorUserId,
-    });
+    }), plans: !trial && tierPricingEnabled(this.env) ? publicPricingCatalog(this.env) : [] };
   }
   billingFor(repo) { return repo?.billing ?? this.billing; }
   async response(organizationId, actorUserId, trial, repo) {
@@ -125,7 +127,7 @@ export class SevenDayTrialService {
     return decryptTrialAuthorization(trial.authorization, { key: config.key, organizationId: trial.organizationId, reference: trial.reference });
   }
 
-  async startCheckout({ organizationId, actorUserId, email, callbackUrl, consent }) {
+  async startCheckout({ organizationId, actorUserId, email, callbackUrl, consent, priceId }) {
     this.assertActor(actorUserId);
     const config = this.configuration();
     if (consent !== true) fail("Accept the disclosed verification charge and recurring billing terms before checkout.");
@@ -150,17 +152,27 @@ export class SevenDayTrialService {
       }
       if (await repo.hasPaidHistory({ organizationId })) fail("This organization is not eligible for another trial.", "BILLING_TRIAL_INELIGIBLE");
       await this.billingFor(repo).ensureSubscription({ organizationId, actorUserId });
-      const plan = await this.provider.plan(config.plan.planCode);
-      this.validatePlan(plan, config.plan);
+      const selected = trial?.plan ?? (tierPricingEnabled(this.env)
+        ? resolveTierPrice(priceId, this.env)
+        : config.plan);
+      if (config.verificationAmountMinor >= selected.amountMinor) {
+        fail("The card verification charge is invalid for this plan.", "BILLING_PROVIDER_NOT_CONFIGURED");
+      }
+      const plan = await this.provider.plan(selected.planCode);
+      this.validatePlan(plan, selected);
+      if (selected !== config.plan && !trial &&
+          plan.domain !== String(this.env.PAYSTACK_SECRET_KEY ?? "").split("_")[1]) {
+        fail("Paystack plan is configured in the wrong environment.", "BILLING_PROVIDER_NOT_CONFIGURED");
+      }
       if (!trial) {
         trial = { id: randomUUID(), organizationId, actorUserId, email: normalizedEmail,
         reference: `bnx_trial_${randomUUID()}`, callbackUrl: callback.href,
         status: "pending_checkout", verificationStatus: "pending", refundStatus: "not_required",
         verificationAmountMinor: config.verificationAmountMinor, currency: config.plan.currency,
-        plan: { ...config.plan, providerPlanId: plan.id },
+        plan: { ...selected, providerPlanId: plan.id },
         consent: { accepted: true, termsVersion: TERMS_VERSION, acceptedAt: this.now().toISOString(),
           verificationAmountMinor: config.verificationAmountMinor, currency: config.plan.currency,
-          monthlyAmountMinor: config.plan.amountMinor, interval: config.plan.interval },
+          monthlyAmountMinor: selected.amountMinor, interval: selected.interval },
       };
         await repo.save({ organizationId, actorUserId, trial, eventType: "trial.checkout_requested" });
       }
