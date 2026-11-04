@@ -50,11 +50,14 @@ create trigger app_users_owner_registration_alert
 -- Lease a small batch of platform events; tokens prevent stale workers
 -- acknowledging a newer claim. Expired fifth attempts become dead.
 create function claim_platform_owner_registration_alerts(p_limit integer)
-returns table(event_id uuid, claim_token uuid, occurred_at timestamptz)
+returns table(event_id uuid, claim_token uuid, occurred_at timestamptz, delivery_attempt integer)
 language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if p_limit is null or p_limit < 1 or p_limit > 10 then
     raise exception 'Invalid owner-alert batch';
+  end if;
+  if not exists(select 1 from platform_owner_alert_settings where singleton and enabled) then
+    return;
   end if;
   update platform_owner_registration_alerts a set
     status = 'dead', last_error_code = 'LEASE_EXPIRED'
@@ -74,7 +77,7 @@ begin
       lease_token = gen_random_uuid(),
       lease_until = now() + interval '90 seconds'
     from selected where a.id = selected.id
-    returning a.id, a.lease_token, a.created_at;
+    returning a.id, a.lease_token, a.created_at, a.attempts;
 end;
 $$;
 revoke all on function claim_platform_owner_registration_alerts(integer) from public;
