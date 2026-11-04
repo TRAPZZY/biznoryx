@@ -90,7 +90,7 @@ export async function deliverOwnerRegistrationAlerts(pool, config, { fetchImpl =
       outcome = { sent: false, code: 'DELIVERY_EXCEPTION', retryAfter: 30 };
     }
     const code = ERROR_CODES.has(outcome.code) ? outcome.code : 'DELIVERY_EXCEPTION';
-    const attempts = Number(row.attempts || 1);
+    const attempts = Number(row.delivery_attempt || 1);
     const retryAfter = backoff(attempts, outcome.retryAfter);
     const completed = await pool.query(
       'select finish_platform_owner_registration_alert($1,$2,$3,$4,$5) as confirmed',
