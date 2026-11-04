@@ -296,7 +296,7 @@ function message() {
   `;
 }
 
-function bindForm(id, action) {
+function bindForm(id, action, pending = "Working...") {
   document.querySelector(id)?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -307,12 +307,13 @@ function bindForm(id, action) {
     button.disabled = true;
 
     if (output) {
-      output.textContent = "Working...";
+      output.textContent = pending;
       output.classList.remove("error-text");
     }
 
     try {
       await action(Object.fromEntries(new FormData(form)), form);
+      if (output?.textContent === pending) output.textContent = "";
     } catch (error) {
       if (output) {
         output.textContent = error.message;
@@ -2735,16 +2736,15 @@ function dataPage() {
           </div>
 
           <p class="input-help">
-            ${businessReviewCapabilities?.reviewedImports ? 'Use the same series for recurring periods. Review CSV up to 4 MB, or a values-only XLSX up to 2 MB. For spreadsheets, use dates as explicit text and choose a worksheet when needed. Original files remain available for download.' : businessReviewCapabilities?.legacyReview ? 'Use the same data series and column layout for recurring periods. This review environment supports additional file formats; production format availability is checked separately.' : 'Use the same data series and column layout for recurring periods. Production currently accepts CSV files. Export other formats as UTF-8 CSV first.'}
+            ${businessReviewCapabilities?.reviewedImports ? 'Use the same series for recurring periods. Review CSV up to 4 MB or a values-only XLSX up to 2 MB. Larger CSV files up to 25 MB use CSV validation without mapping review. For spreadsheets, use dates as explicit text and choose a worksheet when needed. Original files remain available for download.' : businessReviewCapabilities?.legacyReview ? 'Use the same data series and column layout for recurring periods. This review environment supports additional file formats; production format availability is checked separately.' : 'Use the same data series and column layout for recurring periods. Production currently accepts CSV files. Export other formats as UTF-8 CSV first.'}
           </p>
 
           ${businessReviewCapabilities?.reviewedImports ? '<label>Worksheet name (if the workbook has several sheets)<input name="sheet" maxlength="160" placeholder="Leave blank for a single-sheet workbook"></label>' : ''}
-          ${businessReviewCapabilities?.reviewedImports ? '<label class="br-check"><input type="checkbox" name="legacyCsv"> Use existing CSV validation for a larger CSV (up to 25 MB). This skips mapping review.</label>' : ''}
           <button
             type="submit"
             class="primary"
           >
-            ${businessReviewCapabilities?.reviewedImports ? 'Review file' : 'Validate files'}
+            <span id="upload-submit-label">${businessReviewCapabilities?.reviewedImports ? 'Review file' : 'Validate files'}</span>
             ${icon("arrow-right")}
           </button>
 
@@ -2822,10 +2822,20 @@ function dataPage() {
 
   const fileInput = document.querySelector('[name="file"]');
 
+  const useLargeCsvValidation = (files) =>
+    files.length > 0 &&
+    files.every((file) => /\.csv$/i.test(file.name)) &&
+    files.some((file) => file.size > businessReviewCapabilities?.limits?.csvBytes);
+
   if (fileInput) {
     fileInput.onchange = () => {
       const files = [...fileInput.files];
 
+      document.querySelector("#reviewed-import-panel")?.replaceChildren();
+      document.querySelector("#upload-submit-label").textContent =
+        businessReviewCapabilities?.reviewedImports && !useLargeCsvValidation(files)
+          ? "Review file"
+          : "Validate files";
       const fileLabel = document.querySelector("#file-label");
 
       if (fileLabel) {
@@ -2877,8 +2887,8 @@ function dataPage() {
     };
   }
 
-  bindForm("#upload-form", async (data) => {
-    const files = [...document.querySelector('[name="file"]').files];
+  bindForm("#upload-form", async (data, form) => {
+    const files = [...form.querySelector('[name="file"]').files];
 
     if (!files.length) {
       throw new Error("Choose at least one business file.");
@@ -2888,20 +2898,32 @@ function dataPage() {
       throw new Error("Choose files smaller than 25 MB each.");
     }
 
-    if (businessReviewCapabilities?.reviewedImports && data.legacyCsv!=='on') {
+    const panel = document.querySelector("#reviewed-import-panel");
+    panel?.replaceChildren();
+    if (businessReviewCapabilities?.reviewedImports && !useLargeCsvValidation(files)) {
       if(files.length!==1) throw new Error('Review one file at a time.');
       const payload={...await readFilePayload(files[0]),period:data.period,dataSeries:data.dataSeries,
         ...(data.sheet?.trim()?{sheet:data.sheet.trim()}: {})};
-      const result=await api('ingestion/preview',payload);
+      const signal = AbortSignal.timeout(15000);
+      let result;
+      try {
+        result = await api("ingestion/preview", payload, { signal });
+      } catch (error) {
+        if (signal.aborted) throw new Error("The file preview took too long. Try reviewing the file again.");
+        throw error;
+      }
+      if (!form.isConnected || form.querySelector('[name="file"]').files[0] !== files[0]) return;
       // The review form is separate from the upload form; nested forms are invalid.
-      let panel=document.querySelector('#reviewed-import-panel');
       document.querySelector('#file-upload-panel').after(panel);
-      mountImportReview({root:panel,result,payload,uploads,api,onComplete:async response=>{
+      mountImportReview({
+        root:panel,result,payload,uploads,api,
+        initialSourceRole: { "Sales performance": "sales", "Bank statement": "bank_transactions" }[data.dataKind] ?? "other",
+        initialAmountColumn: data.metricColumn?.trim(),
+        onComplete:async response=>{
         validation=response.upload;dashboard=await api('dashboard');dataPage();
       }});
       return;
     }
-    if(businessReviewCapabilities?.reviewedImports && files.some(file=>!file.name.toLowerCase().endsWith('.csv'))) throw new Error('Existing validation accepts CSV. Uncheck the larger-CSV option to review an XLSX workbook.');
 
     const result = await api("ingestion/upload", {
       files: await Promise.all(files.map(readFilePayload)),
@@ -2927,7 +2949,7 @@ function dataPage() {
       behavior: "smooth",
       block: "start",
     });
-  });
+  }, "Preparing your file…");
 
   document.querySelector("#upload-history").onclick = async (event) => {
     const button = event.target.closest("button[data-source-download], button[data-map-source], button.review-upload");
@@ -2939,9 +2961,15 @@ function dataPage() {
       try {
         const payload={uploadId:upload.id,period:upload.period,dataSeries:upload.dataSeries};
         const result=await api('ingestion/preview',payload);
+        if (!button.isConnected) return;
         const panel=document.querySelector('#reviewed-import-panel');document.querySelector('#file-upload-panel').after(panel);
         mountImportReview({root:panel,result,payload,uploads:[],api,onComplete:async()=>{dashboard=await api('dashboard');dataPage();}});
-      }catch(error){validation={...upload,issues:[{severity:'error',message:error.message}]};dataPage();}
+      } catch (error) {
+        if (!button.isConnected) return;
+        validation = {...upload, issues:[{severity:"error", message:error.message}]};
+        dataPage();
+        document.querySelector("#validation-result")?.scrollIntoView({ behavior:"smooth" });
+      }
       finally{if(button.isConnected)button.disabled=false;}
     } else if (button.hasAttribute("data-source-download")) {
       await downloadSourceFile(button, upload);

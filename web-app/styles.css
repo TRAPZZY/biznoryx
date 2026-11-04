@@ -5007,8 +5007,8 @@ td > svg {
 .br-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1rem 0}
 .br-panel label{display:flex;flex-direction:column;gap:.4rem;margin:.7rem 0}
 .br-panel input,.br-panel select{max-width:100%;min-width:0;padding:.65rem;border:1px solid #ccd6df;border-radius:5px;background:#fff;color:#172a3a}
-.br-panel .br-check{flex-direction:row;align-items:flex-start;gap:.6rem}
-.br-check input{flex:none;width:auto;margin-top:.2rem}
+.br-panel .br-check{display:flex;flex-direction:row;align-items:flex-start;gap:.6rem}
+.br-panel .br-check > input[type="checkbox"]{flex:none;width:1rem;height:1rem;min-height:0;padding:0;margin:.125rem 0 0}
 .br-table-scroll{overflow:auto;max-height:520px;border:1px solid #dce3e9;border-radius:5px;margin:1rem 0}
 .br-table-scroll table{width:100%;border-collapse:collapse;font-size:.88rem}
 .br-table-scroll th,.br-table-scroll td{padding:.8rem;text-align:left;vertical-align:top;border-bottom:1px solid #e3e9ee;overflow-wrap:anywhere}

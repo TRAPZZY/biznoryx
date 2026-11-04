@@ -89,14 +89,23 @@ function showError(root, error) {
 function bind(root, selector, action) {
   root.querySelector(selector)?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const button = event.submitter;
-    button.disabled = true;
+    const form = event.currentTarget;
+    const button = event.submitter ?? form.querySelector('button[type="submit"], button:not([type])');
+    if (button?.disabled) return;
+    const status = form.querySelector(".form-message");
+    form.querySelector(".br-errors")?.remove();
+    if (status) {
+      status.setAttribute("role", "status");
+      status.textContent = "Working…";
+    }
+    if (button) button.disabled = true;
     try {
-      await action(new FormData(event.currentTarget));
+      await action(new FormData(form));
     } catch (error) {
-      showError(event.currentTarget, error);
+      if (form.isConnected) showError(form, error);
     } finally {
-      if (button.isConnected) button.disabled = false;
+      if (status?.textContent === "Working…") status.textContent = "";
+      if (button?.isConnected) button.disabled = false;
     }
   });
 }
@@ -112,12 +121,14 @@ export function mountImportReview({
   uploads,
   api,
   onComplete,
+  initialSourceRole = "other",
+  initialAmountColumn,
 }) {
   const { preview, profile } = result,
     definition = profile?.definition;
   let currentProfile = profile;
   const names = preview.columns.map((c) => c.name);
-  const mapping = definition?.mapping ?? {};
+  const mapping = definition?.mapping ?? { amount: names.includes(initialAmountColumn) ? initialAmountColumn : undefined };
   const selectColumn = (key, label) =>
     `<label>${label}<select name="${key}">${option("", "Not mapped", mapping[key])}${names.map((n) => option(n, n, mapping[key])).join("")}</select></label>`;
   root.innerHTML = `<section class="br-panel"><p class="eyebrow">REVIEW IMPORT</p><h2>${escape(preview.fileName)}</h2>
@@ -136,7 +147,7 @@ export function mountImportReview({
       ["supplier_purchases", "Supplier purchases"],
       ["bank_transactions", "Bank transactions"],
     ]
-      .map(([v, l]) => option(v, l, definition?.sourceRole ?? "other"))
+      .map(([v, l]) => option(v, l, definition?.sourceRole ?? initialSourceRole))
       .join("")}</select></label>
     <label>Source currency<input name="currency" required maxlength="3" pattern="[A-Z]{3}" value="${escape(definition?.currency ?? "NGN")}"></label><label>Date convention<select name="dateConvention">${[
       ["ISO", "YYYY-MM-DD"],
