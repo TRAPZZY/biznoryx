@@ -864,6 +864,34 @@ input::placeholder {
   font-size: 12px;
 }
 
+.sidebar-help {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.75rem;
+  border: 1px solid #d7e3da;
+  border-radius: 7px;
+  background: #f2f7f3;
+  color: #24583c;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sidebar-help:hover {
+  background: #e7f0e9;
+  border-color: #adc8b5;
+}
+
+.sidebar-help svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 .workspace-main {
   min-width: 0;
 }
@@ -2594,8 +2622,7 @@ td > svg {
   display: none;
 }
 
-.workspace.sidebar-collapsed .sidebar-help,
-.workspace.sidebar-collapsed .sidebar-sign-out {
+.workspace.sidebar-collapsed .sidebar-help {
   display: grid;
   place-items: center;
   width: 42px;
@@ -2603,13 +2630,11 @@ td > svg {
   padding: 0;
 }
 
-.workspace.sidebar-collapsed .sidebar-help span,
-.workspace.sidebar-collapsed .sidebar-sign-out span {
+.workspace.sidebar-collapsed .sidebar-help span {
   display: none;
 }
 
-.workspace.sidebar-collapsed .sidebar-help svg,
-.workspace.sidebar-collapsed .sidebar-sign-out svg {
+.workspace.sidebar-collapsed .sidebar-help svg {
   width: 18px;
   height: 18px;
 }
@@ -2687,8 +2712,7 @@ td > svg {
     padding: 0;
   }
 
-  .workspace.sidebar-collapsed .sidebar-help,
-  .workspace.sidebar-collapsed .sidebar-sign-out {
+  .workspace.sidebar-collapsed .sidebar-help {
     display: inline-flex;
     width: auto;
     height: auto;
@@ -2696,8 +2720,7 @@ td > svg {
     padding: 4px 0;
   }
 
-  .workspace.sidebar-collapsed .sidebar-help span,
-  .workspace.sidebar-collapsed .sidebar-sign-out span {
+  .workspace.sidebar-collapsed .sidebar-help span {
     display: inline;
   }
 }
@@ -4425,17 +4448,14 @@ td > svg {
     font-weight: 700;
   }
 
-  /*
- * Help and Sign out now live cleanly inside the mobile
- * sidebar instead of floating beside the logo.
- */
+  /* Keep support inside the expanded mobile navigation. */
   .workspace.mobile-nav-open .sidebar-bottom,
   .workspace.mobile-nav-open.sidebar-collapsed .sidebar-bottom {
     display: grid !important;
     position: static;
     top: auto;
     right: auto;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 8px;
     margin-top: 12px;
     padding: 12px 0 2px;
@@ -4447,9 +4467,7 @@ td > svg {
   }
 
   .workspace.mobile-nav-open .sidebar-help,
-  .workspace.mobile-nav-open .sidebar-sign-out,
-  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-help,
-  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-sign-out {
+  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-help {
     display: flex !important;
     align-items: center;
     justify-content: center;
@@ -4473,43 +4491,38 @@ td > svg {
     color: var(--green);
   }
 
-  .workspace.mobile-nav-open .sidebar-sign-out:hover:not(:disabled) {
-    background: #faf5f4;
-    border-color: #e2d2cf;
-    color: #86554d;
-    filter: none;
-  }
-
   .workspace.mobile-nav-open .sidebar-help span,
-  .workspace.mobile-nav-open .sidebar-sign-out span,
-  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-help span,
-  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-sign-out span {
+  .workspace.mobile-nav-open.sidebar-collapsed .sidebar-help span {
     display: inline;
   }
 
-  .workspace.mobile-nav-open .sidebar-help svg,
-  .workspace.mobile-nav-open .sidebar-sign-out svg {
+  .workspace.mobile-nav-open .sidebar-help svg {
     width: 16px;
     height: 16px;
   }
 
-  /*
- * Keep only one mobile Sign out.
- *
- * Desktop still retains the existing top-header action.
- */
+  /* Keep sign-out beside the profile on every screen size. */
   .workspace-top {
     height: 54px;
     padding: 0 16px;
   }
 
+  .workspace-top > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+  }
+
   .workspace-top-actions {
     gap: 8px;
     margin-left: auto;
+    flex-shrink: 0;
   }
 
   .workspace-top .top-sign-out {
-    display: none !important;
+    display: inline-flex;
   }
 
   .account-avatar {
