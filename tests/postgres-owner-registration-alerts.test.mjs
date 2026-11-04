@@ -68,7 +68,11 @@ test('first confirmed email verification commits exactly one private owner event
       client2.release();
     }
   } finally {
-    if (user) await admin.query('delete from app_users where id = $1', [user.id]);
+    if (user) {
+      // Disposable CI fixture: clear its own audit row before deleting its user.
+      await admin.query('delete from audit_events where actor_user_id = $1', [user.id]);
+      await admin.query('delete from app_users where id = $1', [user.id]);
+    }
     await admin.end();
   }
 });
