@@ -367,12 +367,12 @@ function landing() {
   mount(`
     ${publicHeader("/")}
 
-    <main>
+    <main class="landing-page">
       <section class="hero">
         <img
           class="hero-image"
           src="/hero-office.jpg"
-          alt="Open office workspace with staff collaborating at desks in a modern professional environment"
+          alt=""
         >
 
         <div class="hero-shade"></div>
@@ -385,15 +385,13 @@ function landing() {
           <h1>BIZNORYX</h1>
 
           <h2>
-            Turn business data into evidence,
-            memory and sharper decisions.
+            See what changed in your business and trace it to the source.
           </h2>
 
           <p>
-            BIZNORYX helps a company remember how it
-            performs over time. Upload recurring business
-            data, confirm the source, see what moved, and
-            keep an evidence trail behind every report.
+            Bring your sales, transactions and operating records into one workspace.
+            Compare reporting periods, see what drove the change, and keep the
+            evidence behind every decision.
           </p>
 
           <div class="hero-actions">
@@ -408,276 +406,130 @@ function landing() {
               href="#/"
               data-scroll="story"
             >
-              See the product story
+              See how it works
               ${icon("arrow-down")}
             </a>
           </div>
         </div>
 
         <div class="hero-caption">
-          <span>VERIFIED DATA FIRST</span>
-          <span>MEMORY OVER ONE-TIME ANALYSIS</span>
+          <span>YOUR RECORDS · YOUR WORKSPACE</span>
+          <span>PERIOD-BY-PERIOD REPORTING</span>
         </div>
       </section>
 
-      <section
-        class="intro-band"
-        id="story"
-      >
-        <p class="overline">
-          The operating idea
-        </p>
+      <nav class="landing-index" aria-label="On this page">
+        <a href="#/" data-scroll="story">01 <span>Bring in your records</span></a>
+        <a href="#/" data-scroll="landing-reports">02 <span>Understand performance</span></a>
+        <a href="#/" data-scroll="landing-monthly">03 <span>Review the month</span></a>
+        <a href="#/" data-scroll="landing-plans">04 <span>Compare plans</span></a>
+      </nav>
 
-        <h2>
-          Every business deserves a memory that gets
-          smarter every period.
-        </h2>
-
-        <p>
-          Most dashboards reset the conversation every
-          month. BIZNORYX keeps the business profile,
-          uploads, validation evidence, performance
-          history, findings and action record together so
-          every new file strengthens the same operating
-          picture.
-        </p>
-      </section>
-
-      <section class="feature-grid">
-        <article>
-          <span class="feature-number">01</span>
-          ${icon("building-2")}
-
-          <h3>Business context</h3>
-
-          <p>
-            Capture the model, currency, goals, terms and
-            reporting rhythm so data is interpreted inside
-            the business it belongs to.
-          </p>
-        </article>
-
-        <article>
-          <span class="feature-number">02</span>
-          ${icon("database")}
-
-          <h3>Generic data intake</h3>
-
-          <p>
-            Bring sales, transactions, inventory, service
-            or operating data into named recurring series
-            with validation before import.
-          </p>
-        </article>
-
-        <article>
-          <span class="feature-number">03</span>
-          ${icon("file-check-2")}
-
-          <h3>Evidence reports</h3>
-
-          <p>
-            Each confirmed file creates verified facts,
-            movement facts, contribution facts and a source
-            trail instead of decorative metrics.
-          </p>
-        </article>
-      </section>
-
-      <section class="story-split">
-        <div>
-          <p class="overline">
-            Evidence before intelligence
-          </p>
-
-          <h2>
-            The analyst workflow is built in.
-          </h2>
-
-          <p>
-            BIZNORYX profiles the source, checks the metric
-            column, preserves the file checksum, compares
-            the new period to prior confirmed periods and
-            separates calculated facts from interpretation
-            so leaders can trust the report.
-          </p>
-
-          ${link(
-            "/product",
-            `Explore the product ${icon("arrow-right")}`,
-            "button dark",
-          )}
+      <section class="landing-section landing-split" id="story" tabindex="-1" aria-labelledby="landing-data-title">
+        <div class="landing-introduction">
+          <p class="overline">01 / DATA &amp; UPLOADS</p>
+          <h2 id="landing-data-title">Start with the records you already keep.</h2>
+          <p>Upload a file or enter records in a spreadsheet-style grid. Give recurring data a series name, such as Monthly Sales, so each period builds on the last.</p>
+          <p>Download the original file from upload history whenever you need a copy.</p>
         </div>
 
-        <div class="story-panel">
-          <span>01</span>
+        <figure class="landing-import">
+          <figcaption>
+            <span class="overline">EXAMPLE WORKFLOW</span>
+            <strong>Monthly Sales</strong>
+          </figcaption>
+          <ol>
+            <li>
+              <span aria-hidden="true">01</span>
+              <div><h3>Choose a reporting month</h3><p>Keep the same series for the next month's records.</p></div>
+            </li>
+            <li>
+              <span aria-hidden="true">02</span>
+              <div><h3>Review the file</h3><p>Check a preview and confirm which columns contain the dates and amounts.</p></div>
+            </li>
+            <li>
+              <span aria-hidden="true">03</span>
+              <div><h3>Approve the mapping</h3><p>Add the reviewed period to your business history.</p></div>
+            </li>
+          </ol>
+        </figure>
+      </section>
 
-          <h3>Upload business data</h3>
-
-          <p>
-            Use a named series such as Monthly Sales,
-            Transaction History or Support Tickets.
-          </p>
-
-          <span>02</span>
-
-          <h3>Confirm validation</h3>
-
-          <p>
-            Review rows, schema, metric column, source file
-            and calculation before import.
-          </p>
-
-          <span>03</span>
-
-          <h3>Read the report</h3>
-
-          <p>
-            See what moved, which products, channels or
-            categories contributed, and which facts support
-            the movement.
-          </p>
+      <section class="landing-section landing-evidence" id="landing-reports" tabindex="-1" aria-labelledby="landing-reports-title">
+        <div class="landing-introduction">
+          <p class="overline">02 / PERFORMANCE &amp; EVIDENCE</p>
+          <h2 id="landing-reports-title">When a number moves, see what drove it.</h2>
+          <p>Follow the change from your dashboard to the Evidence Report and back to the records behind it.</p>
+        </div>
+        <div class="landing-columns">
+          <article>
+            ${icon("line-chart")}
+            <h3>Compare reporting periods</h3>
+            <p>See how performance changed from the previous confirmed period and follow the trend as more records come in.</p>
+          </article>
+          <article>
+            ${icon("file-check-2")}
+            <h3>Read the revenue breakdown</h3>
+            <p>Where the source supports it, see which products, channels or categories contributed to the change.</p>
+          </article>
+          <article>
+            ${icon("scan-search")}
+            <h3>Check the evidence</h3>
+            <p>Read findings in plain language and see which calculations and source records support them. Export reports with Growth and above.</p>
+          </article>
         </div>
       </section>
 
-      <section class="proof-grid">
-        <div>
-          <p class="overline">
-            What the customer sees
-          </p>
-
-          <h2>
-            Upload, validate, compare, decide.
-          </h2>
-
-          <p>
-            The workspace is designed around the recurring
-            management rhythm: add this week or month,
-            compare it against the past, identify measured
-            contributors, and keep the evidence attached to
-            the business.
-          </p>
+      <section class="landing-section landing-split landing-rhythm" id="landing-monthly" tabindex="-1" aria-labelledby="landing-monthly-title">
+        <div class="landing-introduction">
+          <p class="overline">03 / WORKSPACE ROUTINE</p>
+          <h2 id="landing-monthly-title">Give your monthly review a place to live.</h2>
+          <p>Bring sales, receipts, evidence and follow-up into the same workspace, so the next review starts with the work you already did.</p>
         </div>
-
-        <article>
-          ${icon("line-chart")}
-          <h3>Trend memory</h3>
-          <p>
-            Performance lines grow from confirmed periods
-            only.
-          </p>
-        </article>
-
-        <article>
-          ${icon("scan-search")}
-          <h3>Contribution evidence</h3>
-          <p>
-            Top products, channels and categories are
-            calculated from uploaded rows.
-          </p>
-        </article>
-
-        <article>
-          ${icon("shield-check")}
-          <h3>Governed data</h3>
-          <p>
-            Every import is reviewed before it becomes part
-            of the history.
-          </p>
-        </article>
-      </section>
-
-      <section
-        class="process"
-        id="process"
-      >
-        <div>
-          <p class="overline">
-            From data to decisions
-          </p>
-
-          <h2>
-            A serious rhythm for running the business.
-          </h2>
-
-          ${link(
-            "/register",
-            `Create your workspace ${icon("arrow-right")}`,
-            "button dark",
-          )}
-        </div>
-
-        <ol>
-          <li>
-            <span>01</span>
-
+        <div class="landing-rhythm-list">
+          <article>
+            ${icon("wallet")}
             <div>
-              <h3>
-                Tell us about your business
-              </h3>
-
-              <p>
-                Create the organization and establish the
-                operating profile behind the numbers.
-              </p>
+              <p class="overline">BUSINESS &amp; BUSINESS PLUS</p>
+              <h3>Money Trail</h3>
+              <p>Review sales and money received separately. Check which balances have evidence before treating them as money owed.</p>
             </div>
-          </li>
-
-          <li>
-            <span>02</span>
-
+          </article>
+          <article>
+            ${icon("calendar-check")}
             <div>
-              <h3>
-                Add recurring datasets
-              </h3>
-
-              <p>
-                Upload comparable periods for each
-                important business stream.
-              </p>
+              <p class="overline">BUSINESS PLUS</p>
+              <h3>Monthly Close</h3>
+              <p>Check whether expected sources are present and resolve blockers before approving the month’s evidence packet.</p>
             </div>
-          </li>
-
-          <li>
-            <span>03</span>
-
+          </article>
+          <article>
+            ${icon("list-checks")}
             <div>
-              <h3>
-                Act from evidence
-              </h3>
-
-              <p>
-                Use verified facts and calculated movement
-                to decide what deserves attention.
-              </p>
+              <h3>Action plans and updates</h3>
+              <p>Record next steps alongside your findings and check the Updates inbox for activity that needs attention.</p>
             </div>
-          </li>
-        </ol>
+          </article>
+        </div>
       </section>
 
-      <section class="pricing-band">
-        <div>
-          <p class="overline">
-            Simple subscription
-          </p>
-
-          <h2>
-            Start with a seven-day trial.
-          </h2>
-
-          <p>
-            Try the workspace with secure card verification,
-            upload files or enter data directly, and see how
-            BIZNORYX turns business records into verified
-            evidence before the first subscription payment.
-          </p>
+      <section class="landing-section landing-plans" id="landing-plans" tabindex="-1" aria-labelledby="landing-plans-title">
+        <div class="landing-introduction">
+          <p class="overline">04 / MONTHLY PLANS</p>
+          <h2 id="landing-plans-title">Choose a plan for the work you do.</h2>
+          <p>Start with the dashboard, uploads and Evidence Reports. Add exports, sales and receipt review, or Monthly Close as your reporting needs grow.</p>
         </div>
+        <div class="billing-tier-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+        ${link("/pricing", `See pricing details ${icon("arrow-right")}`, "button dark")}
+      </section>
 
-        ${link(
-          "/pricing",
-          `See pricing ${icon("arrow-right")}`,
-          "button primary",
-        )}
+      <section class="pricing-band landing-next">
+        <div>
+          <p class="overline">YOUR FIRST REPORTING PERIOD</p>
+          <h2>Bring one month of business records.</h2>
+          <p>Set up a workspace, add a file or enter your records directly, and start building a history you can compare month to month.</p>
+        </div>
+        ${link("/register", `Create your workspace ${icon("arrow-right")}`, "button primary")}
       </section>
     </main>
 
@@ -697,17 +549,20 @@ function landing() {
     </footer>
   `);
 
-  document.querySelectorAll("[data-scroll]").forEach((a) =>
+  document.querySelectorAll(".landing-page [data-scroll]").forEach((a) =>
     a.addEventListener("click", (event) => {
       event.preventDefault();
 
-      document.getElementById(a.dataset.scroll)?.scrollIntoView({
-        behavior: "smooth",
+      const section = document.getElementById(a.dataset.scroll);
+      section?.focus({ preventScroll: true });
+      section?.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
       });
     }),
   );
 
   bindHeroImageFallback();
+  mountMonthlyPlans();
 }
 
 function mountMonthlyPlans({ onSelect, currentPriceId, onUpgrade } = {}) {
