@@ -710,7 +710,7 @@ function landing() {
   bindHeroImageFallback();
 }
 
-function mountMonthlyPlans({ onSelect } = {}) {
+function mountMonthlyPlans({ onSelect, currentPriceId, onUpgrade } = {}) {
   const host = document.querySelector("[data-monthly-plans]");
   if (!host) return;
 
@@ -718,6 +718,7 @@ function mountMonthlyPlans({ onSelect } = {}) {
     const format = new Intl.NumberFormat("en-NG", {
       style: "currency", currency: "NGN", maximumFractionDigits: 0,
     });
+    const current = plans.find((plan) => plan.priceId === currentPriceId);
     host.innerHTML = plans.map((plan) => `
       <article class="${plan.recommended ? "recommended-plan" : ""}">
         <h3>${esc(plan.name)}</h3>
@@ -725,9 +726,15 @@ function mountMonthlyPlans({ onSelect } = {}) {
         <p>${plan.recommended ? "Recommended" : "Monthly subscription"}</p>
         <p>${esc(plan.unlocks)}</p>
         ${onSelect && plan.purchasable ? `<button type="button" class="button primary" data-price-id="${esc(plan.priceId)}">Choose ${esc(plan.name)}</button>` : ""}
+        ${plan.priceId === currentPriceId ? '<p><strong>Current plan</strong></p>' : ""}
+        ${onUpgrade && current && plan.amountMinor > current.amountMinor && plan.purchasable
+          ? `<button type="button" class="button primary" data-upgrade-price="${esc(plan.priceId)}">Upgrade to ${esc(plan.name)}</button>` : ""}
         ${plan.purchasable ? "" : '<p>Coming soon</p>'}
       </article>
     `).join("");
+    for (const button of host.querySelectorAll("[data-upgrade-price]")) {
+      button.onclick = () => onUpgrade(plans.find((plan) => plan.priceId === button.dataset.upgradePrice));
+    }
     for (const button of host.querySelectorAll("[data-price-id]")) {
       button.onclick = () => onSelect(button.dataset.priceId);
     }
@@ -5152,6 +5159,16 @@ function billingPage() {
             canChoosePlan ? "Select a plan to continue to secure Paystack checkout." :
             "Manage your current subscription below."}</p>
           <div class="billing-tier-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+          <dialog class="billing-dialog" id="billing-upgrade-dialog" aria-labelledby="billing-upgrade-title">
+            <div class="billing-dialog-card">
+              <h2 id="billing-upgrade-title"></h2>
+              <p id="billing-upgrade-details"></p>
+              <div class="billing-dialog-actions">
+                <form method="dialog"><button class="secondary">Close</button></form>
+                <button id="billing-upgrade-stop-renewal" class="primary" type="button">Turn off current renewal</button>
+              </div>
+            </div>
+          </dialog>
         </section>
 
         <div class="billing-v2-grid">
@@ -5724,7 +5741,33 @@ function billingPage() {
       if (!dialog.open) dialog.showModal();
   }
 
-  mountMonthlyPlans({ onSelect: canChoosePlan && openCheckout ? showCheckout : undefined });
+  const upgradeDialog = document.querySelector("#billing-upgrade-dialog");
+  const stopRenewal = upgradeDialog.querySelector("#billing-upgrade-stop-renewal");
+  stopRenewal.onclick = () => {
+    upgradeDialog.close();
+    if (cancelSubscription && !cancelSubscription.disabled) {
+      cancelSubscription.scrollIntoView({ block: "center" });
+      cancelSubscription.focus();
+      cancelSubscription.click();
+    }
+  };
+  const hasCurrentPlan = isActive || (isNonRenewing && !ended);
+  mountMonthlyPlans({
+    onSelect: canChoosePlan && openCheckout ? showCheckout : undefined,
+    currentPriceId: hasCurrentPlan ? subscription.planId : undefined,
+    onUpgrade: hasCurrentPlan ? (plan) => {
+      upgradeDialog.querySelector("#billing-upgrade-title").textContent = `Upgrade to ${plan.name}`;
+      const end = subscription.currentPeriodEnd ? `on ${renewalLabel}` : "at the end of your billing period";
+      const canStop = isActive && cancelSubscription && !cancelSubscription.disabled;
+      upgradeDialog.querySelector("#billing-upgrade-details").textContent = isNonRenewing
+        ? `Your current plan ends ${end}. Return to Billing after it ends to choose ${plan.name} and pay through Paystack.`
+        : canStop
+          ? `Turn off renewal to keep your current plan until it ends ${end}. Then return to Billing to choose ${plan.name} and pay through Paystack.`
+          : "Ask your workspace owner to manage the current subscription before changing plans.";
+      stopRenewal.hidden = !canStop;
+      upgradeDialog.showModal();
+    } : undefined,
+  });
 
   if (confirmCheckout) {
     confirmCheckout.onclick = async () => {
