@@ -90,6 +90,7 @@ for (const viewport of [
           page.getByRole("heading", { name: heading, exact: true }),
         ).toBeVisible();
         if (path === "pricing") {
+          await expect(page.locator("main")).not.toContainText("40,000");
           const plans = page.getByRole("region", { name: "Monthly plans" });
           await expect(plans.getByRole("heading")).toHaveText([
             "Starter", "Growth", "Business", "Business Plus",
