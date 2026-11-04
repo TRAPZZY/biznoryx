@@ -33,8 +33,22 @@ export function subscriptionHasPremiumAccess(
   return Number.isFinite(periodEnd) && periodEnd > now().getTime();
 }
 
+const planLevels = new Map([
+  ["starter_ngn_monthly_v1", 1],
+  ["growth_ngn_monthly_v1", 2],
+  ["business_ngn_monthly_v1", 3],
+  ["business_plus_ngn_monthly_v1", 4],
+]);
+
+export function subscriptionAllowsFeature(subscription, feature) {
+  const minimum = { reportExport: 2, moneyTrail: 3, monthlyClose: 4 }[feature];
+  const level = planLevels.get(subscription?.planId);
+  return level === undefined || level >= minimum;
+}
+
 export async function requirePremiumSubscription({
   billingRepository,
+  feature,
   organizationId,
   actorUserId = null,
   now = () => new Date(),
@@ -69,6 +83,9 @@ export async function requirePremiumSubscription({
       now,
     })
   ) {
+    if (feature && !subscriptionAllowsFeature(subscription, feature)) {
+      throw new AuthError("Your plan does not include this feature. See Billing for plan details.", "SUBSCRIPTION_REQUIRED");
+    }
     return subscription;
   }
 

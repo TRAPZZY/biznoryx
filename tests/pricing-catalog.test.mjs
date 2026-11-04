@@ -65,3 +65,28 @@ test("tier price resolution requires four separate new Paystack plan codes", asy
     ...env, PAYSTACK_PLAN_CODE_STARTER: env.PAYSTACK_PLAN_CODE_GROWTH,
   }), { code: "VALIDATION_FAILED" });
 });
+
+test("paid plan feature gates are cumulative and preserve legacy access", async () => {
+  const { requirePremiumSubscription } = await import("../src/billing/entitlements.mjs");
+  const cases = [
+    ["starter_ngn_monthly_v1", []],
+    ["growth_ngn_monthly_v1", ["reportExport"]],
+    ["business_ngn_monthly_v1", ["reportExport", "moneyTrail"]],
+    ["business_plus_ngn_monthly_v1", ["reportExport", "moneyTrail", "monthlyClose"]],
+    ["biznoryx_monthly_ngn_40000", ["reportExport", "moneyTrail", "monthlyClose"]],
+  ];
+  for (const [planId, allowed] of cases) {
+    const subscription = { planId, status: "active", currentPeriodEnd: "2027-01-01T00:00:00Z" };
+    const input = {
+      billingRepository: { ensureSubscription: async () => subscription },
+      organizationId: "org-a",
+      now: () => new Date("2026-11-01T00:00:00Z"),
+    };
+    assert.equal(await requirePremiumSubscription(input), subscription);
+    for (const feature of ["reportExport", "moneyTrail", "monthlyClose"]) {
+      const result = requirePremiumSubscription({ ...input, feature });
+      if (allowed.includes(feature)) assert.equal(await result, subscription);
+      else await assert.rejects(result, { code: "SUBSCRIPTION_REQUIRED" });
+    }
+  }
+});

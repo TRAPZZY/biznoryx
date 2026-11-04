@@ -27,6 +27,7 @@ export async function businessReviewRequest({
   sendJson,
   sendEvidenceExport,
   mapIngestionResult,
+  allowsFeature = () => true,
 }) {
   const imports = runtime.importManifests,
     money = runtime.moneyTrail,
@@ -40,8 +41,9 @@ export async function businessReviewRequest({
     ]);
     sendJson(response, 200, {
       reviewedImports: released && reviewedImports,
-      moneyTrail: released && moneyTrail,
-      monthlyClose: released && monthlyClose,
+      moneyTrail: released && moneyTrail && allowsFeature("moneyTrail"),
+      monthlyClose: released && monthlyClose && allowsFeature("monthlyClose"),
+      reportExport: allowsFeature("reportExport"),
       formats: released && reviewedImports ? ["csv", "xlsx"] : ["csv"],
       limits: {
         csvBytes: 4 * 1024 * 1024,
