@@ -1,10 +1,10 @@
 import { AuthError } from "../auth/core.mjs";
 
 const monthlyPlans = Object.freeze([
-  { id: "starter", name: "Starter", amountMinor: 590_000 },
-  { id: "growth", name: "Growth", amountMinor: 1_290_000, recommended: true },
-  { id: "business", name: "Business", amountMinor: 2_490_000 },
-  { id: "business_plus", name: "Business Plus", amountMinor: 3_990_000 },
+  { id: "starter", name: "Starter", amountMinor: 590_000, unlocks: "Dashboard, data entry, uploads and evidence reports" },
+  { id: "growth", name: "Growth", amountMinor: 1_290_000, unlocks: "Everything in Starter, plus report exports", recommended: true },
+  { id: "business", name: "Business", amountMinor: 2_490_000, unlocks: "Everything in Growth, plus Money Trail for sales and receipts" },
+  { id: "business_plus", name: "Business Plus", amountMinor: 3_990_000, unlocks: "Everything in Business, plus Monthly Close review and approval" },
 ]);
 
 export function tierPricingEnabled(env = process.env) {

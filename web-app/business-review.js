@@ -100,8 +100,10 @@ function bind(root, selector, action) {
     }
   });
 }
-export const reviewNavigation = () =>
-  '<nav class="br-navigation" aria-label="Report views"><a href="#/reports">Evidence report</a><a href="#/money-trail">Sales &amp; receipts</a><a href="#/monthly-review">Monthly review</a></nav>';
+export const reviewNavigation = ({ moneyTrail = true, monthlyClose = true } = {}) =>
+  `<nav class="br-navigation" aria-label="Report views"><a href="#/reports">Evidence report</a>
+    ${moneyTrail ? '<a href="#/money-trail">Sales &amp; receipts</a>' : ""}
+    ${monthlyClose ? '<a href="#/monthly-review">Monthly review</a>' : ""}</nav>`;
 
 export function mountImportReview({
   root,
@@ -191,9 +193,9 @@ export function mountImportReview({
   });
 }
 
-export async function mountMoneyTrail({ root, api, uploads, period }) {
+export async function mountMoneyTrail({ root, api, uploads, period, capabilities }) {
   root.innerHTML =
-    reviewNavigation() + '<p role="status">Reading sales and receipts…</p>';
+    reviewNavigation(capabilities) + '<p role="status">Reading sales and receipts…</p>';
   try {
     const report = await api(
       "money-trail" + (period ? "?period=" + encodeURIComponent(period) : ""),
@@ -204,7 +206,7 @@ export async function mountMoneyTrail({ root, api, uploads, period }) {
         ["receipt", "credit", "refund"].includes(r.kind),
       );
     root.innerHTML =
-      reviewNavigation() +
+      reviewNavigation(capabilities) +
       `<section class="br-panel"><h1>Sales &amp; receipts</h1><p>Review how recorded sales connect to customer payments. Amounts are NGN. These are live reviewed balances, including payments received after the sale’s month.</p>
       <form id="money-period"><label>Reporting month<input type="month" name="period" value="${escape(period ?? "")}"></label><button>Apply month</button></form>
       <dl class="br-totals">${[
@@ -257,7 +259,7 @@ export async function mountMoneyTrail({ root, api, uploads, period }) {
       location.hash =
         "/money-trail?period=" + encodeURIComponent(data.get("period"));
     });
-    const reload = () => mountMoneyTrail({ root, api, uploads, period });
+    const reload = () => mountMoneyTrail({ root, api, uploads, period, capabilities });
     bind(root, "#money-source", async (data) => {
       const uploadId = data.get("uploadId"),
         preview = await api("money-trail/preview", { uploadId }),
@@ -346,16 +348,16 @@ export async function mountMoneyTrail({ root, api, uploads, period }) {
     );
   } catch (error) {
     root.innerHTML =
-      reviewNavigation() +
+      reviewNavigation(capabilities) +
       `<section class="br-panel"><h1>Sales &amp; receipts</h1><p role="alert">${escape(error.message)}</p><button id="money-retry">Retry</button></section>`;
     root.querySelector("#money-retry").onclick = () =>
-      mountMoneyTrail({ root, api, uploads, period });
+      mountMoneyTrail({ root, api, uploads, period, capabilities });
   }
 }
 
-export async function mountMonthlyReview({ root, api }) {
+export async function mountMonthlyReview({ root, api, capabilities }) {
   root.innerHTML =
-    reviewNavigation() + '<p role="status">Reading monthly review…</p>';
+    reviewNavigation(capabilities) + '<p role="status">Reading monthly review…</p>';
   try {
     const [{ items }, { report }] = await Promise.all([
       api("monthly-close"),
@@ -367,7 +369,7 @@ export async function mountMonthlyReview({ root, api }) {
       "monthly-close/sources?period=" + encodeURIComponent(selectedPeriod),
     );
     root.innerHTML =
-      reviewNavigation() +
+      reviewNavigation(capabilities) +
       `<section class="br-panel"><h1>Monthly review</h1><p>Prepare a frozen version of the selected evidence report, review its limitations, then approve it as an owner or admin. Later corrections create a new version.</p>
       ${
         report
@@ -434,7 +436,7 @@ export async function mountMonthlyReview({ root, api }) {
           previous: { period: "none" },
         },
       });
-      await mountMonthlyReview({ root, api });
+      await mountMonthlyReview({ root, api, capabilities });
     });
     root.querySelectorAll("[data-close]").forEach(
       (button) =>
@@ -465,7 +467,7 @@ export async function mountMonthlyReview({ root, api }) {
                 id: item.id,
                 expectedVersion: item.version,
               });
-              await mountMonthlyReview({ root, api });
+              await mountMonthlyReview({ root, api, capabilities });
             });
             panel.scrollIntoView({ behavior: "smooth" });
           } catch (error) {
@@ -478,9 +480,9 @@ export async function mountMonthlyReview({ root, api }) {
     );
   } catch (error) {
     root.innerHTML =
-      reviewNavigation() +
+      reviewNavigation(capabilities) +
       `<section class="br-panel"><h1>Monthly review</h1><p role="alert">${escape(error.message)}</p><button id="monthly-retry">Retry</button></section>`;
     root.querySelector("#monthly-retry").onclick = () =>
-      mountMonthlyReview({ root, api });
+      mountMonthlyReview({ root, api, capabilities });
   }
 }

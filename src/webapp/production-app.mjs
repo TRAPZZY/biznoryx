@@ -58,7 +58,7 @@ import {
   verifyPaystackWebhookSignature,
 } from "../billing/paystack.mjs";
 
-import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../billing/entitlements.mjs";
+import { requirePremiumSubscription, subscriptionHasPremiumAccess, subscriptionAllowsFeature } from "../billing/entitlements.mjs";
 
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 import { CancellationEmailSender } from "../billing/cancellation-email-sender.mjs";
@@ -1832,8 +1832,14 @@ async function routeRequest({ request, response, runtime }) {
   if (businessReviewPath(url.pathname)) {
     const {context}=await authenticateRequest({request,runtime,requireCsrf:request.method!=='GET'});
     const organizationId=requireActiveOrganization(context,'Select a business before reviewing its records.');
-    if(url.pathname!=='/api/business-review') await requirePremiumSubscription({billingRepository:runtime.billing,organizationId,actorUserId:context.user.id});
-    await businessReviewRequest({request,response,url,runtime,tenant:{organizationId,actorUserId:context.user.id},readJson,sendJson,sendEvidenceExport,mapIngestionResult});
+    const billingContext = { billingRepository: runtime.billing, organizationId, actorUserId: context.user.id };
+    const feature = url.pathname.startsWith("/api/money-trail") ? "moneyTrail"
+      : url.pathname.startsWith("/api/monthly-close") ? "monthlyClose" : undefined;
+    const subscription = url.pathname === "/api/business-review"
+      ? await runtime.billing?.ensureSubscription(billingContext)
+      : await requirePremiumSubscription({ ...billingContext, feature });
+    const allowsFeature = (name) => subscriptionAllowsFeature(subscription, name);
+    await businessReviewRequest({request,response,url,runtime,tenant:{organizationId,actorUserId:context.user.id},readJson,sendJson,sendEvidenceExport,mapIngestionResult,allowsFeature});
     return;
   }
 
@@ -2406,6 +2412,7 @@ async function routeRequest({ request, response, runtime }) {
     );
 
     await requirePremiumSubscription({
+      feature: url.searchParams.has("format") ? "reportExport" : undefined,
       billingRepository: runtime.billing,
 
       organizationId,

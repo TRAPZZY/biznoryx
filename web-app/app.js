@@ -722,6 +722,7 @@ function mountMonthlyPlans({ onSelect } = {}) {
         <h3>${esc(plan.name)}</h3>
         <p><strong>${esc(format.format(plan.amountMinor / 100))}</strong> / month</p>
         <p>${plan.recommended ? "Recommended" : "Monthly subscription"}</p>
+        <p>${esc(plan.unlocks)}</p>
         ${onSelect && plan.purchasable ? `<button type="button" class="button primary" data-price-id="${esc(plan.priceId)}">Choose ${esc(plan.name)}</button>` : ""}
         ${plan.purchasable ? "" : '<p>Coming soon</p>'}
       </article>
@@ -4599,6 +4600,7 @@ function reportPageHeader(ready = false) {
                 ${icon("printer")}
               </button>
 
+              ${businessReviewCapabilities?.reportExport === false ? '<p>Report exports are included from Growth.</p>' : `
               <button
                 class="er-icon-button"
                 type="button"
@@ -4636,6 +4638,7 @@ function reportPageHeader(ready = false) {
                 ${icon("file-code")}
                 Shareable report
               </button>
+              `}
             </div>
           `
           : ""
@@ -6179,12 +6182,14 @@ async function route() {
       shell(updatesPageHtml(), "/updates");
     } else if (path === "/reports") {
       await reports();
-      if(businessReviewCapabilities?.moneyTrail&&businessReviewCapabilities?.monthlyClose) document.querySelector('.main-content, main')?.insertAdjacentHTML('afterbegin',reviewNavigation());
+      if (businessReviewCapabilities?.moneyTrail || businessReviewCapabilities?.monthlyClose) {
+        document.querySelector('.main-content, main')?.insertAdjacentHTML('afterbegin', reviewNavigation(businessReviewCapabilities));
+      }
     } else if (path === "/money-trail" || path === "/monthly-review") {
       shell('<div id="business-review-root"></div>','/reports');
       const root=document.querySelector('#business-review-root');
-      if(path==='/money-trail')await mountMoneyTrail({root,api,uploads:dashboard.uploads??[],period:params.get('period')||undefined});
-      else await mountMonthlyReview({root,api});
+      if(path==='/money-trail')await mountMoneyTrail({root,api,uploads:dashboard.uploads??[],period:params.get('period')||undefined,capabilities:businessReviewCapabilities});
+      else await mountMonthlyReview({root,api,capabilities:businessReviewCapabilities});
     } else if (path === "/actions") {
       shell(actionPlansHtml(), "/actions");
       disposeActionPlans = mountActionPlans({ root: document.querySelector("#action-plans"), api, initial: dashboard });
