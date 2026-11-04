@@ -566,6 +566,7 @@ small {
 footer {
   padding: 35px 8%;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 24px;
   align-items: center;
@@ -2016,6 +2017,11 @@ td > svg {
     padding: 0 5%;
   }
 
+  .public-nav nav,
+  .public-nav .nav-actions {
+    gap: 20px;
+  }
+
   .hero h2 {
     font-size: 46px;
   }
@@ -2079,7 +2085,7 @@ td > svg {
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 820px) {
   .public-nav {
     height: auto;
     min-height: 74px;
@@ -2101,7 +2107,7 @@ td > svg {
     font-size: 20px;
   }
 
-  .nav-actions {
+  .public-nav .nav-actions {
     gap: 15px;
   }
 
@@ -2114,7 +2120,9 @@ td > svg {
   .nav-actions .quiet-link {
     font-size: 12px;
   }
+}
 
+@media (max-width: 700px) {
   .hero {
     min-height: 650px;
     height: calc(100svh - 150px);
@@ -5054,4 +5062,224 @@ td > svg {
 
 .billing-tier-grid button {
   margin-top: 0.5rem;
+}
+
+/* Public landing page */
+.landing-index {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-inline: 8%;
+  background: #edf2ed;
+  border-bottom: 1px solid var(--border);
+}
+
+.landing-index a {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 1.15rem 0.75rem 1.15rem 0;
+  color: var(--green);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.landing-index a span {
+  color: var(--ink);
+}
+
+.landing-index a:hover span,
+.landing-index a:focus-visible span {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.landing-section {
+  padding: clamp(3.5rem, 7vw, 7rem) 8%;
+  scroll-margin-top: 5rem;
+}
+
+.landing-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(2rem, 7vw, 7rem);
+  align-items: center;
+}
+
+.landing-introduction {
+  max-width: 44rem;
+}
+
+.landing-introduction h2 {
+  margin: 0.6rem 0 1.25rem;
+  font-size: clamp(2rem, 4vw, 3.45rem);
+  line-height: 1.12;
+  text-wrap: balance;
+}
+
+.landing-introduction p:not(.overline) {
+  max-width: 38rem;
+  color: #526159;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.landing-introduction p + p {
+  margin-top: 0.85rem;
+}
+
+.landing-import {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #d2ded4;
+  border-radius: 0.65rem;
+  background: white;
+  box-shadow: 0 12px 28px #203b2d0d;
+}
+
+.landing-import figcaption {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.5rem;
+  background: #e7efe6;
+}
+
+.landing-import figcaption strong {
+  font-size: 1.25rem;
+}
+
+.landing-import ol {
+  margin: 0;
+  padding: 0 1.5rem;
+  list-style: none;
+}
+
+.landing-import li,
+.landing-rhythm-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-block: 1.15rem;
+}
+
+.landing-import li + li {
+  border-top: 1px solid var(--border);
+}
+
+.landing-import li > span {
+  color: var(--green);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding-top: 0.2rem;
+}
+
+.landing-import h3,
+.landing-rhythm-list h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.landing-import li p,
+.landing-columns p {
+  color: #526159;
+  line-height: 1.6;
+}
+
+.landing-evidence {
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+.landing-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1.4rem, 4vw, 3.5rem);
+  margin-top: 2.75rem;
+}
+
+.landing-columns article {
+  padding-top: 1.4rem;
+  border-top: 2px solid #c9dacd;
+}
+
+.landing-columns svg,
+.landing-rhythm-list svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+}
+
+.landing-columns svg {
+  color: var(--green);
+  margin-bottom: 1rem;
+}
+
+.landing-columns h3 {
+  margin-bottom: 0.5rem;
+}
+
+.landing-rhythm {
+  background: #1d392d;
+  color: #fff;
+}
+
+.landing-rhythm .overline,
+.landing-rhythm-list svg {
+  color: var(--lime);
+}
+
+.landing-rhythm .landing-introduction p:not(.overline),
+.landing-rhythm-list article p:not(.overline) {
+  color: #dce8df;
+  line-height: 1.6;
+}
+
+.landing-rhythm-list article {
+  border-top: 1px solid #51695b;
+}
+
+.landing-rhythm-list article .overline {
+  margin-bottom: 0.35rem;
+}
+
+.landing-plans .billing-tier-grid {
+  margin-block: 2rem 1.5rem;
+}
+
+.landing-plans .billing-tier-grid article {
+  gap: 0.75rem;
+  padding: 1.35rem;
+  border-color: #ccd8cf;
+  background: #fff;
+}
+
+.landing-plans .billing-tier-grid article.recommended-plan {
+  border-color: var(--green);
+}
+
+.landing-next .button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .landing-section {
+    scroll-margin-top: 7.5rem;
+  }
+
+  .landing-index {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-index a {
+    padding-block: 0.8rem;
+  }
+
+  .landing-split,
+  .landing-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-columns {
+    margin-top: 2rem;
+  }
 }
