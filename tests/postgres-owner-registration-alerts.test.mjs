@@ -26,7 +26,7 @@ test('first confirmed email verification commits exactly one private owner event
         'select count(*)::integer as count from platform_owner_registration_alerts where user_id = $1',
         [user.id],
       )).rows[0].count, 1);
-      const first = await client.query('select * from claim_platform_owner_registration_alerts($1)', [1]);
+      const first = await client.query('select event_id, claim_token, occurred_at, delivery_attempt from claim_platform_owner_registration_alerts($1)', [1]);
       assert.equal(first.rows.length, 1);
       const row = first.rows[0];
       assert.equal(row.delivery_attempt, 1);
