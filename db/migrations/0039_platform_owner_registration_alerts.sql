@@ -68,8 +68,8 @@ begin
       where (a.status = 'pending' and a.available_at <= now())
         or (a.status = 'sending' and a.lease_until < now() and a.attempts < 5)
       order by a.created_at, a.id
-      for update skip locked
       limit p_limit
+      for update skip locked
     )
     update platform_owner_registration_alerts a set
       status = 'sending',
