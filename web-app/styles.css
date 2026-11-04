@@ -5218,8 +5218,12 @@ td > svg {
   margin-bottom: 0.5rem;
 }
 
+/* Supporting photo also used on Solutions: Unsplash photo-1450101499163-c8848c66ca85. */
 .landing-rhythm {
-  background: #1d392d;
+  background:
+    linear-gradient(90deg, rgba(16, 40, 29, 0.82), rgba(16, 40, 29, 0.94)),
+    url("/business-records.jpg") center / cover,
+    #1d392d;
   color: #fff;
 }
 

@@ -678,8 +678,8 @@ function publicPage(path) {
         ],
 
         [
-          "₦40,000/month",
-          "Continue with one clear monthly subscription when the trial ends.",
+          "Four monthly plans",
+          "Compare Starter, Growth, Business and Business Plus above to choose the features your workspace needs.",
         ],
       ],
     },
