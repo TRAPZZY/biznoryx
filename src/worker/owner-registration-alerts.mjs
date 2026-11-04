@@ -78,7 +78,7 @@ export async function deliverTelegramOwnerAlert(config, occurredAt, { fetchImpl 
 export async function deliverOwnerRegistrationAlerts(pool, config, { fetchImpl = fetch } = {}) {
   if (!config.enabled) return 0;
   const claimed = await pool.query(
-    'select * from claim_platform_owner_registration_alerts($1)',
+    'select event_id, claim_token, occurred_at, delivery_attempt from claim_platform_owner_registration_alerts($1)',
     [5],
   );
   let delivered = 0;
