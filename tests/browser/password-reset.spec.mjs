@@ -38,7 +38,7 @@ test("verified customer can recover access with a one-time code", async ({
     .click();
 
   await page
-    .locator("#workspace-sidebar")
+    .getByRole("banner")
     .getByRole("button", {
       name: "Sign out",
       exact: true,

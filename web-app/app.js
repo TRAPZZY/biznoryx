@@ -1987,7 +1987,7 @@ function shell(content, active) {
 
           <a
             id="sidebar-help-link"
-            class="text-button sidebar-help"
+            class="sidebar-help"
             href="/help.html"
             title="Help & support"
             aria-label="Help & support"
@@ -1995,23 +1995,9 @@ function shell(content, active) {
             ${icon("life-buoy")}
 
             <span>
-              Help
+              Help &amp; support
             </span>
           </a>
-
-          <button
-            data-sign-out
-            class="text-button sidebar-sign-out"
-            type="button"
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            ${icon("log-out")}
-
-            <span>
-              Sign out
-            </span>
-          </button>
         </div>
       </aside>
 
