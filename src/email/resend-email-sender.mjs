@@ -52,35 +52,37 @@ export class ResendEmailSender {
       ? "Reset your password"
       : "Verify your email";
 
-    const response = await this.fetchImpl(
-      "https://api.resend.com/emails",
-      {
-        method: "POST",
+    let response;
+    try {
+      response = await this.fetchImpl(
+        "https://api.resend.com/emails",
+        {
+          method: "POST",
 
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": `email-code/${purpose}/${challengeId}`,
-        },
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `email-code/${purpose}/${challengeId}`,
+          },
 
-        body: JSON.stringify({
-          from: this.from,
+          body: JSON.stringify({
+            from: this.from,
 
-          to: [to],
+            to: [to],
 
-          subject,
+            subject,
 
-          text: [
-            instruction,
-            "",
-            `Your verification code is: ${code}`,
-            "",
-            `This code expires in ${minutes} minutes.`,
-            "",
-            "If you did not request this code, you can ignore this email.",
-          ].join("\n"),
+            text: [
+              instruction,
+              "",
+              `Your verification code is: ${code}`,
+              "",
+              `This code expires in ${minutes} minutes.`,
+              "",
+              "If you did not request this code, you can ignore this email.",
+            ].join("\n"),
 
-          html: `
+            html: `
             <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#142018;">
               <div style="font-size:22px;font-weight:700;margin-bottom:32px;">
                 BIZNORYX<span style="color:#72a96b;">.</span>
@@ -117,9 +119,14 @@ export class ResendEmailSender {
               </p>
             </div>
           `,
-        }),
-      },
-    );
+          }),
+        },
+      );
+    } catch {
+      throw new EmailDeliveryError(
+        "Unable to reach the email provider. Please try again.",
+      );
+    }
 
     let payload = null;
 
