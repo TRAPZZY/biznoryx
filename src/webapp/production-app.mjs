@@ -1818,7 +1818,7 @@ async function routeRequest({ request, response, runtime }) {
    * ==================================================
    */
 
-  const sourceFileDeletionReleased = false;
+  const sourceFileDeletionReleased = true;
   const sourceDelete = url.pathname.match(
     /^\/api\/ingestion\/uploads\/([^/]+)\/delete$/
   );

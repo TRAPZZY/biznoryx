@@ -2425,6 +2425,10 @@ function sourceFilesHtml(uploads) {
         <td class="source-actions-cell"><div class="source-file-actions">
           <button class="text-button review-upload" data-id="${esc(u.id)}" type="button">Review ${icon("arrow-up-right")}</button>
           ${businessReviewCapabilities?.reviewedImports&&!u.hasImportMapping&&u.status==='validated'?`<button class="text-button" type="button" data-map-source="${esc(u.id)}">Map records</button>`:''}
+          <button class="source-delete-button" data-source-delete="${esc(u.id)}" type="button"
+            aria-label="Delete ${esc(u.fileName)}" title="Delete source file">
+            ${icon("trash-2")}<span>Delete</span>
+          </button>
           <button class="source-download-button" data-source-download="${esc(u.id)}" type="button"
             aria-label="Download ${esc(u.fileName)}" title="${u.downloadAvailable === false ? "Source file is not available" : "Download source file"}"
             ${u.downloadAvailable === false ? "disabled" : ""}>${icon("download")}</button>

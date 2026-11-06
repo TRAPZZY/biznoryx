@@ -12,6 +12,7 @@ import { SevenDayTrialService, trialConfiguration } from "../src/billing/trial-s
 import { startTrialMaintenance } from "../src/worker/trial-maintenance.mjs";
 import { startUpdatesMaintenance } from "../src/worker/updates-maintenance.mjs";
 import { startOwnerRegistrationAlerts } from "../src/worker/owner-registration-alerts.mjs";
+import { startSourceDeletionMaintenance } from "../src/worker/source-deletion-maintenance.mjs";
 
 import {
   PostgresMetricComparisonRepository,
@@ -159,6 +160,7 @@ let stopping =
 let stopTrialMaintenance;
 let stopUpdatesMaintenance;
 let stopOwnerRegistrationAlerts;
+let stopSourceDeletionMaintenance;
 
 process.on(
   "SIGINT",
@@ -188,6 +190,7 @@ try {
 
   stopUpdatesMaintenance = startUpdatesMaintenance({ pool, onError: reportWorkerError });
   stopOwnerRegistrationAlerts = startOwnerRegistrationAlerts({ pool, onError: reportWorkerError });
+  stopSourceDeletionMaintenance = startSourceDeletionMaintenance({ pool, objectStorage, onError: reportWorkerError });
 
   process.stdout.write(
     `BIZNORYX production worker started: ${workerId}\n`,
@@ -216,6 +219,7 @@ try {
   process.exitCode =
     1;
 } finally {
+  await stopSourceDeletionMaintenance?.();
   await stopOwnerRegistrationAlerts?.();
   await stopUpdatesMaintenance?.();
   await stopTrialMaintenance?.();

@@ -24,6 +24,11 @@ grant select, insert, update
   on source_file_deletion_outbox
   to biznoryx_app;
 
+grant execute on function claim_source_file_deletions(integer)
+  to biznoryx_app;
+grant execute on function finish_source_file_deletion(uuid,uuid,boolean,text,integer)
+  to biznoryx_app;
+
 grant select, delete
   on processing_jobs
   to biznoryx_app;
