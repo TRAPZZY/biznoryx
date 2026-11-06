@@ -181,8 +181,7 @@ function createRepository({
               "raw-1",
 
             storageKey:
-              identity
-                .storageKey,
+              input.upload.storageKey ?? identity.storageKey,
 
             checksumSha256:
               identity
@@ -357,7 +356,7 @@ test(
     assert.match(
       storage.putCalls[0]
         .key,
-      /^organizations\/org-1\/uploads\/[a-f0-9]{64}\/sales\.csv$/,
+      /^organizations\/org-1\/uploads\/[a-f0-9]{64}\/v2\/[a-f0-9-]{36}\/sales\.csv$/,
     );
 
     assert.equal(
@@ -574,7 +573,7 @@ test(
     assert.equal(
       storage.putCalls
         .length,
-      0,
+      1,
     );
 
     assert.equal(
@@ -585,8 +584,15 @@ test(
 
     assert.equal(
       storage.objects.size,
-      1,
+      2,
     );
+
+    assert.equal(
+      storage.objects.get(identity.storageKey).body.toString("utf8"),
+      content,
+    );
+
+    assert.notEqual(storage.putCalls[0].key, identity.storageKey);
   },
 );
 

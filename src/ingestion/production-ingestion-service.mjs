@@ -7,7 +7,7 @@ import { parse } from "csv-parse/sync";
 
 import { AuthError } from "../auth/core.mjs";
 
-import { createRawObjectIdentity } from "./raw-object-identity.mjs";
+import { createRawObjectIdentity, createUniqueRawObjectIdentity } from "./raw-object-identity.mjs";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -296,7 +296,7 @@ export class ProductionIngestionService {
      * identity used by the PostgreSQL
      * repository.
      */
-    const identity = createRawObjectIdentity({
+    const identity = createUniqueRawObjectIdentity({
       organizationId,
 
       originalFilename: normalizedFileName,
@@ -351,6 +351,7 @@ export class ProductionIngestionService {
 
         upload: {
           originalFilename: normalizedFileName,
+          storageKey: identity.storageKey,
 
           contentType: "text/csv",
 

@@ -247,7 +247,9 @@ test("two ingestion instances preserve the successful upload when duplicate regi
     originalFilename: "sales.csv",
     content,
   });
-  const preserved = harness.objects.get(identity.storageKey);
+  const committedKey = harness.registrations[0].upload.storageKey;
+  assert.notEqual(committedKey, identity.storageKey);
+  const preserved = harness.objects.get(committedKey);
   assert.ok(
     preserved,
     "Duplicate cleanup must not delete committed raw evidence.",

@@ -1,5 +1,6 @@
 import {
   createHash,
+  randomUUID,
 } from "node:crypto";
 
 export function createRawObjectIdentity({
@@ -31,6 +32,35 @@ export function createRawObjectIdentity({
     checksumSha256,
     storageKey,
   };
+}
+
+export function createUniqueRawObjectIdentity(input) {
+  const original = createRawObjectIdentity(input);
+  const slash = original.storageKey.lastIndexOf("/");
+
+  return {
+    ...original,
+    storageKey:
+      original.storageKey.slice(0, slash) +
+      "/v2/" + randomUUID() + "/" +
+      original.storageKey.slice(slash + 1),
+  };
+}
+
+export function isUniqueRawObjectStorageKey(base, candidate) {
+  if (typeof candidate !== "string") return false;
+
+  const slash = base.storageKey.lastIndexOf("/");
+  const prefix = base.storageKey.slice(0, slash) + "/v2/";
+  const suffix = "/" + base.storageKey.slice(slash + 1);
+
+  if (!candidate.startsWith(prefix) || !candidate.endsWith(suffix)) {
+    return false;
+  }
+
+  const token = candidate.slice(prefix.length, -suffix.length);
+
+  return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(token);
 }
 
 export function safeFilename(
