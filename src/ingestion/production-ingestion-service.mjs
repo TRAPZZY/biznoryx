@@ -7,7 +7,7 @@ import { parse } from "csv-parse/sync";
 
 import { AuthError } from "../auth/core.mjs";
 
-import { createRawObjectIdentity } from "./raw-object-identity.mjs";
+import { createRawObjectIdentity, createUniqueRawObjectIdentity } from "./raw-object-identity.mjs";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -183,26 +183,54 @@ export class ProductionIngestionService {
       );
     }
     const original = {
-      ...identity,
+      ...createUniqueRawObjectIdentity({
+        organizationId: input.organizationId,
+        originalFilename: input.fileName,
+        content: parsed.originalBytes,
+      }),
       originalFilename: input.fileName,
       contentType: parsed.originalContentType,
       byteSize: parsed.originalBytes.length,
     };
-    // Preserve the original artifact under the same immutable, tenant-scoped
-    // addressing used by CSV. The registration transaction binds both objects.
-    if (
-      !(await this.objectStorage.headObject({ key: identity.storageKey }))
-        .exists
-    ) {
-      await this.objectStorage.putObject({
-        key: identity.storageKey,
-        body: parsed.originalBytes,
-        contentType: parsed.originalContentType,
-        metadata: {
-          organization: input.organizationId,
-          checksum: identity.checksumSha256,
-        },
-      });
+
+    const originalMatchesNormalized =
+      parsed.format === "csv" &&
+      parsed.normalizedContent === parsed.originalBytes.toString("utf8");
+
+    if (!originalMatchesNormalized) {
+      const existingKey =
+        typeof this.profileRepository.existingOriginal === "function"
+          ? await this.profileRepository.existingOriginal({
+              organizationId: input.organizationId,
+              actorUserId: input.actorUserId,
+              checksumSha256: identity.checksumSha256,
+            })
+          : null;
+
+      if (existingKey) {
+        const head = await this.objectStorage.headObject({
+          key: existingKey,
+        });
+
+        if (!head.exists) {
+          throw new AuthError(
+            "Existing original evidence is unavailable.",
+            "SERVICE_UNAVAILABLE",
+          );
+        }
+
+        original.storageKey = existingKey;
+      } else {
+        await this.objectStorage.putObject({
+          key: original.storageKey,
+          body: parsed.originalBytes,
+          contentType: parsed.originalContentType,
+          metadata: {
+            organization: input.organizationId,
+            checksum: identity.checksumSha256,
+          },
+        });
+      }
     }
     const result = await this.upload({
       organizationId: input.organizationId,
@@ -227,7 +255,26 @@ export class ProductionIngestionService {
         supersedesRunId: input.supersedesRunId,
       },
     });
-    return { ...result, originalFile: original };
+    const saved =
+      typeof this.profileRepository.source === "function"
+        ? await this.profileRepository.source({
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+            uploadId: result.ingestionRun.id,
+          })
+        : null;
+
+    return {
+      ...result,
+      originalFile: {
+        ...original,
+        storageKey:
+          saved?.original_storage_key ??
+          (originalMatchesNormalized
+            ? result.rawObject.storageKey
+            : original.storageKey),
+      },
+    };
   }
 
   async upload({
@@ -296,7 +343,7 @@ export class ProductionIngestionService {
      * identity used by the PostgreSQL
      * repository.
      */
-    const identity = createRawObjectIdentity({
+    const identity = createUniqueRawObjectIdentity({
       organizationId,
 
       originalFilename: normalizedFileName,
@@ -351,6 +398,7 @@ export class ProductionIngestionService {
 
         upload: {
           originalFilename: normalizedFileName,
+          storageKey: identity.storageKey,
 
           contentType: "text/csv",
 

@@ -5,6 +5,7 @@ import {
 
 import {
   createRawObjectIdentity,
+  isUniqueRawObjectStorageKey,
 } from "../ingestion/raw-object-identity.mjs";
 
 import {
@@ -382,7 +383,7 @@ export class PostgresDataIngestionRepository {
         const {
           checksumSha256:
             checksum,
-          storageKey,
+          storageKey: derivedStorageKey,
         } =
           createRawObjectIdentity({
             organizationId,
@@ -393,6 +394,21 @@ export class PostgresDataIngestionRepository {
             content:
               upload.content,
           });
+
+        const storageKey = upload.storageKey ?? derivedStorageKey;
+
+        if (
+          upload.storageKey !== undefined &&
+          !isUniqueRawObjectStorageKey(
+            { storageKey: derivedStorageKey },
+            upload.storageKey,
+          )
+        ) {
+          throw new AuthError(
+            "Invalid source storage identity.",
+            "VALIDATION_FAILED",
+          );
+        }
 
         /*
          * Raw source files are immutable.
