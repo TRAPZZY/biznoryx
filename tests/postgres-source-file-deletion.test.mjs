@@ -6,6 +6,7 @@ import pg from "pg";
 import { PostgresIdentityRepository } from "../src/database/identity-repository.mjs";
 import { PostgresDataIngestionRepository } from "../src/database/data-ingestion-repository.mjs";
 import { SourceFileDeletionService } from "../src/ingestion/source-file-deletion.mjs";
+import { processSourceDeletionBatch } from "../src/worker/source-deletion-maintenance.mjs";
 import { withTenantTransaction } from "../src/database/postgres.mjs";
 
 const { Pool } = pg;
@@ -34,19 +35,22 @@ test("permanent source deletion preserves tenant and processing boundaries", {
   const removedKeys = [];
   let storageFailure = false;
 
+
+  const objectStorage = {
+    async deleteObject({ key }) {
+      if (storageFailure) {
+        storageFailure = false;
+        throw new Error("Simulated storage outage");
+      }
+
+      removedKeys.push(key);
+      return { deleted: true };
+    },
+  };
+
   const deletion = new SourceFileDeletionService({
     pool,
-    objectStorage: {
-      async deleteObject({ key }) {
-        if (storageFailure) {
-          storageFailure = false;
-          throw new Error("Simulated storage outage");
-        }
-
-        removedKeys.push(key);
-        return { deleted: true };
-      },
-    },
+    objectStorage,
   });
 
   try {
@@ -196,6 +200,8 @@ test("permanent source deletion preserves tenant and processing boundaries", {
     );
 
     // Storage is deleted separately and its completion recorded.
+    await processSourceDeletionBatch({ pool, objectStorage });
+
     const cleanup = await deletion.flushPending({
       ...tenant,
       onlyId: result.outboxId,
@@ -256,6 +262,8 @@ test("permanent source deletion preserves tenant and processing boundaries", {
       uploadId: validated.ingestionRun.id,
     });
 
+    await processSourceDeletionBatch({ pool, objectStorage });
+
     const failedCleanup = await deletion.flushPending({
       ...tenant,
       onlyId: validatedDelete.outboxId,
@@ -264,6 +272,15 @@ test("permanent source deletion preserves tenant and processing boundaries", {
     assert.ok(
       failedCleanup.stillPending.includes(validatedDelete.outboxId),
     );
+
+    await admin.query(
+      `update source_file_deletion_outbox
+       set available_at = now()
+       where organization_id = $1 and id = $2`,
+      [organization.id, validatedDelete.outboxId],
+    );
+
+    await processSourceDeletionBatch({ pool, objectStorage });
 
     const recoveredCleanup = await deletion.flushPending({
       ...tenant,

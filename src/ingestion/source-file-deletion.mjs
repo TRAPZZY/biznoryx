@@ -341,75 +341,43 @@ export class SourceFileDeletionService {
     }
   }
 
+
   async flushPending({
     organizationId, actorUserId, onlyId = null,
   }) {
-    const context = { organizationId, actorUserId };
+    if (onlyId !== null && !UUID.test(String(onlyId))) {
+      throw new AuthError("Invalid deletion identifier.", "VALIDATION_FAILED");
+    }
 
-    const pending = await withTenantTransaction(
+    return withTenantTransaction(
       this.pool,
-      context,
+      { organizationId, actorUserId },
       async client => {
         await requireWriter(client, organizationId, actorUserId);
 
-        return (await client.query(
-          `select id, storage_key
+        const result = await client.query(
+          `select id, status, completed_at
            from source_file_deletion_outbox
            where organization_id = $1
-             and completed_at is null
              and ($2::uuid is null or id = $2)
            order by requested_at
-           limit 5`,
+           limit 25`,
           [organizationId, onlyId],
-        )).rows;
+        );
+
+        return {
+          completed: result.rows
+            .filter(row => row.completed_at)
+            .map(row => row.id),
+          stillPending: result.rows
+            .filter(row => !row.completed_at && row.status !== "dead")
+            .map(row => row.id),
+          dead: result.rows
+            .filter(row => !row.completed_at && row.status === "dead")
+            .map(row => row.id),
+        };
       },
     );
-
-    const completed = [];
-    const stillPending = [];
-
-    for (const item of pending) {
-      let success = false;
-
-      try {
-        if (!storageKeyAllowed(organizationId, item.storage_key)) {
-          throw new Error("Invalid tenant storage key.");
-        }
-
-        await this.objectStorage.deleteObject({
-          key: item.storage_key,
-        });
-
-        success = true;
-      } catch {
-        // Preserve the outbox entry for another attempt.
-      }
-
-      await withTenantTransaction(
-        this.pool,
-        context,
-        async client => {
-          await requireWriter(client, organizationId, actorUserId);
-
-          await client.query(
-            `update source_file_deletion_outbox
-             set attempts = attempts + 1,
-                 last_attempt_at = now(),
-                 completed_at = case
-                   when $3 then now()
-                   else completed_at
-                 end
-             where organization_id = $1
-               and id = $2
-               and completed_at is null`,
-            [organizationId, item.id, success],
-          );
-        },
-      );
-
-      (success ? completed : stillPending).push(item.id);
-    }
-
-    return { completed, stillPending };
   }
+
 }

@@ -20,6 +20,31 @@ export class PostgresImportManifestRepository {
       return profile;
     });
   }
+  async existingOriginal({
+    organizationId, actorUserId, checksumSha256,
+  }) {
+    if (!/^[a-f0-9]{64}$/.test(String(checksumSha256))) {
+      invalid("Invalid original evidence checksum.");
+    }
+
+    const context = { organizationId, actorUserId };
+
+    return withTenantTransaction(this.pool, context, async client => {
+      await requireImportAccess(client, context, true);
+
+      const result = await client.query(
+        `select storage_key from raw_data_objects
+         where organization_id = $1
+           and checksum_sha256 = $2
+           and status = 'accepted'
+         limit 1`,
+        [organizationId, checksumSha256],
+      );
+
+      return result.rows[0]?.storage_key ?? null;
+    });
+  }
+
   async available() {
     const result = await this.pool.query(
       "select to_regclass('public.ingestion_import_manifests') is not null and to_regclass('public.import_profiles') is not null as available",
@@ -111,7 +136,7 @@ export class PostgresImportManifestRepository {
     return withTenantTransaction(this.pool, context, async (client) => {
       await requireImportAccess(client, context, false);
       const result = await client.query(
-        `select m.*,p.definition,p.version as profile_version,r.checksum_sha256 as original_checksum
+        `select m.*,p.definition,p.version as profile_version,r.checksum_sha256 as original_checksum,r.storage_key as original_storage_key
         from ingestion_import_manifests m join import_profiles p on p.id=m.profile_id and p.organization_id=m.organization_id
         join raw_data_objects r on r.id=m.original_raw_object_id and r.organization_id=m.organization_id
         where m.organization_id=$1 and m.ingestion_run_id=$2`,

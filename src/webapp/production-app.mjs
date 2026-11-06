@@ -1859,20 +1859,10 @@ async function routeRequest({ request, response, runtime }) {
       uploadId: sourceDelete[1],
     });
 
-    const cleanup = await service.flushPending({
-      organizationId,
-      actorUserId: context.user.id,
-      onlyId: deleted.outboxId,
-    });
-
-    const storageDeleted = cleanup.completed.includes(
-      deleted.outboxId,
-    );
-
-    sendJson(response, storageDeleted ? 200 : 202, {
-      deletedFromDatabase: true,
-      storageDeleted,
-      storageDeletionPending: !storageDeleted,
+    sendJson(response, 202, {
+      deletedFromDatabase: deleted.deletedFromDatabase,
+      storageDeleted: false,
+      storageDeletionPending: true,
     });
 
     return;
