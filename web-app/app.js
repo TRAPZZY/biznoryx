@@ -2528,6 +2528,10 @@ function sourceFilesHtml(uploads) {
         <td><span class="status ${["confirmed", "validated", "processed", "ready"].includes(u.status) ? "success" : ""}">${esc(String(u.status || "unknown").replaceAll("_", " "))}</span></td>
         <td class="source-actions-cell"><div class="source-file-actions">
           <button class="text-button review-upload" data-id="${esc(u.id)}" type="button">Review ${icon("arrow-up-right")}</button>
+          <button class="source-delete-button" data-source-delete="${esc(u.id)}" type="button"
+            aria-label="Delete ${esc(u.fileName)}" title="Delete source file">
+            ${icon("trash-2")}<span>Delete</span>
+          </button>
           <button class="source-download-button" data-source-download="${esc(u.id)}" type="button"
             aria-label="Download ${esc(u.fileName)}" title="${u.downloadAvailable === false ? "Source file is not available" : "Download source file"}"
             ${u.downloadAvailable === false ? "disabled" : ""}>${icon("download")}</button>
@@ -2870,11 +2874,60 @@ function dataPage() {
   });
 
   document.querySelector("#upload-history").onclick = async (event) => {
-    const button = event.target.closest("button[data-source-download], button.review-upload");
+    const button = event.target.closest("button[data-source-delete], button[data-source-download], button.review-upload");
     if (!button || button.disabled) return;
-    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDownload || button.dataset.id));
+    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDelete || button.dataset.sourceDownload || button.dataset.id));
     if (!upload) return;
-    if (button.hasAttribute("data-source-download")) {
+    if (button.hasAttribute("data-source-delete")) {
+      const approved = window.confirm(
+        `Permanently delete "${upload.fileName}"?
+
+Eligible database records and the stored source file will be removed.
+
+Files used by protected financial reports cannot be deleted.`
+      );
+
+      if (!approved) return;
+
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        const result = await api(
+          `ingestion/uploads/${encodeURIComponent(upload.id)}/delete`,
+          undefined,
+          { method: "DELETE" },
+        );
+
+        if (validation?.id === upload.id) {
+          validation = null;
+        }
+
+        dashboard = await api("dashboard");
+        dataPage();
+
+        const message = document.querySelector("#source-download-message");
+
+        if (message) {
+          message.textContent = result.storageDeletionPending
+            ? "Source deleted from the database. Storage cleanup is pending."
+            : "Source file deleted from the database and storage.";
+        }
+      } catch (error) {
+        const message = document.querySelector("#source-download-message");
+
+        if (message) {
+          message.textContent =
+            error.message || "Unable to delete the source.";
+          message.classList.add("error-text");
+        }
+      } finally {
+        if (button.isConnected) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      }
+    } else if (button.hasAttribute("data-source-download")) {
       await downloadSourceFile(button, upload);
     } else {
       validation = upload;

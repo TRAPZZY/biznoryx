@@ -4995,3 +4995,32 @@ td > svg {
     width: 100%;
   }
 }
+
+/* BIZNORYX source-file deletion */
+.source-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #e2baba;
+  border-radius: 8px;
+  background: #fff;
+  color: #a12727;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.source-delete-button:hover {
+  background: #fff2f2;
+  border-color: #b13a3a;
+}
+.source-delete-button:focus-visible {
+  outline: 3px solid #b13a3a;
+  outline-offset: 2px;
+}
+.source-delete-button:disabled {
+  opacity: .5;
+  cursor: wait;
+}

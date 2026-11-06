@@ -13,6 +13,8 @@ for (const file of files) {
 
 function listFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
+    // Native Android files are validated by the Android toolchain.
+    if (dir === process.cwd() && name === 'android') return [];
     if (['sources', 'node_modules', '.git', 'dist', 'test-results'].includes(name)) return [];
     const path = join(dir, name);
     return statSync(path).isDirectory() ? listFiles(path) : [path];

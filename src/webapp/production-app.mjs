@@ -60,7 +60,7 @@ import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../bil
 
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
 
-import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
+import { SourceFileDeletionService } from "../ingestion/source-file-deletion.mjs";import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
 import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
 import { ManualEntryService } from "../ingestion/manual-entry.mjs";
@@ -1733,6 +1733,94 @@ async function routeRequest({ request, response, runtime }) {
    * ==================================================
    */
 
+  const sourceDelete = url.pathname.match(
+    /^\/api\/ingestion\/uploads\/([^/]+)\/delete$/
+  );
+
+  if (sourceDelete && request.method === "DELETE") {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: true,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select a business before deleting a source.",
+    );
+
+    if (!runtime.pool || !runtime.objectStorage) {
+      throw new AuthError(
+        "Source deletion is unavailable.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const service = new SourceFileDeletionService({
+      pool: runtime.pool,
+      objectStorage: runtime.objectStorage,
+    });
+
+    const deleted = await service.delete({
+      organizationId,
+      actorUserId: context.user.id,
+      uploadId: sourceDelete[1],
+    });
+
+    const cleanup = await service.flushPending({
+      organizationId,
+      actorUserId: context.user.id,
+      onlyId: deleted.outboxId,
+    });
+
+    const storageDeleted = cleanup.completed.includes(
+      deleted.outboxId,
+    );
+
+    sendJson(response, storageDeleted ? 200 : 202, {
+      deletedFromDatabase: true,
+      storageDeleted,
+      storageDeletionPending: !storageDeleted,
+    });
+
+    return;
+  }
+
+  if (
+    url.pathname === "/api/ingestion/deletions/retry" &&
+    request.method === "POST"
+  ) {
+    const { context } = await authenticateRequest({
+      request,
+      runtime,
+      requireCsrf: true,
+    });
+
+    const organizationId = requireActiveOrganization(
+      context,
+      "Select a business before retrying cleanup.",
+    );
+
+    if (!runtime.pool || !runtime.objectStorage) {
+      throw new AuthError(
+        "Source cleanup is unavailable.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const service = new SourceFileDeletionService({
+      pool: runtime.pool,
+      objectStorage: runtime.objectStorage,
+    });
+
+    const result = await service.flushPending({
+      organizationId,
+      actorUserId: context.user.id,
+    });
+
+    sendJson(response, 200, result);
+    return;
+  }
   const sourceDownload = url.pathname.match(/^\/api\/ingestion\/uploads\/([^/]+)\/download$/);
   if (sourceDownload && request.method === "GET") {
     const { context } = await authenticateRequest({ request, runtime, requireCsrf: false });
