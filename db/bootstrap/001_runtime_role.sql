@@ -18,6 +18,22 @@ grant select, insert on import_profiles, ingestion_import_manifests,
 grant update (version,kind,payment_status,due_date,reference_confirmed) on money_trail_record_states to biznoryx_app;
 grant execute on function money_trail_member(uuid,boolean) to biznoryx_app;
 
+-- Source deletion permissions must be granted after the
+-- runtime role has been created.
+grant select, insert, update
+  on source_file_deletion_outbox
+  to biznoryx_app;
+
+grant select, delete
+  on processing_jobs
+  to biznoryx_app;
+
+grant delete
+  on ingestion_validation_results,
+     ingestion_runs,
+     raw_data_objects
+  to biznoryx_app;
+
 grant select, insert, update on
   organizations,
   audit_events,

@@ -2800,11 +2800,60 @@ function dataPage() {
   }, "Preparing your file…");
 
   document.querySelector("#upload-history").onclick = async (event) => {
-    const button = event.target.closest("button[data-source-download], button[data-map-source], button.review-upload");
+    const button = event.target.closest("button[data-source-delete], button[data-source-download], button[data-map-source], button.review-upload");
     if (!button || button.disabled) return;
-    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDownload || button.dataset.mapSource || button.dataset.id));
+    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDelete || button.dataset.sourceDownload || button.dataset.mapSource || button.dataset.id));
     if (!upload) return;
-    if(button.hasAttribute('data-map-source')) {
+    if (button.hasAttribute("data-source-delete")) {
+      const approved = window.confirm(
+        `Permanently delete "${upload.fileName}"?
+
+Eligible database records and the stored source file will be removed.
+
+Files used by protected financial reports cannot be deleted.`
+      );
+
+      if (!approved) return;
+
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+
+      try {
+        const result = await api(
+          `ingestion/uploads/${encodeURIComponent(upload.id)}/delete`,
+          undefined,
+          { method: "DELETE" },
+        );
+
+        if (validation?.id === upload.id) {
+          validation = null;
+        }
+
+        dashboard = await api("dashboard");
+        dataPage();
+
+        const message = document.querySelector("#source-download-message");
+
+        if (message) {
+          message.textContent = result.storageDeletionPending
+            ? "Source deleted from the database. Storage cleanup is pending."
+            : "Source file deleted from the database and storage.";
+        }
+      } catch (error) {
+        const message = document.querySelector("#source-download-message");
+
+        if (message) {
+          message.textContent =
+            error.message || "Unable to delete the source.";
+          message.classList.add("error-text");
+        }
+      } finally {
+        if (button.isConnected) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      }
+    } else if (button.hasAttribute("data-map-source")) {
       button.disabled=true;
       try {
         const payload={uploadId:upload.id,period:upload.period,dataSeries:upload.dataSeries};

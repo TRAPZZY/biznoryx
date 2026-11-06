@@ -23,6 +23,8 @@ if (findings.length > 0) {
 
 function listFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
+    // Native Android files are validated by the Android toolchain.
+    if (dir === process.cwd() && name === 'android') return [];
     if (name === 'sources' || name === 'node_modules' || name === '.git') return [];
     const path = join(dir, name);
     return statSync(path).isDirectory() ? listFiles(path) : [path];
