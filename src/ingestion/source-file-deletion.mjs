@@ -20,6 +20,13 @@ async function requireWriter(client, organizationId, actorUserId) {
   );
 
   const role = member.rows[0]?.role;
+
+  if (role !== "owner" && role !== "admin") {
+    throw new AuthError(
+      "Only organization owners and administrators can permanently delete source files.",
+      "CAPABILITY_DENIED",
+    );
+  }
   if (!(ROLE_CAPABILITIES[role] ?? []).includes(
     CAPABILITIES.WRITE_BUSINESS_DATA
   )) {
