@@ -5,3 +5,4 @@ playwright-report/
 .env
 .env.*
 !.env.example
+.rehearsal-baseline.json

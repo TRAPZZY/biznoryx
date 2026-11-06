@@ -7,6 +7,48 @@ on:
       - main
 
 jobs:
+  repair-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: biznoryx_local_repair_test
+          POSTGRES_USER: biznoryx_local_admin
+          POSTGRES_PASSWORD: synthetic_ci_repair_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U biznoryx_local_admin -d biznoryx_local_repair_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify guarded tooling and synthetic database repair
+        run: node --test tests/database-rehearsal.test.mjs tests/postgres-database-repair.test.mjs
+        env:
+          LOCAL_DB_REPAIR_TEST_URL: postgresql://biznoryx_local_admin:synthetic_ci_repair_only@127.0.0.1:5432/biznoryx_local_repair_test
+      - name: Verify runtime against repaired synthetic schema
+        run: node --test tests/postgres-runtime.test.mjs tests/postgres-native-auth.test.mjs tests/postgres-data-ingestion.test.mjs tests/billing-webhook-security.test.mjs tests/policy-security.test.mjs tests/postgres-evidence-report.test.mjs tests/postgres-business-actions.test.mjs
+        env:
+          TEST_DATABASE_URL: postgresql://biznoryx_local_admin:synthetic_ci_repair_only@127.0.0.1:5432/biznoryx_local_repair_test?options=-c%20role%3Dbiznoryx_repair_fixture
+      - name: Verify manual entry, trial and Updates after repair
+        run: node --test tests/postgres-manual-entry.test.mjs tests/billing-trial-postgres.test.mjs tests/postgres-updates.test.mjs
+        env:
+          TEST_DATABASE_URL: postgresql://biznoryx_local_admin:synthetic_ci_repair_only@127.0.0.1:5432/biznoryx_local_repair_test
+          UPDATES_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_local_admin:synthetic_ci_repair_only@127.0.0.1:5432/biznoryx_local_repair_test
+          TRIAL_TEST_ADMIN_DATABASE_URL: postgresql://biznoryx_local_admin:synthetic_ci_repair_only@127.0.0.1:5432/postgres
+
   verify:
     runs-on: ubuntu-latest
     services:
