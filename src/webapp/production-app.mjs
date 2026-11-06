@@ -1818,11 +1818,18 @@ async function routeRequest({ request, response, runtime }) {
    * ==================================================
    */
 
+  const sourceFileDeletionReleased = false;
   const sourceDelete = url.pathname.match(
     /^\/api\/ingestion\/uploads\/([^/]+)\/delete$/
   );
 
   if (sourceDelete && request.method === "DELETE") {
+    if (!sourceFileDeletionReleased) {
+      throw new AuthError(
+        "Permanent source deletion is not yet available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1875,6 +1882,12 @@ async function routeRequest({ request, response, runtime }) {
     url.pathname === "/api/ingestion/deletions/retry" &&
     request.method === "POST"
   ) {
+    if (!sourceFileDeletionReleased) {
+      throw new AuthError(
+        "Permanent source deletion is not yet available.",
+        "SERVICE_UNAVAILABLE",
+      );
+    }
     const { context } = await authenticateRequest({
       request,
       runtime,
