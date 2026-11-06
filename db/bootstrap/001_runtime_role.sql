@@ -10,6 +10,13 @@ begin
 end $$;
 
 grant usage on schema public to biznoryx_app;
+grant select on business_review_release to biznoryx_app;
+grant select, insert on import_profiles, ingestion_import_manifests,
+  money_trail_imports, money_trail_records, money_trail_record_states,
+  money_trail_classifications, money_trail_import_records, money_trail_allocations, money_trail_reversals,money_trail_source_supersessions,
+  monthly_source_sets, monthly_required_sources, monthly_close_versions, monthly_close_approvals to biznoryx_app;
+grant update (version,kind,payment_status,due_date,reference_confirmed) on money_trail_record_states to biznoryx_app;
+grant execute on function money_trail_member(uuid,boolean) to biznoryx_app;
 
 -- Source deletion permissions must be granted after the
 -- runtime role has been created.

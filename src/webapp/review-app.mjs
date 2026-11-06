@@ -1,3 +1,4 @@
+import { publicPricingCatalog } from "../billing/pricing-catalog.mjs";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -35,6 +36,7 @@ import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource
 import { sendEvidenceExport } from "../reports/export.mjs";
 import { ReviewManualEntry } from "../preview/manual-entry.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
+import { updatesRequest } from "../notifications/updates.mjs";
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -164,6 +166,11 @@ async function routeRequest({ request, response, runtime }) {
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   );
+  if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+    sendJson(response, 200, { plans: publicPricingCatalog() });
+    return;
+  }
+
   if (
     request.method === "POST" &&
     [
@@ -487,6 +494,17 @@ async function routeRequest({ request, response, runtime }) {
         expiresAt: invitation.invitation.expiresAt,
       },
     });
+    return;
+  }
+
+  if (["/api/updates", "/api/updates/state", "/api/updates/read-all", "/api/updates/preferences"].includes(url.pathname)) {
+    const context = authenticateFromRequest(request, runtime, { requireCsrf: request.method === "POST" });
+    requireCapability(runtime, context, CAPABILITIES.READ_BUSINESS_DATA);
+    const result = await updatesRequest({ repository: runtime.updates,
+      scope: { organizationId: context.session.activeOrganizationId, actorUserId: context.user.id },
+      path: url.pathname, method: request.method, query: url.searchParams,
+      body: request.method === "POST" ? await readJson(request) : undefined });
+    sendJson(response, 200, result);
     return;
   }
 

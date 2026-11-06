@@ -7,7 +7,7 @@ const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, {
 }) : "After card verification";
 
 export function mountTrialBilling({ container, api, subscription, onChanged }) {
-  if (!container || subscription?.status === "active") return;
+  if (!container || ["active", "non_renewing"].includes(subscription?.status)) return;
   const host = document.createElement("section");
   host.className = "trial-billing";
   host.setAttribute("aria-label", "Seven-day trial");
@@ -26,7 +26,12 @@ export function mountTrialBilling({ container, api, subscription, onChanged }) {
     const remaining = Math.max(0, Math.min(7, Math.ceil((expires - Date.now()) / 86_400_000)));
     if (paidCheckout) paidCheckout.hidden = !trial.convertedAt && !canceled && (access || trial.providerProvisioned || (trial.recoveryRequired && trial.canCancel));
     const amount = new Intl.NumberFormat(undefined, { style: "currency", currency: trial.currency || subscription?.currency || "NGN" }).format(Number(trial.verificationAmountMinor || 0) / 100);
-    const price = subscription?.priceLabel || "the displayed monthly subscription price";
+    const monthlyPrice = (minor) => new Intl.NumberFormat("en-NG", {
+      style: "currency", currency: trial.currency || "NGN", maximumFractionDigits: 0,
+    }).format(minor / 100);
+    const plans = trial.plans ?? [];
+    const price = trial.monthlyAmountMinor ? monthlyPrice(trial.monthlyAmountMinor)
+      : subscription?.priceLabel || "the displayed monthly subscription price";
     if (started) {
       host.innerHTML = `<h3>${access ? canceled ? "Trial cancellation confirmed" : `${remaining} ${remaining === 1 ? "day" : "days"} left in your trial` : "Your trial has ended"}</h3>
         ${access ? `<progress class="trial-progress" value="${remaining}" max="7" aria-label="Trial days remaining"></progress>` : ""}
@@ -40,7 +45,12 @@ export function mountTrialBilling({ container, api, subscription, onChanged }) {
         <p id="trial-message" class="form-message" role="status" aria-live="polite"></p>`;
     } else if (trial.eligible || trial.canStartCheckout || trial.canVerify || trial.recoveryRequired) {
       host.innerHTML = `<h3>${trial.recoveryRequired ? "Card setup needs attention" : "Start your seven-day trial"}</h3>
-        <p>Seven days of access with a card on file. Your subscription starts at ${escape(price)} after the trial.</p>
+        <p>${plans.length ? "Choose the monthly price you will pay after your seven-day trial."
+          : `Seven days of access with a card on file. Your subscription starts at ${escape(price)} after the trial.`}</p>
+        ${plans.length ? `<label>Monthly subscription <select id="trial-plan">
+          <option value="">Choose a plan</option>
+          ${plans.map((plan) => `<option value="${escape(plan.priceId)}" ${plan.purchasable ? "" : "disabled"}>${escape(plan.name)} · ${escape(monthlyPrice(plan.amountMinor))}/month</option>`).join("")}
+        </select></label>` : ""}
         <p class="muted">${trial.configured ? `${escape(amount)} is charged to verify your card. We request a refund after verification; your bank determines when it reaches your account.` : "Card verification is currently unavailable. Please try again later."}</p>
         ${trial.eligible || trial.canStartCheckout ? `<label class="trial-consent"><input type="checkbox" id="trial-consent" ${trial.configured ? "" : "disabled"}><span>I agree to the card verification charge and automatic subscription billing after seven days. I can cancel before the first subscription payment.</span></label>
         <button type="button" class="primary" id="start-trial" disabled>${icon("credit-card")} ${trial.checkoutReference ? "Continue card setup" : "Start seven-day trial"}</button>` : ""}
@@ -55,10 +65,15 @@ export function mountTrialBilling({ container, api, subscription, onChanged }) {
     icons();
     const consent = host.querySelector("#trial-consent");
     const start = host.querySelector("#start-trial");
-    if (consent) consent.onchange = () => { start.disabled = !consent.checked || !trial.configured; };
+    const planSelect = host.querySelector("#trial-plan");
+    const updateStart = () => {
+      start.disabled = !consent.checked || !trial.configured || Boolean(planSelect && !planSelect.value);
+    };
+    if (consent) consent.onchange = updateStart;
+    if (planSelect) planSelect.onchange = () => { consent.checked = false; updateStart(); };
     if (start) start.onclick = () => act(start, async () => {
       if (!consent?.checked) throw new Error("Accept the verification charge and recurring billing terms before checkout.");
-      const result = await api("billing/trial/checkout", { consent: true });
+      const result = await api("billing/trial/checkout", { consent: true, priceId: planSelect?.value });
       const checkout = result.checkout;
       if (!checkout?.authorizationUrl || !checkout.reference) throw new Error("Card checkout could not be prepared. Please try again.");
       const url = new URL(checkout.authorizationUrl);

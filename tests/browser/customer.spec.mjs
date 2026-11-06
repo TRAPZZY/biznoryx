@@ -25,24 +25,6 @@ async function clickWorkspaceLink(page, name) {
 }
 
 async function signOutWorkspace(page) {
-  const toggle = page.getByRole("button", {
-    name: "Open workspace menu",
-  });
-
-  if (await toggle.isVisible().catch(() => false)) {
-    await toggle.click();
-
-    await page
-      .locator("#workspace-sidebar")
-      .getByRole("button", {
-        name: "Sign out",
-        exact: true,
-      })
-      .click();
-
-    return;
-  }
-
   await page
     .getByRole("banner")
     .getByRole("button", {

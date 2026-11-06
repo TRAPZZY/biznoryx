@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { acceptRequiredPolicy } from "./helpers/policy-onboarding.mjs";
 
@@ -36,7 +37,7 @@ async function createWorkspace(page) {
   ).toBeVisible();
 }
 
-test("evidence report analyzes dated source rows and exports from the UI", async ({
+for (const width of [1440, 390]) test(`evidence report analyzes dated source rows and exports at ${width}px`, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -187,16 +188,34 @@ test("evidence report analyzes dated source rows and exports from the UI", async
   await expect(page.locator("#er-answer")).toContainText("No earlier comparison");
   await page.locator('#report-controls [name="period"]').selectOption("2026-03");
 
+  await page.setViewportSize({ width, height: 1000 });
   for (const [name, pattern] of [
     ["Export PDF", /\.pdf$/],
     ["Shareable report", /\.html$/],
+    ["Download evidence file", /\.json$/],
   ]) {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(pattern);
-    await download.saveAs(testInfo.outputPath(download.suggestedFilename()));
+    const path = testInfo.outputPath(download.suggestedFilename());
+    await download.saveAs(path);
+    if (name === "Download evidence file") {
+      const file = JSON.parse(await readFile(path, "utf8"));
+      expect(file.payload.schemaVersion).toBe("biznoryx.evidence-file.v1");
+      expect(file.payload.report.current.period).toBe("2026-03");
+      expect(file.integrity.value).toMatch(/^[a-f0-9]{64}$/);
+    }
   }
+  const unavailable = /\/api\/evidence-report\?.*format=json/;
+  await page.route(unavailable, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Evidence file unavailable. Try again." }) }));
+  await page.getByRole("button", { name: "Download evidence file" }).click();
+  await expect(page.locator(".er-status")).toHaveText("Evidence file unavailable. Try again.");
+  await expect(page.getByRole("button", { name: "Download evidence file" })).toBeEnabled();
+  await page.unroute(unavailable);
+  const retry = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download evidence file" }).click();
+  expect((await retry).suggestedFilename()).toMatch(/\.json$/);
   const csvDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export comparison CSV" }).click();
   expect((await csvDownload).suggestedFilename()).toMatch(/\.csv$/);
@@ -206,4 +225,8 @@ test("evidence report analyzes dated source rows and exports from the UI", async
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  const evidenceDownload = page.getByRole("button", { name: "Download evidence file" });
+  await expect(evidenceDownload.locator("svg")).toBeVisible();
+  await evidenceDownload.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath(`evidence-file-${width}.png`) });
 });

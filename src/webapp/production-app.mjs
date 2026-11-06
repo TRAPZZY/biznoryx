@@ -1,3 +1,5 @@
+import { TrialPaystackProvider } from "../billing/trial-provider.mjs";
+import { publicPricingCatalog, resolveTierPrice, tierPricingEnabled } from "../billing/pricing-catalog.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 import { createServer } from "node:http";
@@ -56,12 +58,15 @@ import {
   verifyPaystackWebhookSignature,
 } from "../billing/paystack.mjs";
 
-import { requirePremiumSubscription, subscriptionHasPremiumAccess } from "../billing/entitlements.mjs";
+import { requirePremiumSubscription, subscriptionHasPremiumAccess, subscriptionAllowsFeature } from "../billing/entitlements.mjs";
 
 import { ResendEmailSender } from "../email/resend-email-sender.mjs";
+import { CancellationEmailSender } from "../billing/cancellation-email-sender.mjs";
 
 import { SourceFileDeletionService } from "../ingestion/source-file-deletion.mjs";import { ProductionIngestionService } from "../ingestion/production-ingestion-service.mjs";
 import { serveSourceDownload } from "../ingestion/source-download.mjs";
+import { PostgresUpdatesRepository } from "../database/updates-repository.mjs";
+import { updatesRequest } from "../notifications/updates.mjs";
 import { PostgresManualEntryRepository } from "../database/manual-entry-repository.mjs";
 import { ManualEntryService } from "../ingestion/manual-entry.mjs";
 import { SevenDayTrialService } from "../billing/trial-service.mjs";
@@ -84,6 +89,11 @@ import { buildBusinessReport, validateReportPolicy, validateRevenueMappingSource
 import { reportSourcesFromSeries } from "../reports/production-sources.mjs";
 
 import { sendEvidenceExport } from "../reports/export.mjs";
+import { PostgresImportManifestRepository } from "../database/import-manifest-repository.mjs";
+import { PostgresMoneyTrailRepository } from "../database/money-trail-repository.mjs";
+import { PostgresMonthlyCloseRepository } from "../database/monthly-close-repository.mjs";
+import { businessReviewPath, businessReviewRequest } from "./business-review-routes.mjs";
+import { PostgresBusinessReviewRelease } from '../database/business-review-release.mjs';
 
 const CONTENT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -135,7 +145,13 @@ export function createProductionApp({
   businessOutcomesRepository,
   evidenceReportRepository,
   billingRepository,
+  billingEmailSender,
   activityRepository,
+  updatesRepository,
+  importManifestRepository,
+  moneyTrailRepository,
+  monthlyCloseRepository,
+  reviewReleaseRepository,
   objectStorage,
   ingestionService,
   manualEntryService,
@@ -174,6 +190,7 @@ export function createProductionApp({
   const dataIngestion =
     dataIngestionRepository ??
     (pool ? new PostgresDataIngestionRepository(pool) : null);
+  const importManifests=importManifestRepository ?? (pool ? new PostgresImportManifestRepository(pool) : null);
 
   const processingJobs =
     processingJobRepository ??
@@ -215,6 +232,7 @@ export function createProductionApp({
     (dataIngestion && storage
       ? new ProductionIngestionService({
           repository: dataIngestion,
+          profileRepository: importManifests,
 
           objectStorage: storage,
         })
@@ -257,6 +275,12 @@ export function createProductionApp({
 
   const runtime = {
     pool,
+    importManifests,
+    reviewRelease:reviewReleaseRepository??(pool?new PostgresBusinessReviewRelease(pool):null),
+    moneyTrail: moneyTrailRepository ?? (pool ? new PostgresMoneyTrailRepository(pool) : null),
+    monthlyClose: monthlyCloseRepository ?? (pool ? new PostgresMonthlyCloseRepository(pool) : null),
+    billingEmailSender: billingEmailSender ?? new CancellationEmailSender(),
+    updates: updatesRepository ?? (pool ? new PostgresUpdatesRepository(pool) : null),
 
     identity,
 
@@ -379,6 +403,11 @@ async function routeRequest({ request, response, runtime }) {
 
     response.end();
 
+    return;
+  }
+
+  if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+    sendJson(response, 200, { plans: publicPricingCatalog() });
     return;
   }
 
@@ -559,7 +588,7 @@ async function routeRequest({ request, response, runtime }) {
   enforceAllowedOrigin(request, runtime.production);
 
   if (isMobileTransport(request) && request.method === "POST" && [
-    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/renew",
+    "/api/billing/checkout", "/api/billing/verify", "/api/billing/cancel", "/api/billing/cancellation-confirmation", "/api/billing/renew",
     "/api/billing/trial/checkout", "/api/billing/trial/verify", "/api/billing/trial/cancel", "/api/billing/trial/payment-update",
   ].includes(url.pathname)) {
     await authenticateRequest({ request, runtime, requireCsrf: true });
@@ -1148,7 +1177,7 @@ async function routeRequest({ request, response, runtime }) {
     let result;
     if (url.pathname.endsWith("/checkout")) {
       result = await runtime.trials.startCheckout({ ...input, email: context.user.email,
-        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent });
+        callbackUrl: `${billingPublicUrl(request)}/billing/paystack/trial/callback`, consent: body.consent, priceId: body.priceId });
     } else if (url.pathname.endsWith("/verify")) {
       result = await runtime.trials.verifyCheckout({ ...input, reference: assertText(body.reference, "Card verification reference is required.", 160) });
     } else if (url.pathname.endsWith("/payment-update")) {
@@ -1210,7 +1239,7 @@ async function routeRequest({ request, response, runtime }) {
     return;
   }
 
-  if (url.pathname === "/api/billing/cancel" && request.method === "POST") {
+  if (["/api/billing/cancel", "/api/billing/cancellation-confirmation"].includes(url.pathname) && request.method === "POST") {
     const { context } = await authenticateRequest({
       request,
       runtime,
@@ -1246,9 +1275,15 @@ async function routeRequest({ request, response, runtime }) {
       provider: "paystack",
     });
 
+    if (url.pathname === "/api/billing/cancellation-confirmation" && subscription.status !== "non_renewing") {
+      throw new AuthError("This subscription is no longer canceled. Reload Billing to see its current status.", "VALIDATION_FAILED");
+    }
+
     if (subscription.status === "non_renewing") {
+      const confirmationEmail = await sendCancellationConfirmation(runtime, context, subscription);
       sendJson(response, 200, {
         subscription: publicSubscription(subscription),
+        confirmationEmail,
       });
 
       return;
@@ -1264,16 +1299,18 @@ async function routeRequest({ request, response, runtime }) {
     let subscriptionCode = subscription.providerSubscriptionCode;
 
     let emailToken = subscription.providerEmailToken;
+    let cancellationConfirmed = false;
 
     if (!subscriptionCode || !emailToken) {
       const recovered = await resolvePaystackSubscriptionIdentity({
         reference: subscription.checkoutReference,
 
         expectedSubscriptionCode: subscription.providerSubscriptionCode,
+        forCancellation: true,
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         fetchImpl: runtime.paystackFetch,
       });
@@ -1281,14 +1318,23 @@ async function routeRequest({ request, response, runtime }) {
       subscriptionCode = recovered.subscriptionCode;
 
       emailToken = recovered.emailToken;
+      cancellationConfirmed = recovered.cancellationConfirmed;
     }
 
-    await disablePaystackSubscription({
-      subscriptionCode,
-      emailToken,
-
-      fetchImpl: runtime.paystackFetch,
-    });
+    if (!cancellationConfirmed) {
+      try {
+        await disablePaystackSubscription({ subscriptionCode, emailToken, fetchImpl: runtime.paystackFetch });
+      } catch (error) {
+        if (error?.code !== "BILLING_PROVIDER_FAILED") throw error;
+        // A response may be lost after Paystack stops renewal. Reconcile only
+        // the exact server-bound subscription; never choose another by email.
+        const recovered = await resolvePaystackSubscriptionIdentity({
+          expectedSubscriptionCode: subscriptionCode, organizationId,
+          forCancellation: true, fetchImpl: runtime.paystackFetch,
+        });
+        if (!recovered.cancellationConfirmed) throw error;
+      }
+    }
 
     const updated = await runtime.billing.cancelSubscription({
       organizationId,
@@ -1297,8 +1343,14 @@ async function routeRequest({ request, response, runtime }) {
       providerEmailToken: emailToken,
     });
 
+    if (updated.status !== "non_renewing") {
+      throw new AuthError("Paystack cancellation needs reconciliation. Reload Billing before trying again.", "BILLING_RECONCILIATION_REQUIRED");
+    }
+    const confirmationEmail = await sendCancellationConfirmation(runtime, context, updated);
+
     sendJson(response, 200, {
       subscription: publicSubscription(updated),
+      confirmationEmail,
     });
 
     return;
@@ -1377,7 +1429,7 @@ async function routeRequest({ request, response, runtime }) {
 
         organizationId,
 
-        planCode: monthlyPlanFromEnv().planCode,
+        planCode: configuredPlanForSubscription(subscription).planCode,
 
         includeInactive: true,
 
@@ -1422,7 +1474,7 @@ async function routeRequest({ request, response, runtime }) {
           ? currentPeriodEnd
           : minimumStart;
 
-      const plan = monthlyPlanFromEnv();
+      const plan = renewalPlanForSubscription(subscription);
 
       const replacement = await createPaystackSubscription({
         customer: subscription.providerCustomerCode || context.user.email,
@@ -1500,7 +1552,9 @@ async function routeRequest({ request, response, runtime }) {
       );
     }
 
-    const plan = monthlyPlanFromEnv();
+    const tiered = tierPricingEnabled();
+    const body = tiered ? await readJson(request) : {};
+    const plan = tiered ? resolveTierPrice(body.priceId) : monthlyPlanFromEnv();
 
     if (!isProductionPaystackConfigured(plan)) {
       throw new AuthError(
@@ -1531,6 +1585,26 @@ async function routeRequest({ request, response, runtime }) {
       }
     }
 
+    if (tiered && currentSubscription.status === "pending_checkout") {
+      const pending = await loadBillingCheckout({ runtime, organizationId, actorUserId: context.user.id,
+        reference: currentSubscription.checkoutReference });
+      if (pending?.status !== "pending" || pending.plan_id !== plan.id || !pending.authorization_url) {
+        throw new AuthError("Finish your existing checkout before selecting a different plan.", "VALIDATION_FAILED");
+      }
+      sendJson(response, 200, { checkout: { provider: "paystack", reference: pending.reference,
+        authorizationUrl: pending.authorization_url }, subscription: publicSubscription(currentSubscription) });
+      return;
+    }
+    if (tiered) {
+      const provider = new TrialPaystackProvider({ fetchImpl: runtime.paystackFetch });
+      const actual = await provider.plan(plan.planCode);
+      if (actual.plan_code !== plan.planCode || Number(actual.amount) !== plan.amountMinor ||
+          actual.currency !== plan.currency || actual.interval !== plan.interval ||
+          actual.domain !== process.env.PAYSTACK_SECRET_KEY?.split("_")[1]) {
+        throw new AuthError("Paystack plan does not match the selected monthly price.", "BILLING_PROVIDER_NOT_CONFIGURED");
+      }
+    }
+
     const publicUrl = billingPublicUrl(request);
 
     const reference = createProductionBillingReference();
@@ -1543,9 +1617,18 @@ async function routeRequest({ request, response, runtime }) {
       callbackUrl: `${publicUrl}/billing/paystack/callback`,
 
       reference,
+      plan,
 
       fetchImpl: runtime.paystackFetch,
     });
+
+    if (tiered) {
+      const hosted = new URL(checkout.authorizationUrl, "https://biznoryx.com");
+      if (checkout.reference !== reference || hosted.origin !== "https://checkout.paystack.com" ||
+          hosted.username || hosted.password) {
+        throw new AuthError("Paystack returned an invalid checkout session.", "BILLING_PROVIDER_FAILED");
+      }
+    }
 
     await runtime.billing.createCheckoutSession({
       organizationId,
@@ -1560,6 +1643,8 @@ async function routeRequest({ request, response, runtime }) {
 
       accessCode: checkout.accessCode,
 
+      plan,
+      protectPending: tiered,
       metadata: {
         source: "production_web",
 
@@ -1829,6 +1914,20 @@ async function routeRequest({ request, response, runtime }) {
     await serveSourceDownload(response, () => runtime.ingestion.download({
       organizationId, actorUserId: context.user.id, uploadId: sourceDownload[1],
     }));
+    return;
+  }
+
+  if (businessReviewPath(url.pathname)) {
+    const {context}=await authenticateRequest({request,runtime,requireCsrf:request.method!=='GET'});
+    const organizationId=requireActiveOrganization(context,'Select a business before reviewing its records.');
+    const billingContext = { billingRepository: runtime.billing, organizationId, actorUserId: context.user.id };
+    const feature = url.pathname.startsWith("/api/money-trail") ? "moneyTrail"
+      : url.pathname.startsWith("/api/monthly-close") ? "monthlyClose" : undefined;
+    const subscription = url.pathname === "/api/business-review"
+      ? await runtime.billing?.ensureSubscription(billingContext)
+      : await requirePremiumSubscription({ ...billingContext, feature });
+    const allowsFeature = (name) => subscriptionAllowsFeature(subscription, name);
+    await businessReviewRequest({request,response,url,runtime,tenant:{organizationId,actorUserId:context.user.id},readJson,sendJson,sendEvidenceExport,mapIngestionResult,allowsFeature});
     return;
   }
 
@@ -2163,6 +2262,16 @@ async function routeRequest({ request, response, runtime }) {
    * ==================================================
    */
 
+  if (["/api/updates", "/api/updates/state", "/api/updates/read-all", "/api/updates/preferences"].includes(url.pathname)) {
+    const { context } = await authenticateRequest({ request, runtime, requireCsrf: request.method === "POST" });
+    const organizationId = requireActiveOrganization(context, "Select a business before opening Updates.");
+    const result = await updatesRequest({ repository: runtime.updates,
+      scope: { organizationId, actorUserId: context.user.id }, path: url.pathname, method: request.method,
+      query: url.searchParams, body: request.method === "POST" ? await readJson(request) : undefined });
+    sendJson(response, 200, result);
+    return;
+  }
+
   if (url.pathname === "/api/dashboard" && request.method === "GET") {
     const { context } = await authenticateRequest({
       request,
@@ -2391,6 +2500,7 @@ async function routeRequest({ request, response, runtime }) {
     );
 
     await requirePremiumSubscription({
+      feature: url.searchParams.has("format") ? "reportExport" : undefined,
       billingRepository: runtime.billing,
 
       organizationId,
@@ -2796,6 +2906,20 @@ function createProductionBillingReference() {
   return `bnx-${Date.now()}-${randomBytes(8).toString("hex")}`;
 }
 
+function configuredPlanForSubscription(subscription) {
+  return subscription.planId?.endsWith("_ngn_monthly_v1")
+    ? resolveTierPrice(subscription.planId)
+    : monthlyPlanFromEnv();
+}
+
+function renewalPlanForSubscription(subscription) {
+  const plan = configuredPlanForSubscription(subscription);
+  if (plan.amountMinor !== subscription.amountMinor || plan.currency !== subscription.currency) {
+    throw new AuthError("The original subscription price needs billing support.", "BILLING_RECONCILIATION_REQUIRED");
+  }
+  return plan;
+}
+
 function isProductionPaystackConfigured(plan = monthlyPlanFromEnv()) {
   return Boolean(
     plan.providerConfigured && plan.planCode && process.env.PAYSTACK_SECRET_KEY,
@@ -2838,9 +2962,9 @@ function publicSubscription(subscription) {
 
     canCancel:
       ["active", "past_due"].includes(subscription.status) &&
+      Boolean(String(process.env.PAYSTACK_SECRET_KEY ?? "").trim()) &&
       Boolean(
-        (subscription.providerSubscriptionCode &&
-          subscription.providerEmailToken) ||
+        subscription.providerSubscriptionCode ||
         (subscription.checkoutReference &&
           isProductionPaystackConfigured(configuredPlan)),
       ),
@@ -2864,6 +2988,18 @@ function publicSubscription(subscription) {
 
     nextStep: subscriptionNextStep(subscription, price),
   };
+}
+
+async function sendCancellationConfirmation(runtime, context, subscription) {
+  try {
+    await runtime.billingEmailSender.sendCancellationConfirmation({ to: context.user.email, subscription });
+    return { status: "accepted" };
+  } catch {
+    // Provider email failures must never make a confirmed cancellation appear
+    // to have failed, nor expose transport credentials or customer addresses.
+    console.error("Billing cancellation confirmation email could not be sent.");
+    return { status: "failed" };
+  }
 }
 
 function publicBillingPayment(payment) {
@@ -3083,6 +3219,12 @@ async function verifyAndActivateBillingCheckout({
 
     provider: "paystack",
   });
+
+  if (checkout.plan_id !== currentSubscription.planId ||
+      Number(checkout.amount_minor) !== currentSubscription.amountMinor ||
+      checkout.currency !== currentSubscription.currency) {
+    throw new AuthError("Checkout terms do not match this subscription.", "BILLING_BINDING_MISMATCH");
+  }
 
   validateVerifiedPaystackPayment({
     verified,
@@ -3482,7 +3624,7 @@ function validateVerifiedPaystackPayment({
 
 async function readJson(request) {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  const limit = ["/api/ingestion/upload", "/api/ingestion/manual/draft"].includes(pathname)
+  const limit = ["/api/ingestion/upload", "/api/ingestion/manual/draft", "/api/ingestion/preview", "/api/ingestion/reviewed"].includes(pathname)
     ? MAX_JSON_BODY_BYTES
     : isAuthEndpoint(pathname) ? MAX_AUTH_BODY_BYTES : MAX_CONTROL_BODY_BYTES;
   const bytes = await readRawBody(request, limit);
@@ -3577,6 +3719,9 @@ function sendError(response, error) {
         ["NOT_FOUND", 404],
 
         ["VALIDATION_FAILED", 400],
+        ["CONFLICT", 409],
+        ["UPLOAD_BUSY", 429],
+        ["UPLOAD_RESOURCE_LIMIT", 413],
 
         ["INVALID_JSON", 400],
 
@@ -3815,7 +3960,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 
     rawObjectId: result.rawObject.id,
 
-    fileName: result.rawObject.originalFilename,
+    fileName: result.originalFile?.originalFilename ?? result.rawObject.originalFilename,
 
     period: reportingMonth(result.reportingPeriod.periodStart),
 
@@ -3825,7 +3970,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 
     dataKind: dataKind || result.dataStream.displayName,
 
-    sourceFormat: "CSV file",
+    sourceFormat: result.originalFile?.contentType ?? "CSV file",
 
     status: result.ingestionRun.status,
 
@@ -3860,6 +4005,7 @@ function mapIngestionResult(result, { dataKind = "" } = {}) {
 function mapDashboardUpload(upload) {
   return {
     id: upload.id,
+    hasImportMapping: upload.hasImportMapping ?? false,
 
     downloadAvailable: upload.rawObject.status !== "quarantined",
 

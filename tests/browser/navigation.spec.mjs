@@ -70,7 +70,7 @@ for (const viewport of [
       [
         "Pricing",
         "pricing",
-        "₦40,000 per month for the BIZNORYX business workspace.",
+        "Monthly plans for your BIZNORYX workspace.",
       ],
       [
         "Security",
@@ -89,6 +89,16 @@ for (const viewport of [
         await expect(
           page.getByRole("heading", { name: heading, exact: true }),
         ).toBeVisible();
+        if (path === "pricing") {
+          await expect(page.locator("main")).not.toContainText("40,000");
+          const plans = page.getByRole("region", { name: "Monthly plans" });
+          await expect(plans.getByRole("heading")).toHaveText([
+            "Starter", "Growth", "Business", "Business Plus",
+          ]);
+          for (const amount of ["5,900", "12,900", "24,900", "39,900"]) {
+            await expect(plans.getByText(new RegExp(amount))).toBeVisible();
+          }
+        }
       });
     }
 

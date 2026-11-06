@@ -1,20 +1,15 @@
 import { validateCsvHeaderSizes } from "./csv-limits.mjs";
+import { normalizeTabularUpload } from "./tabular-upload.mjs";
+import { applyImportProfile } from "./profile-normalization.mjs";
 import { createHash } from "node:crypto";
 import { ObjectStorageError } from "../storage/s3-object-storage.mjs";
-import {
-  parse,
-} from "csv-parse/sync";
+import { parse } from "csv-parse/sync";
 
-import {
-  AuthError,
-} from "../auth/core.mjs";
+import { AuthError } from "../auth/core.mjs";
 
-import {
-  createRawObjectIdentity,
-} from "./raw-object-identity.mjs";
+import { createRawObjectIdentity } from "./raw-object-identity.mjs";
 
-const MAX_UPLOAD_BYTES =
-  25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const MAX_BATCH_FILES = 10;
 
@@ -24,55 +19,215 @@ const MAX_CSV_CELLS = 1_000_000;
 const MAX_CSV_RECORD_BYTES = 1024 * 1024;
 
 export class ProductionIngestionService {
-  constructor({
-    repository,
-    objectStorage,
-  }) {
+  constructor({ repository, objectStorage, profileRepository }) {
     if (!repository) {
-      throw new TypeError(
-        "Ingestion repository is required.",
-      );
+      throw new TypeError("Ingestion repository is required.");
     }
 
     if (!objectStorage) {
-      throw new TypeError(
-        "Object storage is required.",
-      );
+      throw new TypeError("Object storage is required.");
     }
 
-    this.repository =
-      repository;
+    this.repository = repository;
+    this.profileRepository = profileRepository;
 
-    this.objectStorage =
-      objectStorage;
-    this.inflightObjectWrites =
-      new Map();
+    this.objectStorage = objectStorage;
+    this.inflightObjectWrites = new Map();
   }
 
-  async download({ organizationId, actorUserId, uploadId }) {
-    const source = await this.repository.getSourceFile({ organizationId, actorUserId, uploadId });
-    const tenantPrefixes = [`organizations/${organizationId}/uploads/`, `org/${organizationId}/raw/`];
-    if (!tenantPrefixes.some((prefix) => source.storageKey.startsWith(prefix))) {
+  async download({
+    organizationId,
+    actorUserId,
+    uploadId,
+    normalized = false,
+  }) {
+    const source = await this.repository[
+      normalized ? "getNormalizedFile" : "getSourceFile"
+    ]({ organizationId, actorUserId, uploadId });
+    const tenantPrefixes = [
+      `organizations/${organizationId}/uploads/`,
+      `org/${organizationId}/raw/`,
+    ];
+    if (
+      !tenantPrefixes.some((prefix) => source.storageKey.startsWith(prefix))
+    ) {
       throw new AuthError("Source file was not found.", "NOT_FOUND");
     }
-    if (!Number.isSafeInteger(source.byteSize) || source.byteSize <= 0 || source.byteSize > MAX_UPLOAD_BYTES) {
+    if (
+      !Number.isSafeInteger(source.byteSize) ||
+      source.byteSize <= 0 ||
+      source.byteSize > MAX_UPLOAD_BYTES
+    ) {
       throw new ObjectStorageError("Stored source size is invalid.");
     }
     let object;
     try {
       object = await this.objectStorage.getObject({ key: source.storageKey });
     } catch (error) {
-      if (error instanceof ObjectStorageError && error.code === "OBJECT_NOT_FOUND") {
+      if (
+        error instanceof ObjectStorageError &&
+        error.code === "OBJECT_NOT_FOUND"
+      ) {
         throw new AuthError("Source file was not found.", "NOT_FOUND");
       }
       throw error;
     }
     const body = object.body;
-    if (!Buffer.isBuffer(body) || body.byteLength !== source.byteSize ||
-        createHash("sha256").update(body).digest("hex") !== source.checksumSha256) {
+    if (
+      !Buffer.isBuffer(body) ||
+      body.byteLength !== source.byteSize ||
+      createHash("sha256").update(body).digest("hex") !== source.checksumSha256
+    ) {
       throw new ObjectStorageError("Stored source integrity check failed.");
     }
-    return { body, fileName: source.originalFilename, contentType: source.contentType };
+    return {
+      body,
+      fileName: source.originalFilename,
+      contentType: source.contentType,
+    };
+  }
+
+  async preview(input) {
+    if (input.uploadId) {
+      const source = await this.repository.getNormalizedFile(input);
+      if (source.byteSize > 4 * 1024 * 1024)
+        throw new AuthError(
+          "Reviewed mappings support source files up to 4 MiB on the current runtime. Original download and existing CSV processing remain available.",
+          "VALIDATION_FAILED",
+        );
+      const object = await this.download({ ...input, normalized: true });
+      const parsed = await normalizeTabularUpload({
+        fileName: object.fileName,
+        content: object.body,
+      });
+      const uploads = await this.repository.listUploads(input),
+        upload = uploads.find((u) => u.id === input.uploadId);
+      if (!upload) throw new AuthError("Upload not found.", "NOT_FOUND");
+      return {
+        fileName: object.fileName,
+        format: "csv",
+        checksumSha256: createHash("sha256").update(object.body).digest("hex"),
+        byteSize: object.body.length,
+        rowCount: parsed.rowCount,
+        columns: parsed.columns,
+        previewRows: parsed.previewRows,
+        parserVersion: parsed.parserVersion,
+        rowConvention: parsed.rowConvention,
+        dataStream: upload.dataStream,
+        reportingPeriod: upload.reportingPeriod,
+      };
+    }
+    checkReviewedSize(input);
+    const parsed = await normalizeTabularUpload(input);
+    const reportingPeriod = parseMonthlyPeriod(input.period);
+    const dataSeries = requiredText(
+      input.dataSeries ?? "Business data",
+      "Data series is required.",
+    );
+    const tenant = {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+    };
+    const source = await this.repository.ensureManualUploadSource(tenant);
+    const stream = await this.repository.ensureStream({
+      ...tenant,
+      dataSourceId: source.id,
+      name: streamSlug(dataSeries),
+      displayName: dataSeries,
+      grain: "monthly",
+    });
+    return {
+      fileName: input.fileName,
+      format: parsed.format,
+      checksumSha256: createHash("sha256")
+        .update(parsed.originalBytes)
+        .digest("hex"),
+      byteSize: parsed.originalBytes.length,
+      rowCount: parsed.rowCount,
+      columns: parsed.columns,
+      previewRows: parsed.previewRows,
+      selectedSheet: parsed.selectedSheet ?? null,
+      sheets: parsed.sheets ?? [],
+      parserVersion: parsed.parserVersion,
+      rowConvention: parsed.rowConvention,
+      dataStream: stream,
+      reportingPeriod,
+    };
+  }
+
+  async uploadReviewed(input) {
+    checkReviewedSize(input);
+    if (!this.profileRepository)
+      throw new AuthError(
+        "Reviewed import mappings are unavailable.",
+        "SERVICE_UNAVAILABLE",
+      );
+    // Authorize the actor before any object-storage write, including the original.
+    const profile = await this.profileRepository.get(input);
+    const parsed = applyImportProfile(
+      await normalizeTabularUpload(input),
+      profile.definition,
+    );
+    const identity = createRawObjectIdentity({
+      organizationId: input.organizationId,
+      originalFilename: input.fileName,
+      content: parsed.originalBytes,
+    });
+    if (
+      input.reviewedChecksum !== identity.checksumSha256 ||
+      !input.profileId
+    ) {
+      throw new AuthError(
+        "Review the file and approve its mapping before importing.",
+        "VALIDATION_FAILED",
+      );
+    }
+    const original = {
+      ...identity,
+      originalFilename: input.fileName,
+      contentType: parsed.originalContentType,
+      byteSize: parsed.originalBytes.length,
+    };
+    // Preserve the original artifact under the same immutable, tenant-scoped
+    // addressing used by CSV. The registration transaction binds both objects.
+    if (
+      !(await this.objectStorage.headObject({ key: identity.storageKey }))
+        .exists
+    ) {
+      await this.objectStorage.putObject({
+        key: identity.storageKey,
+        body: parsed.originalBytes,
+        contentType: parsed.originalContentType,
+        metadata: {
+          organization: input.organizationId,
+          checksum: identity.checksumSha256,
+        },
+      });
+    }
+    const result = await this.upload({
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      fileName:
+        parsed.format === "csv" &&
+        parsed.normalizedContent === parsed.originalBytes.toString("utf8")
+          ? input.fileName
+          : `${input.fileName}.normalized.csv`,
+      content: parsed.normalizedContent,
+      period: input.period,
+      dataSeries: input.dataSeries,
+      parsedUpload: parseCsv(parsed.normalizedContent),
+      importManifest: {
+        original,
+        profileId: input.profileId,
+        parserVersion: parsed.parserVersion,
+        format: parsed.format,
+        normalization: parsed.normalization,
+        selectedSheet: parsed.selectedSheet,
+        columns: parsed.columns.map((c) => c.name),
+        supersedesRunId: input.supersedesRunId,
+      },
+    });
+    return { ...result, originalFile: original };
   }
 
   async upload({
@@ -80,197 +235,143 @@ export class ProductionIngestionService {
     actorUserId,
     fileName,
     content,
+    importManifest,
+    parsedUpload,
     period,
-    dataSeries =
-      "Business data",
+    dataSeries = "Business data",
   }) {
-    const normalizedFileName =
-      requiredText(
-        fileName,
-        "File name is required.",
-      );
+    const normalizedFileName = requiredText(fileName, "File name is required.");
 
-    const normalizedSeries =
-      requiredText(
-        dataSeries,
-        "Data series is required.",
-      );
-
-    validateRawContent(
-      content,
+    const normalizedSeries = requiredText(
+      dataSeries,
+      "Data series is required.",
     );
 
-    if (
-      !normalizedFileName
-        .toLowerCase()
-        .endsWith(".csv")
-    ) {
+    validateRawContent(content);
+
+    if (!normalizedFileName.toLowerCase().endsWith(".csv")) {
       throw new AuthError(
         "Only CSV uploads are supported in the current production ingestion phase.",
         "VALIDATION_FAILED",
       );
     }
 
-    const rawBytes =
-      Buffer.from(
-        content,
-        "utf8",
-      );
+    const rawBytes = Buffer.from(content, "utf8");
 
-    if (
-      rawBytes.byteLength >
-      MAX_UPLOAD_BYTES
-    ) {
+    if (rawBytes.byteLength > MAX_UPLOAD_BYTES) {
       throw new AuthError(
         "Uploaded file exceeds the 25 MB limit.",
         "VALIDATION_FAILED",
       );
     }
 
-    const parsed =
-      parseCsv(content);
+    const parsed = parsedUpload ?? parseCsv(content);
 
-    const reportingPeriod =
-      parseMonthlyPeriod(
-        period,
-      );
+    const reportingPeriod = parseMonthlyPeriod(period);
 
     /*
      * Create or reuse the tenant's manual
      * source and recurring data stream.
      */
-    const source =
-      await this.repository
-        .ensureManualUploadSource({
-          organizationId,
-          actorUserId,
-        });
+    const source = await this.repository.ensureManualUploadSource({
+      organizationId,
+      actorUserId,
+    });
 
-    const stream =
-      await this.repository
-        .ensureStream({
-          organizationId,
-          actorUserId,
+    const stream = await this.repository.ensureStream({
+      organizationId,
+      actorUserId,
 
-          dataSourceId:
-            source.id,
+      dataSourceId: source.id,
 
-          name:
-            streamSlug(
-              normalizedSeries,
-            ),
+      name: streamSlug(normalizedSeries),
 
-          displayName:
-            normalizedSeries,
+      displayName: normalizedSeries,
 
-          grain:
-            "monthly",
-        });
+      grain: "monthly",
+    });
 
     /*
      * Calculate exactly the same storage
      * identity used by the PostgreSQL
      * repository.
      */
-    const identity =
-      createRawObjectIdentity({
-        organizationId,
+    const identity = createRawObjectIdentity({
+      organizationId,
 
-        originalFilename:
-          normalizedFileName,
+      originalFilename: normalizedFileName,
 
-        content,
-      });
+      content,
+    });
 
     const writeLock =
       this.inflightObjectWrites.get(identity.storageKey) ?? Promise.resolve();
 
     let unlock = () => {};
 
-    const currentLock =
-      new Promise((resolve) => {
-        unlock = resolve;
-      });
+    const currentLock = new Promise((resolve) => {
+      unlock = resolve;
+    });
 
     this.inflightObjectWrites.set(identity.storageKey, currentLock);
 
     try {
       await writeLock;
 
-      const existingObject =
-        await this.objectStorage
-          .headObject({
-            key:
-              identity.storageKey,
-          });
+      const existingObject = await this.objectStorage.headObject({
+        key: identity.storageKey,
+      });
 
       if (!existingObject.exists) {
-        await this.objectStorage
-          .putObject({
-            key:
-              identity.storageKey,
+        await this.objectStorage.putObject({
+          key: identity.storageKey,
 
-            body:
-              rawBytes,
+          body: rawBytes,
 
-            contentType:
-              "text/csv",
+          contentType: "text/csv",
 
-            metadata: {
-              organization:
-                organizationId,
+          metadata: {
+            organization: organizationId,
 
-              checksum:
-                identity
-                  .checksumSha256,
-            },
-          });
+            checksum: identity.checksumSha256,
+          },
+        });
       }
 
       // Shared content-addressed bytes remain evidence even when registration
       // is rejected or fails. Request cleanup could delete another replica's
       // committed object; unreferenced objects need separate reconciliation.
-      const result =
-        await this.repository
-          .registerRawUpload({
-            organizationId,
-            actorUserId,
+      const result = await this.repository.registerRawUpload({
+        organizationId,
+        actorUserId,
 
-            dataSourceId:
-              source.id,
+        dataSourceId: source.id,
 
-            dataStreamId:
-              stream.id,
+        dataStreamId: stream.id,
 
-            upload: {
-              originalFilename:
-                normalizedFileName,
+        upload: {
+          originalFilename: normalizedFileName,
 
-              contentType:
-                "text/csv",
+          contentType: "text/csv",
 
-              content,
+          content,
+          ...(importManifest ? { importManifest } : {}),
 
-              byteSize:
-                rawBytes.byteLength,
+          byteSize: rawBytes.byteLength,
 
-              rowCount:
-                parsed.rowCount,
+          rowCount: parsed.rowCount,
 
-              columns:
-                parsed.columns,
-            },
+          columns: parsed.columns,
+        },
 
-            reportingPeriod,
-          });
+        reportingPeriod,
+      });
 
       return result;
     } finally {
       unlock();
 
-      if (
-        this.inflightObjectWrites.get(identity.storageKey) === currentLock
-      ) {
+      if (this.inflightObjectWrites.get(identity.storageKey) === currentLock) {
         this.inflightObjectWrites.delete(identity.storageKey);
       }
     }
@@ -281,23 +382,16 @@ export class ProductionIngestionService {
     actorUserId,
     files,
     period,
-    dataSeries =
-      "Business data",
+    dataSeries = "Business data",
   }) {
-    if (
-      !Array.isArray(files) ||
-      files.length === 0
-    ) {
+    if (!Array.isArray(files) || files.length === 0) {
       throw new AuthError(
         "At least one file is required.",
         "VALIDATION_FAILED",
       );
     }
 
-    if (
-      files.length >
-      MAX_BATCH_FILES
-    ) {
+    if (files.length > MAX_BATCH_FILES) {
       throw new AuthError(
         `A maximum of ${MAX_BATCH_FILES} files can be uploaded in one batch.`,
         "VALIDATION_FAILED",
@@ -306,28 +400,21 @@ export class ProductionIngestionService {
 
     const uploads = [];
 
-    for (
-      const file of files
-    ) {
-      const result =
-        await this.upload({
-          organizationId,
-          actorUserId,
+    for (const file of files) {
+      const result = await this.upload({
+        organizationId,
+        actorUserId,
 
-          fileName:
-            file?.fileName,
+        fileName: file?.fileName,
 
-          content:
-            file?.content,
+        content: file?.content,
 
-          period,
+        period,
 
-          dataSeries,
-        });
+        dataSeries,
+      });
 
-      uploads.push(
-        result,
-      );
+      uploads.push(result);
     }
 
     return uploads;
@@ -340,63 +427,60 @@ function parseCsv(content) {
   let recordBytes = 0;
 
   try {
-    records =
-      parse(content, {
-        bom: true,
+    records = parse(content, {
+      bom: true,
 
-        skip_empty_lines:
-          true,
+      skip_empty_lines: true,
 
-        relax_column_count:
-          false,
+      relax_column_count: false,
 
-        trim: true,
+      trim: true,
 
-        max_record_size: MAX_CSV_RECORD_BYTES,
+      max_record_size: MAX_CSV_RECORD_BYTES,
 
-        // Include the header and first excess row so overflow throws instead
-        // of silently accepting a truncated file.
-        to: MAX_CSV_ROWS + 2,
+      // Include the header and first excess row so overflow throws instead
+      // of silently accepting a truncated file.
+      to: MAX_CSV_ROWS + 2,
 
-        cast: (value, { index }) => {
-          // A delimiter-only record can grow without hitting max_record_size.
-          // Check width before the parser appends another field to the record.
-          if (index >= MAX_CSV_COLUMNS) {
+      cast: (value, { index }) => {
+        // A delimiter-only record can grow without hitting max_record_size.
+        // Check width before the parser appends another field to the record.
+        if (index >= MAX_CSV_COLUMNS) {
+          throw new AuthError(
+            "The CSV file exceeds the limit of 200 columns.",
+            "VALIDATION_FAILED",
+          );
+        }
+        recordBytes += Buffer.byteLength(value, "utf8");
+        if (recordBytes > MAX_CSV_RECORD_BYTES) {
+          throw new AuthError(
+            "A CSV record exceeds the 1 MiB data limit.",
+            "VALIDATION_FAILED",
+          );
+        }
+        return value;
+      },
+
+      on_record: (record, { records: recordCount }) => {
+        if (recordCount > MAX_CSV_ROWS + 1) {
+          throw new AuthError(
+            "The CSV file exceeds the limit of 50,000 data rows.",
+            "VALIDATION_FAILED",
+          );
+        }
+        if (recordCount > 1) {
+          dataCells += record.length;
+          if (dataCells > MAX_CSV_CELLS) {
             throw new AuthError(
-              "The CSV file exceeds the limit of 200 columns.",
+              "The CSV file exceeds the limit of 1,000,000 data cells.",
               "VALIDATION_FAILED",
             );
           }
-          recordBytes += Buffer.byteLength(value, "utf8");
-          if (recordBytes > MAX_CSV_RECORD_BYTES) {
-            throw new AuthError(
-              "A CSV record exceeds the 1 MiB data limit.",
-              "VALIDATION_FAILED",
-            );
-          }
-          return value;
-        },
-
-        on_record: (record, { records: recordCount }) => {
-          if (recordCount > MAX_CSV_ROWS + 1) {
-            throw new AuthError(
-              "The CSV file exceeds the limit of 50,000 data rows.",
-              "VALIDATION_FAILED",
-            );
-          }
-          if (recordCount > 1) {
-            dataCells += record.length;
-            if (dataCells > MAX_CSV_CELLS) {
-              throw new AuthError(
-                "The CSV file exceeds the limit of 1,000,000 data cells.",
-                "VALIDATION_FAILED",
-              );
-            }
-          }
-          recordBytes = 0;
-          return record;
-        },
-      });
+        }
+        recordBytes = 0;
+        return record;
+      },
+    });
   } catch (error) {
     if (error instanceof AuthError) throw error;
     if (error?.code === "CSV_MAX_RECORD_SIZE") {
@@ -411,45 +495,25 @@ function parseCsv(content) {
     );
   }
 
-  if (
-    !Array.isArray(records) ||
-    records.length < 2
-  ) {
+  if (!Array.isArray(records) || records.length < 2) {
     throw new AuthError(
       "The CSV file must contain a header and at least one data row.",
       "VALIDATION_FAILED",
     );
   }
 
-  const rawHeaders =
-    records[0];
+  const rawHeaders = records[0];
 
-  if (
-    !Array.isArray(
-      rawHeaders,
-    ) ||
-    rawHeaders.length === 0
-  ) {
+  if (!Array.isArray(rawHeaders) || rawHeaders.length === 0) {
     throw new AuthError(
       "The CSV file does not contain a valid header row.",
       "VALIDATION_FAILED",
     );
   }
 
-  const headers =
-    rawHeaders.map(
-      (header) =>
-        String(
-          header ?? "",
-        ).trim(),
-    );
+  const headers = rawHeaders.map((header) => String(header ?? "").trim());
 
-  if (
-    headers.some(
-      (header) =>
-        !header,
-    )
-  ) {
+  if (headers.some((header) => !header)) {
     throw new AuthError(
       "The CSV file contains an empty column name.",
       "VALIDATION_FAILED",
@@ -458,40 +522,24 @@ function parseCsv(content) {
 
   validateCsvHeaderSizes(headers);
 
-  const normalizedHeaders =
-    headers.map(
-      (header) =>
-        header.toLowerCase(),
-    );
+  const normalizedHeaders = headers.map((header) => header.toLowerCase());
 
-  if (
-    new Set(
-      normalizedHeaders,
-    ).size !==
-    normalizedHeaders.length
-  ) {
+  if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
     throw new AuthError(
       "The CSV file contains duplicate column names.",
       "VALIDATION_FAILED",
     );
   }
 
-  const rows =
-    records.slice(1);
+  const rows = records.slice(1);
 
   /*
    * csv-parse already rejects inconsistent
    * column counts, but keep this explicit
    * guard at the service boundary.
    */
-  for (
-    const row of rows
-  ) {
-    if (
-      !Array.isArray(row) ||
-      row.length !==
-        headers.length
-    ) {
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length !== headers.length) {
       throw new AuthError(
         "The CSV file contains rows with an inconsistent number of columns.",
         "VALIDATION_FAILED",
@@ -499,100 +547,47 @@ function parseCsv(content) {
     }
   }
 
-  const columns =
-    headers.map(
-      (
-        name,
-        index,
-      ) => {
-        const values =
-          rows.map(
-            (row) =>
-              row[index],
-          );
+  const columns = headers.map((name, index) => {
+    const values = rows.map((row) => row[index]);
 
-        return {
-          name,
+    return {
+      name,
 
-          type:
-            inferColumnType(
-              values,
-            ),
+      type: inferColumnType(values),
 
-          required:
-            values.every(
-              (value) =>
-                String(
-                  value ?? "",
-                ).trim() !==
-                "",
-            ),
-        };
-      },
-    );
+      required: values.every((value) => String(value ?? "").trim() !== ""),
+    };
+  });
 
   return {
-    rowCount:
-      rows.length,
+    rowCount: rows.length,
 
     columns,
   };
 }
 
-function inferColumnType(
-  values,
-) {
-  const populated =
-    values
-      .map(
-        (value) =>
-          String(
-            value ?? "",
-          ).trim(),
-      )
-      .filter(Boolean);
+function inferColumnType(values) {
+  const populated = values
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
 
-  if (
-    populated.length === 0
-  ) {
+  if (populated.length === 0) {
     return "text";
   }
 
-  if (
-    populated.every(
-      (value) =>
-        /^\d{4}-\d{2}-\d{2}$/.test(
-          value,
-        ),
-    )
-  ) {
+  if (populated.every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))) {
     return "date";
   }
 
   if (
-    populated.every(
-      (value) =>
-        [
-          "true",
-          "false",
-          "yes",
-          "no",
-        ].includes(
-          value.toLowerCase(),
-        ),
+    populated.every((value) =>
+      ["true", "false", "yes", "no"].includes(value.toLowerCase()),
     )
   ) {
     return "boolean";
   }
 
-  if (
-    populated.every(
-      (value) =>
-        isDecimal(
-          value,
-        ),
-    )
-  ) {
+  if (populated.every((value) => isDecimal(value))) {
     return "decimal";
   }
 
@@ -600,32 +595,15 @@ function inferColumnType(
 }
 
 function isDecimal(value) {
-  const normalized =
-    String(value)
-      .trim()
-      .replace(
-        /,/g,
-        "",
-      );
+  const normalized = String(value).trim().replace(/,/g, "");
 
-  return /^-?\d+(?:\.\d+)?$/.test(
-    normalized,
-  );
+  return /^-?\d+(?:\.\d+)?$/.test(normalized);
 }
 
-function parseMonthlyPeriod(
-  value,
-) {
-  const period =
-    requiredText(
-      value,
-      "Reporting period is required.",
-    );
+function parseMonthlyPeriod(value) {
+  const period = requiredText(value, "Reporting period is required.");
 
-  const match =
-    /^(\d{4})-(\d{2})$/.exec(
-      period,
-    );
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
 
   if (!match) {
     throw new AuthError(
@@ -634,79 +612,35 @@ function parseMonthlyPeriod(
     );
   }
 
-  const year =
-    Number(
-      match[1],
-    );
+  const year = Number(match[1]);
 
-  const month =
-    Number(
-      match[2],
-    );
+  const month = Number(match[2]);
 
   if (
-    !Number.isInteger(
-      year,
-    ) ||
+    !Number.isInteger(year) ||
     year < 2000 ||
     year > 2200 ||
     month < 1 ||
     month > 12
   ) {
-    throw new AuthError(
-      "Reporting period is invalid.",
-      "VALIDATION_FAILED",
-    );
+    throw new AuthError("Reporting period is invalid.", "VALIDATION_FAILED");
   }
 
-  const monthText =
-    String(month).padStart(
-      2,
-      "0",
-    );
+  const monthText = String(month).padStart(2, "0");
 
-  const periodStart =
-    `${year}-${monthText}-01`;
+  const periodStart = `${year}-${monthText}-01`;
 
-  const lastDay =
-    new Date(
-      Date.UTC(
-        year,
-        month,
-        0,
-      ),
-    ).getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
-  const periodEnd =
-    `${year}-${monthText}-${String(
-      lastDay,
-    ).padStart(
-      2,
-      "0",
-    )}`;
+  const periodEnd = `${year}-${monthText}-${String(lastDay).padStart(2, "0")}`;
 
-  const label =
-    new Intl.DateTimeFormat(
-      "en",
-      {
-        month:
-          "long",
+  const label = new Intl.DateTimeFormat("en", {
+    month: "long",
 
-        year:
-          "numeric",
+    year: "numeric",
 
-        timeZone:
-          "UTC",
-      },
-    ).format(
-      new Date(
-        Date.UTC(
-          year,
-          month - 1,
-          1,
-        ),
-      ),
-    );
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 
   return {
     periodStart,
@@ -716,31 +650,13 @@ function parseMonthlyPeriod(
 }
 
 function streamSlug(value) {
-  const slug =
-    requiredText(
-      value,
-      "Data series is required.",
-    )
-      .toLowerCase()
-      .normalize(
-        "NFKD",
-      )
-      .replace(
-        /[\u0300-\u036f]/g,
-        "",
-      )
-      .replace(
-        /[^a-z0-9]+/g,
-        "-",
-      )
-      .replace(
-        /^-+|-+$/g,
-        "",
-      )
-      .slice(
-        0,
-        80,
-      );
+  const slug = requiredText(value, "Data series is required.")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 
   if (!slug) {
     throw new AuthError(
@@ -752,37 +668,33 @@ function streamSlug(value) {
   return slug;
 }
 
-function validateRawContent(
-  content,
-) {
-  if (
-    typeof content !==
-      "string" ||
-    content.length === 0 ||
-    !content.trim()
-  ) {
-    throw new AuthError(
-      "File content is required.",
-      "VALIDATION_FAILED",
-    );
+function validateRawContent(content) {
+  if (typeof content !== "string" || content.length === 0 || !content.trim()) {
+    throw new AuthError("File content is required.", "VALIDATION_FAILED");
   }
 }
 
-function requiredText(
-  value,
-  message,
-) {
-  const text =
-    String(
-      value ?? "",
-    ).trim();
+function requiredText(value, message) {
+  const text = String(value ?? "").trim();
 
   if (!text) {
-    throw new AuthError(
-      message,
-      "VALIDATION_FAILED",
-    );
+    throw new AuthError(message, "VALIDATION_FAILED");
   }
 
   return text;
+}
+
+function checkReviewedSize(input) {
+  const limit = 4 * 1024 * 1024;
+  const oversized =
+    typeof input.contentBase64 === "string"
+      ? input.contentBase64.length > Math.ceil(limit / 3) * 4
+      : typeof input.content === "string"
+        ? Buffer.byteLength(input.content) > limit
+        : input.content?.byteLength > limit;
+  if (oversized)
+    throw new AuthError(
+      "Reviewed imports support files up to 4 MiB (XLSX up to 2 MiB). Use the existing CSV upload for larger CSV sources.",
+      "VALIDATION_FAILED",
+    );
 }

@@ -81,18 +81,26 @@ test("PostgreSQL report mappings survive reload, version approvals and enforce t
       assert.equal(report.revenueBreakdown.status, "ready");
       assert.equal(report.revenueBreakdown.evidence.sources[0].quantityMetricPointId, "point-quantity");
       assert.equal(report.explainer.scope.mappingVersion, 3);
+      const file = await fetch(`${base}?format=json`, { headers: { cookie: "bnx_session=test" } });
+      assert.equal(file.status, 200);
+      assert.equal((await file.json()).payload.report.metric.policy.version, 3);
       assert.equal((await post(approval, false)).status, 403);
       assert.equal((await post({ ...approval, revenueBreakdown: { ...definition.revenueBreakdown, quantityColumn: "missing" } })).status, 400);
       const saved = await post(approval);
       assert.equal(saved.status, 200, await saved.clone().text());
       assert.equal((await saved.json()).policy.version, 4);
       actor = viewer;
+      assert.equal((await fetch(`${base}?format=json`, { headers: { cookie: "bnx_session=test" } })).status, 200);
       assert.equal((await post({ ...approval, expectedVersion: 4 })).status, 404);
       assert.equal((await fetch(base, { headers: { cookie: "bnx_session=test" } })).status, 200);
       actor = outsider; organizationId = otherOrg.id;
+      const foreignFile = await fetch(`${base}?format=json&source=run-http`, { headers: { cookie: "bnx_session=test" } });
+      assert.equal(foreignFile.status, 404);
+      assert.doesNotMatch(await foreignFile.text(), /raw-http|sales\.csv/);
       assert.equal((await post({ ...approval, expectedVersion: 4 })).status, 404);
       assert.equal((await (await fetch(base, { headers: { cookie: "bnx_session=test" } })).json()).report, null);
       actor = owner; organizationId = org.id; paid = false;
+      assert.equal((await fetch(`${base}?format=json`, { headers: { cookie: "bnx_session=test" } })).status, 402);
       assert.equal((await post({ ...approval, expectedVersion: 4 })).status, 402);
     } finally {
       app.server.closeAllConnections?.();

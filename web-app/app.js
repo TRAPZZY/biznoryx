@@ -6,11 +6,16 @@ import {
   renderReportAnswer,
 } from "./evidence-report.js";
 import { mountManualEntry } from "./manual-entry.js";
+import { mountImportReview, mountMoneyTrail, mountMonthlyReview, reviewNavigation } from "./business-review.js";
+let businessReviewCapabilities = null;
 import { mountTrialBilling } from "./trial-billing.js";
+import { mountUpdates, updatesPageHtml, feedbackScope, operationFeedback } from "./updates.js";
+import { actionPlansHtml, mountActionPlans } from "./action-plans.js";
 
 let csrfToken;
 let session;
 let dashboard;
+let disposeActionPlans;
 let validation;
 let pendingVerification;
 let billingCheckoutReference;
@@ -18,6 +23,7 @@ let navigationVersion = 0;
 let activeSeriesKey;
 let dataEntryMode = "upload";
 let disposeManualEntry;
+let disposeUpdates;
 
 const SIDEBAR_STORAGE_KEY = "biznoryx.sidebar.collapsed";
 const SIDEBAR_DESKTOP_QUERY = "(min-width: 701px)";
@@ -186,9 +192,10 @@ function performanceLineChart(series) {
   `;
 }
 
-async function api(path, body) {
+async function api(path, body, options = {}) {
   const response = await fetch(`/api/${path}`, {
-    method: body ? "POST" : "GET",
+    method: options.method || (body ? "POST" : "GET"),
+    signal: options.signal,
     credentials: "same-origin",
 
     headers: {
@@ -216,10 +223,13 @@ async function api(path, body) {
     throw error;
   }
 
+  if (body) operationFeedback(path, payload);
   return payload;
 }
 
 function mount(html) {
+  disposeActionPlans?.();
+  disposeActionPlans = null;
   app.innerHTML = html;
   window.lucide?.createIcons();
 }
@@ -286,7 +296,7 @@ function message() {
   `;
 }
 
-function bindForm(id, action) {
+function bindForm(id, action, pending = "Working...") {
   document.querySelector(id)?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -297,12 +307,13 @@ function bindForm(id, action) {
     button.disabled = true;
 
     if (output) {
-      output.textContent = "Working...";
+      output.textContent = pending;
       output.classList.remove("error-text");
     }
 
     try {
       await action(Object.fromEntries(new FormData(form)), form);
+      if (output?.textContent === pending) output.textContent = "";
     } catch (error) {
       if (output) {
         output.textContent = error.message;
@@ -356,12 +367,12 @@ function landing() {
   mount(`
     ${publicHeader("/")}
 
-    <main>
+    <main class="landing-page">
       <section class="hero">
         <img
           class="hero-image"
           src="/hero-office.jpg"
-          alt="Open office workspace with staff collaborating at desks in a modern professional environment"
+          alt=""
         >
 
         <div class="hero-shade"></div>
@@ -374,15 +385,13 @@ function landing() {
           <h1>BIZNORYX</h1>
 
           <h2>
-            Turn business data into evidence,
-            memory and sharper decisions.
+            See what changed in your business and trace it to the source.
           </h2>
 
           <p>
-            BIZNORYX helps a company remember how it
-            performs over time. Upload recurring business
-            data, confirm the source, see what moved, and
-            keep an evidence trail behind every report.
+            Bring your sales, transactions and operating records into one workspace.
+            Compare reporting periods, see what drove the change, and keep the
+            evidence behind every decision.
           </p>
 
           <div class="hero-actions">
@@ -397,276 +406,130 @@ function landing() {
               href="#/"
               data-scroll="story"
             >
-              See the product story
+              See how it works
               ${icon("arrow-down")}
             </a>
           </div>
         </div>
 
         <div class="hero-caption">
-          <span>VERIFIED DATA FIRST</span>
-          <span>MEMORY OVER ONE-TIME ANALYSIS</span>
+          <span>YOUR RECORDS · YOUR WORKSPACE</span>
+          <span>PERIOD-BY-PERIOD REPORTING</span>
         </div>
       </section>
 
-      <section
-        class="intro-band"
-        id="story"
-      >
-        <p class="overline">
-          The operating idea
-        </p>
+      <nav class="landing-index" aria-label="On this page">
+        <a href="#/" data-scroll="story">01 <span>Bring in your records</span></a>
+        <a href="#/" data-scroll="landing-reports">02 <span>Understand performance</span></a>
+        <a href="#/" data-scroll="landing-monthly">03 <span>Review the month</span></a>
+        <a href="#/" data-scroll="landing-plans">04 <span>Compare plans</span></a>
+      </nav>
 
-        <h2>
-          Every business deserves a memory that gets
-          smarter every period.
-        </h2>
-
-        <p>
-          Most dashboards reset the conversation every
-          month. BIZNORYX keeps the business profile,
-          uploads, validation evidence, performance
-          history, findings and action record together so
-          every new file strengthens the same operating
-          picture.
-        </p>
-      </section>
-
-      <section class="feature-grid">
-        <article>
-          <span class="feature-number">01</span>
-          ${icon("building-2")}
-
-          <h3>Business context</h3>
-
-          <p>
-            Capture the model, currency, goals, terms and
-            reporting rhythm so data is interpreted inside
-            the business it belongs to.
-          </p>
-        </article>
-
-        <article>
-          <span class="feature-number">02</span>
-          ${icon("database")}
-
-          <h3>Generic data intake</h3>
-
-          <p>
-            Bring sales, transactions, inventory, service
-            or operating data into named recurring series
-            with validation before import.
-          </p>
-        </article>
-
-        <article>
-          <span class="feature-number">03</span>
-          ${icon("file-check-2")}
-
-          <h3>Evidence reports</h3>
-
-          <p>
-            Each confirmed file creates verified facts,
-            movement facts, contribution facts and a source
-            trail instead of decorative metrics.
-          </p>
-        </article>
-      </section>
-
-      <section class="story-split">
-        <div>
-          <p class="overline">
-            Evidence before intelligence
-          </p>
-
-          <h2>
-            The analyst workflow is built in.
-          </h2>
-
-          <p>
-            BIZNORYX profiles the source, checks the metric
-            column, preserves the file checksum, compares
-            the new period to prior confirmed periods and
-            separates calculated facts from interpretation
-            so leaders can trust the report.
-          </p>
-
-          ${link(
-            "/product",
-            `Explore the product ${icon("arrow-right")}`,
-            "button dark",
-          )}
+      <section class="landing-section landing-split" id="story" tabindex="-1" aria-labelledby="landing-data-title">
+        <div class="landing-introduction">
+          <p class="overline">01 / DATA &amp; UPLOADS</p>
+          <h2 id="landing-data-title">Start with the records you already keep.</h2>
+          <p>Upload a file or enter records in a spreadsheet-style grid. Give recurring data a series name, such as Monthly Sales, so each period builds on the last.</p>
+          <p>Download the original file from upload history whenever you need a copy.</p>
         </div>
 
-        <div class="story-panel">
-          <span>01</span>
+        <figure class="landing-import">
+          <figcaption>
+            <span class="overline">EXAMPLE WORKFLOW</span>
+            <strong>Monthly Sales</strong>
+          </figcaption>
+          <ol>
+            <li>
+              <span aria-hidden="true">01</span>
+              <div><h3>Choose a reporting month</h3><p>Keep the same series for the next month's records.</p></div>
+            </li>
+            <li>
+              <span aria-hidden="true">02</span>
+              <div><h3>Review the file</h3><p>Check a preview and confirm which columns contain the dates and amounts.</p></div>
+            </li>
+            <li>
+              <span aria-hidden="true">03</span>
+              <div><h3>Approve the mapping</h3><p>Add the reviewed period to your business history.</p></div>
+            </li>
+          </ol>
+        </figure>
+      </section>
 
-          <h3>Upload business data</h3>
-
-          <p>
-            Use a named series such as Monthly Sales,
-            Transaction History or Support Tickets.
-          </p>
-
-          <span>02</span>
-
-          <h3>Confirm validation</h3>
-
-          <p>
-            Review rows, schema, metric column, source file
-            and calculation before import.
-          </p>
-
-          <span>03</span>
-
-          <h3>Read the report</h3>
-
-          <p>
-            See what moved, which products, channels or
-            categories contributed, and which facts support
-            the movement.
-          </p>
+      <section class="landing-section landing-evidence" id="landing-reports" tabindex="-1" aria-labelledby="landing-reports-title">
+        <div class="landing-introduction">
+          <p class="overline">02 / PERFORMANCE &amp; EVIDENCE</p>
+          <h2 id="landing-reports-title">When a number moves, see what drove it.</h2>
+          <p>Follow the change from your dashboard to the Evidence Report and back to the records behind it.</p>
+        </div>
+        <div class="landing-columns">
+          <article>
+            ${icon("line-chart")}
+            <h3>Compare reporting periods</h3>
+            <p>See how performance changed from the previous confirmed period and follow the trend as more records come in.</p>
+          </article>
+          <article>
+            ${icon("file-check-2")}
+            <h3>Read the revenue breakdown</h3>
+            <p>Where the source supports it, see which products, channels or categories contributed to the change.</p>
+          </article>
+          <article>
+            ${icon("scan-search")}
+            <h3>Check the evidence</h3>
+            <p>Read findings in plain language and see which calculations and source records support them. Export reports with Growth and above.</p>
+          </article>
         </div>
       </section>
 
-      <section class="proof-grid">
-        <div>
-          <p class="overline">
-            What the customer sees
-          </p>
-
-          <h2>
-            Upload, validate, compare, decide.
-          </h2>
-
-          <p>
-            The workspace is designed around the recurring
-            management rhythm: add this week or month,
-            compare it against the past, identify measured
-            contributors, and keep the evidence attached to
-            the business.
-          </p>
+      <section class="landing-section landing-split landing-rhythm" id="landing-monthly" tabindex="-1" aria-labelledby="landing-monthly-title">
+        <div class="landing-introduction">
+          <p class="overline">03 / WORKSPACE ROUTINE</p>
+          <h2 id="landing-monthly-title">Give your monthly review a place to live.</h2>
+          <p>Bring sales, receipts, evidence and follow-up into the same workspace, so the next review starts with the work you already did.</p>
         </div>
-
-        <article>
-          ${icon("line-chart")}
-          <h3>Trend memory</h3>
-          <p>
-            Performance lines grow from confirmed periods
-            only.
-          </p>
-        </article>
-
-        <article>
-          ${icon("scan-search")}
-          <h3>Contribution evidence</h3>
-          <p>
-            Top products, channels and categories are
-            calculated from uploaded rows.
-          </p>
-        </article>
-
-        <article>
-          ${icon("shield-check")}
-          <h3>Governed data</h3>
-          <p>
-            Every import is reviewed before it becomes part
-            of the history.
-          </p>
-        </article>
-      </section>
-
-      <section
-        class="process"
-        id="process"
-      >
-        <div>
-          <p class="overline">
-            From data to decisions
-          </p>
-
-          <h2>
-            A serious rhythm for running the business.
-          </h2>
-
-          ${link(
-            "/register",
-            `Create your workspace ${icon("arrow-right")}`,
-            "button dark",
-          )}
-        </div>
-
-        <ol>
-          <li>
-            <span>01</span>
-
+        <div class="landing-rhythm-list">
+          <article>
+            ${icon("wallet")}
             <div>
-              <h3>
-                Tell us about your business
-              </h3>
-
-              <p>
-                Create the organization and establish the
-                operating profile behind the numbers.
-              </p>
+              <p class="overline">BUSINESS &amp; BUSINESS PLUS</p>
+              <h3>Money Trail</h3>
+              <p>Review sales and money received separately. Check which balances have evidence before treating them as money owed.</p>
             </div>
-          </li>
-
-          <li>
-            <span>02</span>
-
+          </article>
+          <article>
+            ${icon("calendar-check")}
             <div>
-              <h3>
-                Add recurring datasets
-              </h3>
-
-              <p>
-                Upload comparable periods for each
-                important business stream.
-              </p>
+              <p class="overline">BUSINESS PLUS</p>
+              <h3>Monthly Close</h3>
+              <p>Check whether expected sources are present and resolve blockers before approving the month’s evidence packet.</p>
             </div>
-          </li>
-
-          <li>
-            <span>03</span>
-
+          </article>
+          <article>
+            ${icon("list-checks")}
             <div>
-              <h3>
-                Act from evidence
-              </h3>
-
-              <p>
-                Use verified facts and calculated movement
-                to decide what deserves attention.
-              </p>
+              <h3>Action plans and updates</h3>
+              <p>Record next steps alongside your findings and check the Updates inbox for activity that needs attention.</p>
             </div>
-          </li>
-        </ol>
+          </article>
+        </div>
       </section>
 
-      <section class="pricing-band">
-        <div>
-          <p class="overline">
-            Simple subscription
-          </p>
-
-          <h2>
-            Start with a 7-day trial, then ₦40,000/month.
-          </h2>
-
-          <p>
-            Try the workspace with secure card verification,
-            upload files or enter data directly, and see how
-            BIZNORYX turns business records into verified
-            evidence before the first subscription payment.
-          </p>
+      <section class="landing-section landing-plans" id="landing-plans" tabindex="-1" aria-labelledby="landing-plans-title">
+        <div class="landing-introduction">
+          <p class="overline">04 / MONTHLY PLANS</p>
+          <h2 id="landing-plans-title">Choose a plan for the work you do.</h2>
+          <p>Start with the dashboard, uploads and Evidence Reports. Add exports, sales and receipt review, or Monthly Close as your reporting needs grow.</p>
         </div>
+        <div class="billing-tier-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+        ${link("/pricing", `See pricing details ${icon("arrow-right")}`, "button dark")}
+      </section>
 
-        ${link(
-          "/pricing",
-          `See pricing ${icon("arrow-right")}`,
-          "button primary",
-        )}
+      <section class="pricing-band landing-next">
+        <div>
+          <p class="overline">YOUR FIRST REPORTING PERIOD</p>
+          <h2>Bring one month of business records.</h2>
+          <p>Set up a workspace, add a file or enter your records directly, and start building a history you can compare month to month.</p>
+        </div>
+        ${link("/register", `Create your workspace ${icon("arrow-right")}`, "button primary")}
       </section>
     </main>
 
@@ -686,17 +549,53 @@ function landing() {
     </footer>
   `);
 
-  document.querySelectorAll("[data-scroll]").forEach((a) =>
+  document.querySelectorAll(".landing-page [data-scroll]").forEach((a) =>
     a.addEventListener("click", (event) => {
       event.preventDefault();
 
-      document.getElementById(a.dataset.scroll)?.scrollIntoView({
-        behavior: "smooth",
+      const section = document.getElementById(a.dataset.scroll);
+      section?.focus({ preventScroll: true });
+      section?.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
       });
     }),
   );
 
   bindHeroImageFallback();
+  mountMonthlyPlans();
+}
+
+function mountMonthlyPlans({ onSelect, currentPriceId, onUpgrade } = {}) {
+  const host = document.querySelector("[data-monthly-plans]");
+  if (!host) return;
+
+  api("billing/plans").then(({ plans }) => {
+    const format = new Intl.NumberFormat("en-NG", {
+      style: "currency", currency: "NGN", maximumFractionDigits: 0,
+    });
+    const current = plans.find((plan) => plan.priceId === currentPriceId);
+    host.innerHTML = plans.map((plan) => `
+      <article class="${plan.recommended ? "recommended-plan" : ""}">
+        <h3>${esc(plan.name)}</h3>
+        <p><strong>${esc(format.format(plan.amountMinor / 100))}</strong> / month</p>
+        <p>${plan.recommended ? "Recommended" : "Monthly subscription"}</p>
+        <p>${esc(plan.unlocks)}</p>
+        ${onSelect && plan.purchasable ? `<button type="button" class="button primary" data-price-id="${esc(plan.priceId)}">Choose ${esc(plan.name)}</button>` : ""}
+        ${plan.priceId === currentPriceId ? '<p><strong>Current plan</strong></p>' : ""}
+        ${onUpgrade && current && plan.amountMinor > current.amountMinor && plan.purchasable
+          ? `<button type="button" class="button primary" data-upgrade-price="${esc(plan.priceId)}">Upgrade to ${esc(plan.name)}</button>` : ""}
+        ${plan.purchasable ? "" : '<p>Coming soon</p>'}
+      </article>
+    `).join("");
+    for (const button of host.querySelectorAll("[data-upgrade-price]")) {
+      button.onclick = () => onUpgrade(plans.find((plan) => plan.priceId === button.dataset.upgradePrice));
+    }
+    for (const button of host.querySelectorAll("[data-price-id]")) {
+      button.onclick = () => onSelect(button.dataset.priceId);
+    }
+  }).catch(() => {
+    host.textContent = "Monthly plans could not be loaded. Refresh to try again.";
+  });
 }
 
 function publicPage(path) {
@@ -760,7 +659,7 @@ function publicPage(path) {
     "/pricing": {
       kicker: "Pricing",
 
-      title: "₦40,000 per month for the BIZNORYX business workspace.",
+      title: "Monthly plans for your BIZNORYX workspace.",
 
       body: "Start with a seven-day trial after secure card verification. Upload files, enter business data directly and review evidence-backed reports before the first subscription payment.",
 
@@ -779,8 +678,8 @@ function publicPage(path) {
         ],
 
         [
-          "₦40,000/month",
-          "Continue with one clear monthly subscription when the trial ends.",
+          "Four monthly plans",
+          "Compare Starter, Growth, Business and Business Plus above to choose the features your workspace needs.",
         ],
       ],
     },
@@ -875,6 +774,8 @@ function publicPage(path) {
         </div>
       </section>
 
+      ${path === "/pricing" ? '<section class="public-detail-grid" aria-label="Monthly plans" aria-live="polite" data-monthly-plans>Loading monthly plans...</section>' : ""}
+
       <section class="public-detail-grid">
         ${page.sections
           .map(
@@ -927,6 +828,7 @@ function publicPage(path) {
       ${link("/sign-in", "Sign in")}
     </footer>
   `);
+  mountMonthlyPlans();
 }
 
 function auth(register) {
@@ -1928,6 +1830,7 @@ function policyOnboarding() {
 }
 
 function shell(content, active) {
+  disposeUpdates?.();
   const org =
     dashboard?.shell?.activeOrganization || session?.shell?.activeOrganization;
 
@@ -1946,6 +1849,8 @@ function shell(content, active) {
     ["/data", "database", "Data & uploads"],
 
     ["/reports", "file-check-2", "Evidence reports"],
+
+    ["/actions", "list-checks", "Action plans"],
 
     ["/business", "building-2", "Business profile"],
 
@@ -2053,6 +1958,7 @@ function shell(content, active) {
         </p>
 
         <nav aria-label="Workspace">
+          <a href="#/updates" data-updates-nav hidden class="${active === "/updates" ? "active" : ""}" aria-label="Updates" title="Updates">${icon("bell")}<span>Updates</span></a>
           ${navigationItems
             .map(
               ([path, symbol, title]) => `
@@ -2081,7 +1987,7 @@ function shell(content, active) {
 
           <a
             id="sidebar-help-link"
-            class="text-button sidebar-help"
+            class="sidebar-help"
             href="/help.html"
             title="Help & support"
             aria-label="Help & support"
@@ -2089,23 +1995,9 @@ function shell(content, active) {
             ${icon("life-buoy")}
 
             <span>
-              Help
+              Help &amp; support
             </span>
           </a>
-
-          <button
-            data-sign-out
-            class="text-button sidebar-sign-out"
-            type="button"
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            ${icon("log-out")}
-
-            <span>
-              Sign out
-            </span>
-          </button>
         </div>
       </aside>
 
@@ -2122,6 +2014,10 @@ function shell(content, active) {
           </span>
 
           <div class="workspace-top-actions">
+            <div id="updates-control" class="updates-control" hidden>
+              <button class="updates-bell" type="button" aria-label="Updates" title="Updates" aria-expanded="false" aria-controls="updates-panel">${icon("bell")}<span class="updates-count"></span></button>
+              <section id="updates-panel" class="updates-panel" aria-label="Recent updates" hidden><div class="section-heading"><strong>Updates</strong><a href="#/updates">View all</a></div><div class="recent-updates"></div></section>
+            </div>
             ${
               subscription
                 ? `
@@ -2131,8 +2027,6 @@ function shell(content, active) {
                     }"
                   >
                     ${esc(subscription.status.replaceAll("_", " "))}
-                    ·
-                    ${esc(subscription.priceLabel)}
                   </span>
                 `
                 : ""
@@ -2164,6 +2058,9 @@ function shell(content, active) {
       </div>
     </div>
   `);
+
+  feedbackScope(org?.id ?? null);
+  disposeUpdates = mountUpdates({ root: app, api });
 
   const sidebarToggle = document.querySelector("#sidebar-toggle");
 
@@ -2291,8 +2188,7 @@ function subscriptionBanner(subscription) {
 
       <div>
         <strong>
-          ${esc(subscription.priceLabel)}
-          BIZNORYX workspace
+          Workspace billing
         </strong>
 
         <p>
@@ -2528,6 +2424,7 @@ function sourceFilesHtml(uploads) {
         <td><span class="status ${["confirmed", "validated", "processed", "ready"].includes(u.status) ? "success" : ""}">${esc(String(u.status || "unknown").replaceAll("_", " "))}</span></td>
         <td class="source-actions-cell"><div class="source-file-actions">
           <button class="text-button review-upload" data-id="${esc(u.id)}" type="button">Review ${icon("arrow-up-right")}</button>
+          ${businessReviewCapabilities?.reviewedImports&&!u.hasImportMapping&&u.status==='validated'?`<button class="text-button" type="button" data-map-source="${esc(u.id)}">Map records</button>`:''}
           <button class="source-delete-button" data-source-delete="${esc(u.id)}" type="button"
             aria-label="Delete ${esc(u.fileName)}" title="Delete source file">
             ${icon("trash-2")}<span>Delete</span>
@@ -2619,15 +2516,14 @@ function dataPage() {
             </span>
 
             <small>
-              CSV, TSV, JSON, TXT, PDF, XLSX
-              &middot; up to 25 MB each
+              ${businessReviewCapabilities?.reviewedImports ? "Reviewed CSV · up to 4 MB; XLSX · up to 2 MB" : businessReviewCapabilities?.legacyReview ? "CSV, TSV, JSON, TXT, PDF, XLSX · up to 25 MB each" : "CSV · up to 25 MB"}
             </small>
 
             <input
               type="file"
               name="file"
-              accept=".csv,.tsv,.json,.txt,.pdf,.xlsx,.xls,text/csv,application/json,application/pdf,text/plain"
-              multiple
+              accept="${businessReviewCapabilities?.reviewedImports ? '.csv,.xlsx' : businessReviewCapabilities?.legacyReview ? '.csv,.tsv,.json,.txt,.pdf,.xlsx' : '.csv,text/csv'}"
+              ${businessReviewCapabilities?.reviewedImports ? '' : 'multiple'}
               required
             >
           </label>
@@ -2692,23 +2588,20 @@ function dataPage() {
           </div>
 
           <p class="input-help">
-            Use the same data series and column layout for
-            recurring periods. CSV, TSV, JSON, TXT and
-            text-based PDF statements can be analyzed now.
-            Excel files are accepted for intake review and
-            should be exported as CSV until the audited
-            spreadsheet parser is connected.
+            ${businessReviewCapabilities?.reviewedImports ? 'Use the same series for recurring periods. Review CSV up to 4 MB or a values-only XLSX up to 2 MB. Larger CSV files up to 25 MB use CSV validation without mapping review. For spreadsheets, use dates as explicit text and choose a worksheet when needed. Original files remain available for download.' : businessReviewCapabilities?.legacyReview ? 'Use the same data series and column layout for recurring periods. This review environment supports additional file formats; production format availability is checked separately.' : 'Use the same data series and column layout for recurring periods. Production currently accepts CSV files. Export other formats as UTF-8 CSV first.'}
           </p>
 
+          ${businessReviewCapabilities?.reviewedImports ? '<label>Worksheet name (if the workbook has several sheets)<input name="sheet" maxlength="160" placeholder="Leave blank for a single-sheet workbook"></label>' : ''}
           <button
             type="submit"
             class="primary"
           >
-            Validate files
+            <span id="upload-submit-label">${businessReviewCapabilities?.reviewedImports ? 'Review file' : 'Validate files'}</span>
             ${icon("arrow-right")}
           </button>
 
           ${message()}
+          <div id="reviewed-import-panel"></div>
         </form>
 
         <aside class="context-note">
@@ -2781,10 +2674,20 @@ function dataPage() {
 
   const fileInput = document.querySelector('[name="file"]');
 
+  const useLargeCsvValidation = (files) =>
+    files.length > 0 &&
+    files.every((file) => /\.csv$/i.test(file.name)) &&
+    files.some((file) => file.size > businessReviewCapabilities?.limits?.csvBytes);
+
   if (fileInput) {
     fileInput.onchange = () => {
       const files = [...fileInput.files];
 
+      document.querySelector("#reviewed-import-panel")?.replaceChildren();
+      document.querySelector("#upload-submit-label").textContent =
+        businessReviewCapabilities?.reviewedImports && !useLargeCsvValidation(files)
+          ? "Review file"
+          : "Validate files";
       const fileLabel = document.querySelector("#file-label");
 
       if (fileLabel) {
@@ -2836,8 +2739,8 @@ function dataPage() {
     };
   }
 
-  bindForm("#upload-form", async (data) => {
-    const files = [...document.querySelector('[name="file"]').files];
+  bindForm("#upload-form", async (data, form) => {
+    const files = [...form.querySelector('[name="file"]').files];
 
     if (!files.length) {
       throw new Error("Choose at least one business file.");
@@ -2845,6 +2748,33 @@ function dataPage() {
 
     if (files.some((file) => file.size > 25 * 1024 * 1024)) {
       throw new Error("Choose files smaller than 25 MB each.");
+    }
+
+    const panel = document.querySelector("#reviewed-import-panel");
+    panel?.replaceChildren();
+    if (businessReviewCapabilities?.reviewedImports && !useLargeCsvValidation(files)) {
+      if(files.length!==1) throw new Error('Review one file at a time.');
+      const payload={...await readFilePayload(files[0]),period:data.period,dataSeries:data.dataSeries,
+        ...(data.sheet?.trim()?{sheet:data.sheet.trim()}: {})};
+      const signal = AbortSignal.timeout(15000);
+      let result;
+      try {
+        result = await api("ingestion/preview", payload, { signal });
+      } catch (error) {
+        if (signal.aborted) throw new Error("The file preview took too long. Try reviewing the file again.");
+        throw error;
+      }
+      if (!form.isConnected || form.querySelector('[name="file"]').files[0] !== files[0]) return;
+      // The review form is separate from the upload form; nested forms are invalid.
+      document.querySelector('#file-upload-panel').after(panel);
+      mountImportReview({
+        root:panel,result,payload,uploads,api,
+        initialSourceRole: { "Sales performance": "sales", "Bank statement": "bank_transactions" }[data.dataKind] ?? "other",
+        initialAmountColumn: data.metricColumn?.trim(),
+        onComplete:async response=>{
+        validation=response.upload;dashboard=await api('dashboard');dataPage();
+      }});
+      return;
     }
 
     const result = await api("ingestion/upload", {
@@ -2871,12 +2801,12 @@ function dataPage() {
       behavior: "smooth",
       block: "start",
     });
-  });
+  }, "Preparing your file…");
 
   document.querySelector("#upload-history").onclick = async (event) => {
-    const button = event.target.closest("button[data-source-delete], button[data-source-download], button.review-upload");
+    const button = event.target.closest("button[data-source-delete], button[data-source-download], button[data-map-source], button.review-upload");
     if (!button || button.disabled) return;
-    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDelete || button.dataset.sourceDownload || button.dataset.id));
+    const upload = dashboard?.uploads?.find(item => item.id === (button.dataset.sourceDelete || button.dataset.sourceDownload || button.dataset.mapSource || button.dataset.id));
     if (!upload) return;
     if (button.hasAttribute("data-source-delete")) {
       const approved = window.confirm(
@@ -2927,6 +2857,21 @@ Files used by protected financial reports cannot be deleted.`
           button.removeAttribute("aria-busy");
         }
       }
+    } else if (button.hasAttribute("data-map-source")) {
+      button.disabled=true;
+      try {
+        const payload={uploadId:upload.id,period:upload.period,dataSeries:upload.dataSeries};
+        const result=await api('ingestion/preview',payload);
+        if (!button.isConnected) return;
+        const panel=document.querySelector('#reviewed-import-panel');document.querySelector('#file-upload-panel').after(panel);
+        mountImportReview({root:panel,result,payload,uploads:[],api,onComplete:async()=>{dashboard=await api('dashboard');dataPage();}});
+      } catch (error) {
+        if (!button.isConnected) return;
+        validation = {...upload, issues:[{severity:"error", message:error.message}]};
+        dataPage();
+        document.querySelector("#validation-result")?.scrollIntoView({ behavior:"smooth" });
+      }
+      finally{if(button.isConnected)button.disabled=false;}
     } else if (button.hasAttribute("data-source-download")) {
       await downloadSourceFile(button, upload);
     } else {
@@ -2965,7 +2910,12 @@ async function readFilePayload(file) {
   };
 
   if (textLike) {
-    payload.content = await file.text();
+    try {
+      // Preserve valid UTF-8 bytes, including a BOM that File.text() removes.
+      payload.content = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer());
+    } catch {
+      throw new Error('Save this text file as UTF-8 and upload it again.');
+    }
 
     return payload;
   }
@@ -4579,6 +4529,7 @@ function reportPageHeader(ready = false) {
                 ${icon("printer")}
               </button>
 
+              ${businessReviewCapabilities?.reportExport === false ? '<p>Report exports are included from Growth.</p>' : `
               <button
                 class="er-icon-button"
                 type="button"
@@ -4587,6 +4538,16 @@ function reportPageHeader(ready = false) {
                 aria-label="Export comparison CSV"
               >
                 ${icon("table-2")}
+              </button>
+
+              <button
+                class="er-icon-button"
+                type="button"
+                data-report-export="json"
+                title="Download evidence file"
+                aria-label="Download evidence file"
+              >
+                ${icon("file-json")}
               </button>
 
               <button
@@ -4606,6 +4567,7 @@ function reportPageHeader(ready = false) {
                 ${icon("file-code")}
                 Shareable report
               </button>
+              `}
             </div>
           `
           : ""
@@ -4930,6 +4892,10 @@ function billingPage() {
   const isPending = status === "pending_checkout";
 
   const isNonRenewing = status === "non_renewing";
+  const ended = isNonRenewing && Date.parse(subscription.currentPeriodEnd) <= Date.now();
+  const legacyPlan = subscription?.planId === "biznoryx_monthly_ngn_40000";
+  const canChoosePlan = !isActive && (!isNonRenewing || ended) &&
+    (!subscription?.trial?.providerProvisioned || Boolean(subscription.trial.canceledAt) || Boolean(subscription.trial.convertedAt));
 
   const providerConfigured = Boolean(subscription?.providerConfigured);
 
@@ -4941,7 +4907,7 @@ function billingPage() {
 
   const canCancelSubscription = Boolean(subscription?.canCancel);
 
-  const priceLabel = subscription?.priceLabel || "₦40,000/mo";
+  const priceLabel = subscription?.priceLabel || "Price unavailable";
 
   const planName = subscription?.planName || "BIZNORYX Monthly";
 
@@ -5081,6 +5047,24 @@ function billingPage() {
           </span>
         </header>
 
+        <section aria-labelledby="billing-monthly-plans">
+          <h2 id="billing-monthly-plans">Choose your monthly plan</h2>
+          <p>${ended ? "Your previous subscription ended. Choose a plan to restart access." :
+            canChoosePlan ? "Select a plan to continue to secure Paystack checkout." :
+            "Manage your current subscription below."}</p>
+          <div class="billing-tier-grid" aria-live="polite" data-monthly-plans>Loading monthly plans...</div>
+          <dialog class="billing-dialog" id="billing-upgrade-dialog" aria-labelledby="billing-upgrade-title">
+            <div class="billing-dialog-card">
+              <h2 id="billing-upgrade-title"></h2>
+              <p id="billing-upgrade-details"></p>
+              <div class="billing-dialog-actions">
+                <form method="dialog"><button class="secondary">Close</button></form>
+                <button id="billing-upgrade-stop-renewal" class="primary" type="button">Turn off current renewal</button>
+              </div>
+            </div>
+          </dialog>
+        </section>
+
         <div class="billing-v2-grid">
           <article class="billing-plan-card">
             <div class="billing-plan-top">
@@ -5090,7 +5074,7 @@ function billingPage() {
                 </p>
 
                 <h2>
-                  ${esc(planName)}
+                  ${esc(legacyPlan ? "Previous subscription" : planName)}
                 </h2>
               </div>
 
@@ -5099,7 +5083,7 @@ function billingPage() {
               </span>
             </div>
 
-            <div class="billing-price-row">
+            ${legacyPlan ? "" : `<div class="billing-price-row">
               <strong>
                 ${esc(priceLabel.replace(/\/mo$/i, ""))}
               </strong>
@@ -5107,7 +5091,7 @@ function billingPage() {
               <span>
                 / month
               </span>
-            </div>
+            </div>`}
 
             <p class="billing-plan-description">
               One workspace for turning recurring business
@@ -5135,18 +5119,18 @@ function billingPage() {
 
             <div class="billing-plan-actions">
               ${
-                isActive
+                isActive || status === "past_due"
                   ? `
                     <div class="billing-active-confirmation">
                       ${icon("circle-check")}
 
                       <div>
                         <strong>
-                          Subscription active
+                          ${isActive ? "Subscription active" : "Payment requires attention"}
                         </strong>
 
                         <span>
-                          Your paid workspace is currently enabled.
+                          ${isActive ? "Your paid workspace is currently enabled." : "You can stop future automatic renewal below."}
                         </span>
                       </div>
                     </div>
@@ -5162,7 +5146,7 @@ function billingPage() {
                       Cancel subscription
                     </button>
                   `
-                  : isNonRenewing
+                  : isNonRenewing && !ended
                     ? `
                       <div class="billing-active-confirmation billing-nonrenewing-confirmation">
                         ${icon("calendar-x")}
@@ -5178,13 +5162,13 @@ function billingPage() {
                         </div>
                       </div>
 
-                      <button
+                      ${legacyPlan ? "" : `<button
                         id="renew-billing-subscription"
                         class="primary billing-primary-action"
                         type="button"
                       >
                         Resume automatic renewal
-                      </button>
+                      </button>`}
 
                       <p
                         id="billing-renewal-message"
@@ -5192,6 +5176,9 @@ function billingPage() {
                         role="status"
                         aria-live="polite"
                       ></p>
+                      <button id="email-cancellation-confirmation" class="secondary billing-secondary-action" type="button">
+                        Email cancellation confirmation
+                      </button>
                     `
                     : subscription && canStartCheckout
                       ? `
@@ -5226,13 +5213,14 @@ function billingPage() {
                     `
               }
 
+              <p id="billing-page-message" class="form-message billing-page-message" role="status" aria-live="polite"></p>
               <p class="billing-security-note">
                 ${icon("shield-check")}
 
                 Secure checkout powered by Paystack.
                 BIZNORYX does not store your card details.
                 ${
-                  isActive && !canCancelSubscription
+                  (isActive || status === "past_due") && !canCancelSubscription
                     ? " Live support can help cancel this subscription while Paystack identity sync completes."
                     : ""
                 }
@@ -5434,13 +5422,6 @@ function billingPage() {
             : ""
         }
 
-        <p
-          id="billing-page-message"
-          class="form-message billing-page-message"
-          role="status"
-          aria-live="polite"
-        ></p>
-
         <dialog
           id="billing-checkout-dialog"
           class="billing-dialog"
@@ -5477,7 +5458,7 @@ function billingPage() {
                 </span>
 
                 <strong>
-                  ${esc(priceLabel)}
+                  ${esc(legacyPlan ? "Select a monthly plan" : priceLabel)}
                 </strong>
               </div>
 
@@ -5602,8 +5583,17 @@ function billingPage() {
     });
   }
 
+  let checkoutPlanSelect;
   if (openCheckout && dialog) {
-    openCheckout.onclick = () => {
+    openCheckout.onclick = () => showCheckout();
+  }
+
+  async function showCheckout(priceId) {
+      if (!openCheckout || openCheckout.disabled) return;
+      if (openCheckout.hidden) {
+        document.querySelector(".trial-billing")?.scrollIntoView({ block: "center" });
+        return;
+      }
       const output = checkoutMessage();
 
       if (output) {
@@ -5612,11 +5602,66 @@ function billingPage() {
         output.classList.remove("error-text");
       }
 
-      if (!dialog.open) {
+      openCheckout.disabled = true;
+      try {
+        const { plans } = await api("billing/plans");
+        if (!dialog.isConnected) return;
+        const offered = plans.filter((plan) => plan.purchasable);
+        if (offered.length && !checkoutPlanSelect) {
+          const format = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" });
+          const label = document.createElement("label");
+          label.textContent = "Monthly subscription ";
+          checkoutPlanSelect = document.createElement("select");
+          checkoutPlanSelect.add(new Option("Choose a plan", ""));
+          for (const plan of offered) {
+            checkoutPlanSelect.add(new Option(
+              `${plan.name} · ${format.format(plan.amountMinor / 100)}/month`, plan.priceId,
+            ));
+          }
+          if (isPending) checkoutPlanSelect.value = subscription.planId;
+          label.append(checkoutPlanSelect);
+          dialog.querySelector(".billing-dialog-plan").replaceChildren(label);
+        }
+      } catch {
+        if (output) output.textContent = "Monthly plans could not be loaded. Close this window and try again.";
+        confirmCheckout.disabled = true;
         dialog.showModal();
+        return;
+      } finally {
+        openCheckout.disabled = false;
       }
-    };
+      confirmCheckout.disabled = false;
+      if (priceId && checkoutPlanSelect) checkoutPlanSelect.value = priceId;
+      if (!dialog.open) dialog.showModal();
   }
+
+  const upgradeDialog = document.querySelector("#billing-upgrade-dialog");
+  const stopRenewal = upgradeDialog.querySelector("#billing-upgrade-stop-renewal");
+  stopRenewal.onclick = () => {
+    upgradeDialog.close();
+    if (cancelSubscription && !cancelSubscription.disabled) {
+      cancelSubscription.scrollIntoView({ block: "center" });
+      cancelSubscription.focus();
+      cancelSubscription.click();
+    }
+  };
+  const hasCurrentPlan = isActive || (isNonRenewing && !ended);
+  mountMonthlyPlans({
+    onSelect: canChoosePlan && openCheckout ? showCheckout : undefined,
+    currentPriceId: hasCurrentPlan ? subscription.planId : undefined,
+    onUpgrade: hasCurrentPlan ? (plan) => {
+      upgradeDialog.querySelector("#billing-upgrade-title").textContent = `Upgrade to ${plan.name}`;
+      const end = subscription.currentPeriodEnd ? `on ${renewalLabel}` : "at the end of your billing period";
+      const canStop = isActive && cancelSubscription && !cancelSubscription.disabled;
+      upgradeDialog.querySelector("#billing-upgrade-details").textContent = isNonRenewing
+        ? `Your current plan ends ${end}. Return to Billing after it ends to choose ${plan.name} and pay through Paystack.`
+        : canStop
+          ? `Turn off renewal to keep your current plan until it ends ${end}. Then return to Billing to choose ${plan.name} and pay through Paystack.`
+          : "Ask your workspace owner to manage the current subscription before changing plans.";
+      stopRenewal.hidden = !canStop;
+      upgradeDialog.showModal();
+    } : undefined,
+  });
 
   if (confirmCheckout) {
     confirmCheckout.onclick = async () => {
@@ -5631,7 +5676,10 @@ function billingPage() {
       }
 
       try {
-        const result = await api("billing/checkout", {});
+        if (checkoutPlanSelect && !checkoutPlanSelect.value) {
+          throw new Error("Choose a monthly plan to continue.");
+        }
+        const result = await api("billing/checkout", { priceId: checkoutPlanSelect?.value });
 
         if (!result?.checkout?.reference) {
           throw new Error("Billing checkout did not return a valid reference.");
@@ -5741,9 +5789,11 @@ function billingPage() {
     };
   }
 
-  if (cancelSubscription) {
-    cancelSubscription.onclick = async () => {
-      const confirmed = window.confirm(
+  const emailCancellation = document.querySelector("#email-cancellation-confirmation");
+  for (const control of [cancelSubscription, emailCancellation].filter(Boolean)) {
+    control.onclick = async () => {
+      const confirmationOnly = control === emailCancellation;
+      const confirmed = confirmationOnly || window.confirm(
         "Cancel this BIZNORYX subscription? Paid access remains available until the current billing period ends.",
       );
 
@@ -5751,29 +5801,39 @@ function billingPage() {
         return;
       }
 
-      cancelSubscription.disabled = true;
+      const originalLabel = control.innerHTML;
+      control.disabled = true;
+      control.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
 
       if (pageMessage) {
-        pageMessage.textContent = "Canceling subscription...";
+        pageMessage.textContent = confirmationOnly ? "Sending confirmation..." : "Canceling subscription...";
 
         pageMessage.classList.remove("error-text");
       }
 
       try {
-        await api("billing/cancel", {});
-
-        dashboard = await api("dashboard");
+        const result = await api(confirmationOnly ? "billing/cancellation-confirmation" : "billing/cancel", {});
+        // The confirmed cancellation response is authoritative. A separate
+        // dashboard refresh failing must not make cancellation appear failed.
+        dashboard = { ...dashboard, subscription: result.subscription };
 
         billingPage();
+        const message = document.querySelector("#billing-page-message");
+        if (message) {
+          message.textContent = result.confirmationEmail?.status === "accepted"
+            ? "Subscription canceled. Confirmation email submitted for delivery."
+            : "Subscription canceled. We couldn't send the confirmation email. Select Email cancellation confirmation to try again.";
+        }
       } catch (error) {
         if (pageMessage) {
           pageMessage.textContent =
-            error?.message || "Subscription could not be canceled.";
+            error?.message || (confirmationOnly ? "Confirmation email could not be sent." : "Subscription could not be canceled.");
 
           pageMessage.classList.add("error-text");
         }
       } finally {
-        cancelSubscription.disabled = false;
+        control.disabled = false;
+        if (control.isConnected) control.innerHTML = originalLabel;
       }
     };
   }
@@ -5999,6 +6059,9 @@ function showError(error) {
 
 async function route() {
   const version = ++navigationVersion;
+  disposeUpdates?.();
+  disposeUpdates = null;
+  feedbackScope(session?.authenticated ? session.shell?.activeOrganization?.id : null);
   disposeManualEntry?.();
   disposeManualEntry = null;
 
@@ -6066,12 +6129,35 @@ async function route() {
 
     dashboard = nextDashboard;
 
+    if(['/data','/reports','/money-trail','/monthly-review'].includes(path)) {
+      try { businessReviewCapabilities=await api('business-review'); }
+      catch(error) { if(error.status===404)businessReviewCapabilities={legacyReview:true};else throw error; }
+      if(version!==navigationVersion)return;
+    }
+
     if (path === "/business") {
       business();
     } else if (path === "/data") {
+      if (params.has("upload")) {
+        validation = dashboard.uploads?.find(upload => upload.id === params.get("upload")) ?? null;
+        if (!validation) throw new Error("This source is unavailable in the selected business.");
+      }
       dataPage();
+    } else if (path === "/updates") {
+      shell(updatesPageHtml(), "/updates");
     } else if (path === "/reports") {
       await reports();
+      if (businessReviewCapabilities?.moneyTrail || businessReviewCapabilities?.monthlyClose) {
+        document.querySelector('.main-content, main')?.insertAdjacentHTML('afterbegin', reviewNavigation(businessReviewCapabilities));
+      }
+    } else if (path === "/money-trail" || path === "/monthly-review") {
+      shell('<div id="business-review-root"></div>','/reports');
+      const root=document.querySelector('#business-review-root');
+      if(path==='/money-trail')await mountMoneyTrail({root,api,uploads:dashboard.uploads??[],period:params.get('period')||undefined,capabilities:businessReviewCapabilities});
+      else await mountMonthlyReview({root,api,capabilities:businessReviewCapabilities});
+    } else if (path === "/actions") {
+      shell(actionPlansHtml(), "/actions");
+      disposeActionPlans = mountActionPlans({ root: document.querySelector("#action-plans"), api, initial: dashboard });
     } else if (path === "/billing") {
       billingPage();
     } else if (path === "/activity") {

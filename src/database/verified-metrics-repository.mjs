@@ -713,8 +713,15 @@ function normalizeMetric(
 
   const normalizedEvidence =
     normalizeMetricEvidence(
-      evidence,
+      { ...evidence, reportAnalytics: undefined },
     );
+  if (evidence.reportAnalytics != null) {
+    // Report cubes are already deterministic, budgeted aggregates. The generic
+    // log-style sanitizer used to replace nested dates/dimensions with {} and
+    // truncate arrays to 16 entries, corrupting evidence while claiming success.
+    // Retain the whole bounded JSON cube or fail; never persist a partial cube.
+    normalizedEvidence.reportAnalytics = preserveReportAnalytics(evidence.reportAnalytics);
+  }
 
   const serializedEvidence =
     JSON.stringify(
@@ -745,6 +752,23 @@ function normalizeMetric(
     unit,
     evidence: normalizedEvidence,
   };
+}
+
+function preserveReportAnalytics(value) {
+  let nodes=0;
+  function visit(item,depth=0) {
+    if(++nodes>20000||depth>16) throw new VerifiedMetricError('Report analytics exceeds the evidence structure budget.','METRIC_EVIDENCE_INVALID');
+    if(item===null||typeof item==='boolean'||typeof item==='string') return;
+    if(typeof item==='number'&&Number.isFinite(item))return;
+    if(Array.isArray(item)){for(const child of item)visit(child,depth+1);return;}
+    if(item&&Object.getPrototypeOf(item)===Object.prototype){for(const [key,child]of Object.entries(item)){if(['__proto__','constructor','prototype'].includes(key))throw new VerifiedMetricError('Report analytics contains an unsafe key.','METRIC_EVIDENCE_INVALID');visit(child,depth+1);}return;}
+    throw new VerifiedMetricError('Report analytics must contain plain JSON values.','METRIC_EVIDENCE_INVALID');
+  }
+  visit(value);
+  if(value.version!=='evidence-v2'||!value.metric||!Array.isArray(value.metric.dates)||!Array.isArray(value.metric.all?.dimensions)) throw new VerifiedMetricError('Report analytics format is invalid.','METRIC_EVIDENCE_INVALID');
+  const json=JSON.stringify(value);
+  if(Buffer.byteLength(json)>MAX_METRIC_EVIDENCE_BYTES)throw new VerifiedMetricError('Report analytics exceeds the 32 KiB evidence budget. Split the source into smaller reporting series.','METRIC_EVIDENCE_INVALID');
+  return JSON.parse(json);
 }
 
 function normalizeMetricEvidence(

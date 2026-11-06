@@ -41,7 +41,7 @@ test("mobile workspace navigation is compact, expandable and has one visible sig
 
   await expect(sidebar.locator(".sidebar-bottom")).toBeHidden();
 
-  await expect(page.locator(".workspace-top .top-sign-out")).toBeHidden();
+  await expect(page.locator(".workspace-top .top-sign-out")).toBeVisible();
 
   await toggle.click();
 
@@ -62,9 +62,10 @@ test("mobile workspace navigation is compact, expandable and has one visible sig
       name: "Sign out",
       exact: true,
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
-  await expect(page.locator(".workspace-top .top-sign-out")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(1);
+  await expect(page.locator(".workspace-top .top-sign-out")).toBeVisible();
 
   await sidebar
     .getByRole("link", {

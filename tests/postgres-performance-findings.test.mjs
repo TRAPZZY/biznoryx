@@ -23,6 +23,10 @@ import {
   PostgresMetricComparisonRepository,
 } from "../src/database/metric-comparison-repository.mjs";
 
+import { PostgresEvidenceReportRepository } from "../src/database/evidence-report-repository.mjs";
+import { buildBusinessReport } from "../src/reports/evidence-engine.mjs";
+import { reportSourcesFromSeries } from "../src/reports/production-sources.mjs";
+
 import {
   classifyMetricPolarity,
   findingSeverity,
@@ -575,6 +579,47 @@ test(
               .id,
         });
 
+      const policies = new PostgresEvidenceReportRepository(pool);
+      const tenant = { organizationId: organization.id, actorUserId: owner.id };
+      const refresh = () => findings.refreshForIngestion({
+        organizationId: organization.id, ingestionRunId: february.ingestionRun.id,
+      });
+      const unconfirmed = await refresh();
+      assert.equal(unconfirmed.length, 4);
+      assert.ok(unconfirmed.every((finding) => finding.evidence.interpretationStatus === "unconfirmed"));
+      assert.ok(unconfirmed.every((finding) => finding.evidence.metricPolarity === "neutral"));
+
+      // Stream names, different source columns and another tenant cannot authorize this series.
+      const otherOrganization = await identity.createOrganization({
+        actorUserId: outsider.id, name: "Other findings organization", slug: `finding-other-${nonce}`.slice(0, 48),
+      });
+      for (const scope of [
+        { ...tenant, seriesKey: stream.name, column: "revenue" },
+        { ...tenant, seriesKey: stream.id, column: "Revenue" },
+        { organizationId: otherOrganization.id, actorUserId: outsider.id, seriesKey: stream.id, column: "revenue" },
+      ]) {
+        await policies.approvePolicy({ ...scope, expectedVersion: 0,
+          definition: { label: "Unrelated policy", unit: "currency", polarity: "lower", materialityPercent: 5 } });
+      }
+      assert.equal((await refresh()).length, 4);
+      assert.deepEqual(await findings.refreshForIngestion({
+        organizationId: otherOrganization.id, ingestionRunId: february.ingestionRun.id,
+      }), []);
+
+      for (const [column, polarity, label] of [
+        ["revenue", "higher", "Revenue"],
+        ["cost", "lower", "Cost"],
+      ]) {
+        await policies.approvePolicy({
+          organizationId: organization.id,
+          actorUserId: owner.id,
+          seriesKey: stream.id,
+          column,
+          expectedVersion: 0,
+          definition: { label, unit: "number", polarity, materialityPercent: 5 },
+        });
+      }
+
       const persisted =
         await findings
           .refreshForIngestion({
@@ -802,6 +847,50 @@ test(
         "20",
       );
 
+      const definition = { label: "Recorded receipts", unit: "currency", polarity: "lower", materialityPercent: 30 };
+      const approveRevenue = (expectedVersion, override = {}) => policies.approvePolicy({
+        ...tenant, seriesKey: stream.id, column: "revenue", expectedVersion,
+        definition: { ...definition, ...override },
+      });
+      await approveRevenue(1);
+      await refresh();
+      const belowThreshold = await findings.listDashboardModules(tenant);
+      assert.equal(belowThreshold.opportunities.length, 0);
+      assert.equal(belowThreshold.risks.length, 1); // Cost only; revenue is below its approved threshold.
+
+      await approveRevenue(2, { materialityPercent: 5 });
+      await refresh();
+      const reversed = await findings.listDashboardModules(tenant);
+      assert.equal(reversed.opportunities.length, 0);
+      const receiptsRisk = reversed.risks.find((finding) => finding.metric.sourceColumn === "revenue");
+      assert.ok(receiptsRisk);
+      assert.equal(receiptsRisk.metric.label, "Recorded receipts");
+      assert.equal(receiptsRisk.metric.unit, "currency");
+      assert.equal(receiptsRisk.evidence.metricPolarity, "lower_is_better");
+      assert.equal(receiptsRisk.evidence.metricPolicy.version, 3);
+      assert.equal(receiptsRisk.evidence.metricPolicy.approvedByUserId, owner.id);
+      assert.equal(receiptsRisk.evidence.metricPolicy.seriesKey, stream.id);
+      assert.equal(receiptsRisk.evidence.absoluteChange, "25");
+      const report = buildBusinessReport({
+        sources: reportSourcesFromSeries(await metrics.listSeries(tenant)),
+        policies: await policies.listPolicies(tenant),
+        options: { source: february.ingestionRun.id, metric: "revenue" },
+      });
+      assert.equal(report.metric.policy.version, receiptsRisk.evidence.metricPolicy.version);
+      assert.equal(report.metric.policy.polarity, receiptsRisk.evidence.metricPolicy.polarity);
+      assert.equal(report.metric.label, receiptsRisk.metric.label);
+      assert.equal(report.health, "deteriorating");
+
+      await approveRevenue(3, { polarity: "neutral", materialityPercent: 5 });
+      await refresh();
+      const neutral = await findings.listDashboardModules(tenant);
+      assert.equal(neutral.opportunities.length, 0);
+      assert.equal(neutral.risks.length, 1);
+      const neutralSignal = neutral.signals.find((finding) => finding.metric.sourceColumn === "revenue");
+      assert.equal(neutralSignal.evidence.metricPolarity, "neutral");
+      assert.equal(neutralSignal.evidence.metricPolicy.version, 4);
+      assert.equal(neutralSignal.evidence.interpretationStatus, "approved");
+
       /*
        * Outsider cannot read another tenant's
        * intelligence.
@@ -832,7 +921,7 @@ test(
 );
 
 test(
-  "performance finding semantic classification is narrow and deterministic",
+  "performance finding polarity requires an approved definition instead of header semantics",
   () => {
     assert.equal(
       classifyMetricPolarity({
@@ -842,7 +931,7 @@ test(
         sourceColumn:
           "revenue",
       }),
-      "higher_is_better",
+      "neutral",
     );
 
     assert.equal(
@@ -853,7 +942,7 @@ test(
         sourceColumn:
           "cost",
       }),
-      "lower_is_better",
+      "neutral",
     );
 
     /*
@@ -872,6 +961,10 @@ test(
       }),
       "neutral",
     );
+
+    assert.equal(classifyMetricPolarity({ approvedPolicy: { polarity: "higher" } }), "higher_is_better");
+    assert.equal(classifyMetricPolarity({ approvedPolicy: { polarity: "lower" } }), "lower_is_better");
+    assert.equal(classifyMetricPolarity({ approvedPolicy: { polarity: "neutral" } }), "neutral");
 
     assert.equal(
       classifyMetricPolarity({

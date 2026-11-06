@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { AuthError } from "../auth/core.mjs";
 import { renderEvidenceReport, reportValue, periodName, escapeHtml } from "../../web-app/evidence-report.js";
+import { createPortableEvidenceFile } from "./portable-evidence.mjs";
 
 const stylesheet = readFileSync(new URL("../../web-app/evidence-report.css", import.meta.url), "utf8");
 const fonts = {
@@ -13,15 +14,16 @@ let activePdfExports = 0;
 
 export async function sendEvidenceExport(response, report, format) {
   if (!report) throw new AuthError("No report is available to export.", "NOT_FOUND");
-  if (!["pdf", "html", "csv"].includes(format)) throw new AuthError("Choose PDF, HTML or CSV export.", "VALIDATION_FAILED");
+  if (!["pdf", "html", "csv", "json"].includes(format)) throw new AuthError("Choose PDF, HTML, CSV or an evidence JSON file.", "VALIDATION_FAILED");
   let payload;
   if (format === "pdf") {
     if (activePdfExports >= 2) throw new AuthError("Two reports are being prepared. Retry in a moment.", "VALIDATION_FAILED");
     activePdfExports += 1;
     try { payload = await renderReportPdf(report); }
     finally { activePdfExports -= 1; }
-  } else payload = format === "html" ? renderReportHtml(report) : renderReportCsv(report);
-  response.setHeader("Content-Type", { pdf: "application/pdf", html: "text/html; charset=utf-8", csv: "text/csv; charset=utf-8" }[format]);
+  } else if (format === "json") payload = JSON.stringify(createPortableEvidenceFile(report), null, 2) + "\n";
+  else payload = format === "html" ? renderReportHtml(report) : renderReportCsv(report);
+  response.setHeader("Content-Type", { pdf: "application/pdf", html: "text/html; charset=utf-8", csv: "text/csv; charset=utf-8", json: "application/json; charset=utf-8" }[format]);
   response.setHeader("Content-Disposition", `attachment; filename="biznoryx-evidence-${report.current.period}.${format}"`);
   response.setHeader("Cache-Control", "private, no-store");
   response.setHeader("X-Content-Type-Options", "nosniff");

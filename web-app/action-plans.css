@@ -1,0 +1,42 @@
+.action-plans { max-width:1200px; margin:0 auto; }
+.action-plans-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px; }
+.action-plans-heading h1 { font-size:26px; line-height:1.2; margin:0; }
+.action-plans-heading > div { display:flex; flex-wrap:wrap; gap:8px; }
+.action-plans-message { min-height:24px; font-size:14px; margin-bottom:14px; }
+.action-plans-tools { display:flex; align-items:end; gap:18px; padding:16px 0; border-block:1px solid #dce4df; }
+.action-plans label { display:grid; gap:7px; font-size:13px; font-weight:600; min-width:0; }
+.action-plans input, .action-plans select, .action-plans textarea { width:100%; min-width:0; min-height:42px; border:1px solid #cbd6cf; border-radius:4px; padding:10px; font:inherit; background:white; color:#24382e; }
+.action-plans-search { flex:1; max-width:420px; }
+.action-plans-count { margin-left:auto; padding-bottom:12px; color:#64746b; font-size:13px; white-space:nowrap; }
+.action-plan-row { display:grid; grid-template-columns:minmax(0,1fr) 170px; gap:24px; padding:24px 0; border-bottom:1px solid #dce4df; }
+.action-plan-row h2 { font-size:18px; margin:0 0 8px; line-height:1.4; overflow-wrap:anywhere; }
+.action-plan-description { font-size:14px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.action-plan-meta { display:flex; flex-wrap:wrap; gap:8px 20px; color:#63736a; font-size:13px; margin-top:12px; }
+.action-plan-evidence { margin-top:18px; max-width:720px; font-size:14px; }
+.action-plan-evidence summary { color:#246747; cursor:pointer; }
+.action-plan-evidence h3 { font-size:14px; margin:14px 0 8px; }
+.action-plan-evidence p { line-height:1.6; overflow-wrap:anywhere; }
+.action-plan-reference { font-size:12px; color:#63736a; }
+.action-plan-state { padding-top:3px; font-size:14px; }
+.action-plans-empty { padding:44px 0; color:#63736a; }
+.action-plan-dialog { width:min(600px,calc(100% - 32px)); max-height:calc(100dvh - 32px); border:1px solid #cbd6cf; border-radius:6px; padding:24px; color:#24382e; }
+.action-plan-dialog::backdrop { background:#15281d88; }
+.action-plan-dialog form { display:grid; gap:18px; }
+.action-plan-dialog header, .action-plan-dialog footer { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.action-plan-dialog h2 { font-size:22px; margin:0; }
+.action-plan-dialog footer { justify-content:flex-end; padding-top:8px; }
+.action-plan-icon { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border:1px solid #cbd6cf; border-radius:4px; background:white; }
+.action-plan-icon svg { width:18px; height:18px; }
+.action-plan-source { font-size:14px; line-height:1.6; overflow-wrap:anywhere; margin:0; }
+.action-plan-form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.action-plan-form-message { font-size:14px; margin:0; color:#9b332d; min-height:20px; }
+@media(max-width:600px) {
+  .action-plans-heading { align-items:flex-start; flex-direction:column; }
+  .action-plans-tools { flex-wrap:wrap; gap:12px; }
+  .action-plans-search { flex:1; min-width:150px; }
+  .action-plans-count { margin-left:0; padding-bottom:0; width:100%; }
+  .action-plan-row { grid-template-columns:minmax(0,1fr); gap:14px; }
+  .action-plan-state { max-width:220px; }
+  .action-plan-dialog { padding:18px; }
+  .action-plan-form-row { grid-template-columns:1fr; }
+}
