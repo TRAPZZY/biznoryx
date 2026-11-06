@@ -260,7 +260,7 @@ export class SourceFileDeletionService {
             `select id, status from processing_jobs
              where organization_id = $1
                and ingestion_run_id = $2
-             for update`,
+             for share`,
             [organizationId, uploadId],
           );
 
