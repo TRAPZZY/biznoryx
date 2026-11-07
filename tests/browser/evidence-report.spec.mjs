@@ -3,6 +3,43 @@ import { readFile } from "node:fs/promises";
 
 import { acceptRequiredPolicy } from "./helpers/policy-onboarding.mjs";
 
+async function assertAlignedMetricCheckbox(page, name) {
+  const checkbox = page.getByRole("checkbox", { name });
+  await expect(checkbox).toBeVisible();
+
+  const geometry = await checkbox.evaluate((input) => {
+    const label = input.closest("label.er-checkbox");
+    const text = [...label.childNodes].find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+    );
+    if (!text) return null;
+
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const firstLine = range.getClientRects()[0];
+    const box = input.getBoundingClientRect();
+    const styles = getComputedStyle(input);
+
+    return {
+      size: box.height,
+      padding: styles.paddingTop,
+      alignment: Math.abs(
+        box.top + box.height / 2 - firstLine.top - firstLine.height / 2,
+      ),
+      direction: getComputedStyle(label).flexDirection,
+      separation: firstLine.left - box.right,
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  expect(geometry.size).toBeGreaterThanOrEqual(16);
+  expect(geometry.size).toBeLessThanOrEqual(20);
+  expect(geometry.padding).toBe("0px");
+  expect(geometry.alignment).toBeLessThan(5);
+  expect(geometry.direction).toBe("row");
+  expect(geometry.separation).toBeGreaterThanOrEqual(6);
+}
+
 async function createWorkspace(page) {
   await page.goto("/#/register");
   await page.getByLabel("Full name").fill("Evidence Browser Owner");
@@ -146,6 +183,21 @@ for (const width of [1440, 390]) test(`evidence report analyzes dated source row
       "I confirm this definition and that summing this column is appropriate.",
     )
     .check();
+
+  // All three confirmation checkboxes must align with their first text line,
+  // including when a long label wraps on smaller screens.
+  for (const viewportWidth of [1440, 390]) {
+    await page.setViewportSize({ width: viewportWidth, height: 900 });
+    for (const label of [
+      "Separate price, quantity and product mix",
+      "I confirm this definition and that summing this column is appropriate.",
+      /I confirm this is revenue in USD/,
+    ]) {
+      await assertAlignedMetricCheckbox(page, label);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   await page.getByRole("button", { name: "Approve definition" }).click();
   await expect(page.locator(".er-status")).toContainText(
     "Metric definition approved",
