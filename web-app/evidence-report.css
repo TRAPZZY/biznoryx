@@ -127,8 +127,23 @@ svg.er-chart { display:block; width:100%; height:auto; min-width:490px; aspect-r
 .er-definition-form > p { font-size:13px; color:#66776b; }
 .er-definition-form label { display:grid; gap:7px; font-size:13px; }
 .er-definition-form input:not([type=checkbox]), .er-definition-form select { width:100%; padding:10px; border:1px solid #cbd6ce; border-radius:4px; }
-.er-definition-form label.er-checkbox { display:flex; align-items:flex-start; gap:10px; font-size:12px; line-height:1.6; }
-.er-definition-form .er-checkbox input { width:16px; height:16px; margin:3px 0; }
+.er-definition-form label.er-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.er-definition-form label.er-checkbox > input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  margin: 1px 0 0;
+  accent-color: #176b4c;
+}
 .er-loading, .er-error { padding:40px 0; font-size:14px; color:#586a5f; }
 .er-error button { margin-top:12px; }
 .er-status { font-size:12px; color:#566d5e; min-height:20px; margin-top:8px; }
