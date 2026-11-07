@@ -61,6 +61,13 @@ const DEPENDENCIES = [
 
 async function requireNoDerivedDependencies(client, source, organizationId) {
   for (const [table, condition] of DEPENDENCIES) {
+    // A rejected upload can generate an ordinary attention notification.
+    // Its notification and recipients cascade with the deleted upload.
+    // Preserve all financial and other dependency protections.
+    if (table === "notification_events" && source.status === "rejected") {
+      continue;
+    }
+
     const exists = await client.query(
       "select to_regclass($1) as relation",
       [`public.${table}`],
