@@ -184,6 +184,26 @@ test("permanent source deletion preserves tenant and processing boundaries", {
       { code: "CAPABILITY_DENIED" },
     );
 
+    // Simulate a rejection alert visible to the owner.
+    // This previously caused legitimate deletion to be blocked.
+    const notice = await admin.query(
+      `select id from notification_events
+       where organization_id = $1
+         and ingestion_run_id = $2
+         and kind = 'upload_attention'`,
+      [organization.id, rejected.ingestionRun.id],
+    );
+
+    assert.equal(notice.rows.length, 1);
+
+    await admin.query(
+      `insert into notification_recipients
+         (organization_id, event_id, user_id)
+       values ($1, $2, $3)
+       on conflict do nothing`,
+      [organization.id, notice.rows[0].id, owner.id],
+    );
+
     // Owner deletes the rejected file from PostgreSQL.
     const result = await deletion.delete({
       ...tenant,
@@ -191,6 +211,21 @@ test("permanent source deletion preserves tenant and processing boundaries", {
     });
 
     assert.equal(result.deletedFromDatabase, true);
+
+    // Related rejection notifications must cascade away.
+    const remainingNotice = await admin.query(
+      `select id from notification_events where id = $1`,
+      [notice.rows[0].id],
+    );
+
+    const remainingRecipients = await admin.query(
+      `select event_id from notification_recipients
+       where event_id = $1`,
+      [notice.rows[0].id],
+    );
+
+    assert.equal(remainingNotice.rows.length, 0);
+    assert.equal(remainingRecipients.rows.length, 0);
 
     const remaining = await ingestion.listUploads(tenant);
 
