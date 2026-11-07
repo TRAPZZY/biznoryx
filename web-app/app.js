@@ -1829,6 +1829,81 @@ function policyOnboarding() {
     });
 }
 
+function mountWorkspace(html, { organizationId, active, sidebarCollapsed }) {
+  const existing = app.querySelector(":scope > .workspace");
+  const currentMain = existing?.querySelector(":scope > .workspace-main");
+  const canReuse =
+    Boolean(organizationId) &&
+    existing?.dataset.organizationId === organizationId &&
+    Boolean(existing.querySelector("#workspace-sidebar")) &&
+    Boolean(currentMain);
+
+  if (!canReuse) {
+    mount(html);
+    return;
+  }
+
+  // Preserve the sidebar element across normal workspace redraws.
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const nextWorkspace = template.content.querySelector(".workspace");
+  const nextMain = nextWorkspace?.querySelector(":scope > .workspace-main");
+
+  if (!nextMain) {
+    mount(html);
+    return;
+  }
+
+  disposeActionPlans?.();
+  disposeActionPlans = null;
+  currentMain.replaceWith(nextMain);
+
+  existing.classList.toggle("sidebar-collapsed", sidebarCollapsed);
+  existing.classList.remove("mobile-nav-open");
+
+  // Refresh organization controls only when the choices or labels change.
+  const currentOrgControl = existing.querySelector(".org-control");
+  const nextOrgControl = nextWorkspace.querySelector(".org-control");
+  if (
+    currentOrgControl &&
+    nextOrgControl &&
+    currentOrgControl.outerHTML !== nextOrgControl.outerHTML
+  ) {
+    currentOrgControl.replaceWith(nextOrgControl);
+  }
+
+  for (const link of existing.querySelectorAll("#workspace-sidebar nav a")) {
+    const selected = link.getAttribute("href") === `#${active}`;
+    link.classList.toggle("active", selected);
+    if (selected) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+
+  const sidebarToggle = existing.querySelector("#sidebar-toggle");
+  if (sidebarToggle) {
+    const mobile = !window.matchMedia(SIDEBAR_DESKTOP_QUERY).matches;
+    const label = mobile
+      ? "Open workspace menu"
+      : sidebarCollapsed
+        ? "Expand sidebar"
+        : "Collapse sidebar";
+    sidebarToggle.setAttribute(
+      "aria-expanded",
+      mobile || sidebarCollapsed ? "false" : "true",
+    );
+    sidebarToggle.setAttribute("aria-label", label);
+    sidebarToggle.setAttribute("title", label);
+    sidebarToggle.innerHTML = icon(
+      mobile ? "menu" : sidebarCollapsed ? "panel-left-open" : "panel-left-close",
+    );
+  }
+
+  window.lucide?.createIcons();
+}
+
 function shell(content, active) {
   disposeUpdates?.();
   const org =
@@ -1859,9 +1934,10 @@ function shell(content, active) {
     ["/activity", "history", "Activity"],
   ];
 
-  mount(`
+  const workspaceHtml = `
     <div
       class="workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}"
+      data-organization-id="${esc(org?.id || "")}"
     >
       <aside
         class="sidebar"
@@ -2057,7 +2133,13 @@ function shell(content, active) {
         </main>
       </div>
     </div>
-  `);
+  `;
+
+  mountWorkspace(workspaceHtml, {
+    organizationId: org?.id,
+    active,
+    sidebarCollapsed,
+  });
 
   feedbackScope(org?.id ?? null);
   disposeUpdates = mountUpdates({ root: app, api });
@@ -2079,7 +2161,7 @@ function shell(content, active) {
     });
   });
 
-  sidebarToggle?.addEventListener("click", () => {
+  if (sidebarToggle) sidebarToggle.onclick = () => {
     const workspace = document.querySelector(".workspace");
 
     if (!workspace) {
@@ -2131,7 +2213,7 @@ function shell(content, active) {
     );
 
     window.lucide?.createIcons();
-  });
+  };
 
   document.querySelectorAll("[data-sign-out]").forEach((button) => {
     button.onclick = async (event) => {
